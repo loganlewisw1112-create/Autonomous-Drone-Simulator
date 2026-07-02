@@ -1,6 +1,6 @@
 {
   "name": "autonomous-drone-mission-simulator",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Local-first React and TypeScript simulator for multi-drone public-safety missions, tactical route control, replay, and evidence exports.",
   "private": true,
   "type": "module",
