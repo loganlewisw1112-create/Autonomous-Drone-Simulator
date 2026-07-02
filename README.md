@@ -1,6 +1,64 @@
 # Autonomous Drone Simulator
 
-Local-first React + TypeScript simulator for multi-drone public-safety missions. The app models operator-supervised drone operations across public safety, SAR, fire, maritime, border, disaster response, and multi-agency pursuit scenarios. It is simulation-only: no real drones, FAA services, cameras, identity systems, dispatch systems, or live UTM providers are connected.
+Local-first React + TypeScript simulator for operator-supervised multi-drone public-safety missions. It demonstrates mission planning, launch readiness, live route control, thermal detections, UTM/compliance readiness, replay, and after-action export without connecting to real drones or live aviation systems.
+
+![Animated capture of the simulator running a coastal SAR mission with active drones, the OPS HUB, route suggestions, telemetry, and tactical map overlays.](docs/media/readme/hero-live-workflow.gif)
+
+**Why this matters**
+
+- Shows the full operator workflow, not a static dashboard: scenario load, preflight, launch, retask, detection, readiness, replay, and export.
+- Keeps autonomy supervised: route suggestions, command actions, RTB, hover, recovery, and export decisions remain visible to the operator.
+- Uses deterministic simulation layers for public-safety credibility: geofences, weather, comms, thermal contacts, UTM, compliance flags, and chain-of-custody events.
+
+## Workflow At A Glance
+
+### 1. Command center overview
+
+The simulator opens into a tactical operations layout: fleet status on the left, map and mission brief in the center, OPS HUB controls docked beside the map, and telemetry/readiness tabs on the right.
+
+![Command center overview showing SAR coastal scenario data, fleet cards, tactical map, OPS HUB, telemetry, and bottom mission controls.](docs/media/readme/01-command-center-overview.png)
+
+### 2. Scenario breadth
+
+The scenario catalog includes public safety, SAR, fire, maritime, border, disaster response, venue security, and multi-agency pursuit missions. Larger scenarios model more aircraft, more launch/recovery sites, and more coordination pressure.
+
+![Multi-agency pursuit scenario loaded with an eight-drone fleet, tactical map overlays, OPS HUB route data, and telemetry panels.](docs/media/readme/02-scenario-catalog.png)
+
+### 3. Preflight and launch planning
+
+Before launch, the app requires simulated readiness checks and per-drone launch bay planning. The operator can inspect launch/recovery surfaces, detect blockers, auto-assign bays, and confirm the launch plan.
+
+![Launch bay planning modal showing per-drone assignments, launch blockers, bay slots, and confirm launch controls.](docs/media/readme/03-preflight-launch-planning.png)
+
+### 4. Live mission operations
+
+Once launched, drones move through assigned routes while telemetry, battery, signal, mission state, route progress, dispatch tasks, and chain-of-custody events update in real time.
+
+![Live coastal SAR mission with drones navigating, active OPS HUB controls, telemetry charts, route overlays, UTM status, and mission active controls.](docs/media/readme/04-live-mission-ops-hub.png)
+
+### 5. Operator route direction
+
+The OPS HUB supports direct route commands and generated route suggestions. Suggestions stay approval-based so the operator can accept or reject changes before the mission plan is altered.
+
+![OPS HUB route suggestion panel showing a relay reposition recommendation with accept and reject controls during a live mission.](docs/media/readme/05-route-command-suggestions.png)
+
+### 6. Thermal detection workflow
+
+IR mode overlays the mission with thermal cues and urgent dispatch feed entries. Detection confidence, drone hold behavior, and operator follow-up cues are visible alongside the tactical map.
+
+![IR thermal mode showing detected thermal contact cues, urgent mission feed entries, drone states, and the operator command surface.](docs/media/readme/06-thermal-contact-dispatch.png)
+
+### 7. Readiness, compliance, and UTM
+
+The READY tab converts simulation state into reviewable outcomes: mission coverage, detected contacts, fleet health, Remote ID status, simulated authorization, max altitude, external traffic, reservations, and active UTM conflicts.
+
+![Readiness panel showing mission outcome, compliance readiness, Remote ID, simulated LAANC authorization, UTM traffic, reservations, and conflicts.](docs/media/readme/07-readiness-compliance-utm.png)
+
+### 8. Replay and after-action export
+
+When the mission stops, replay controls and report export become available. The after-action package includes mission KPIs, replay frame count, event count, compliance state, UTM state, chain hash, fleet state, and position samples.
+
+![Replay mode showing playback controls, mission timeline, report export button, weather state, thermal contact count, and readiness metrics.](docs/media/readme/08-replay-after-action-export.png)
 
 ## What The Simulator Does
 
@@ -48,7 +106,10 @@ Local-first React + TypeScript simulator for multi-drone public-safety missions.
 
 ## Scenario Catalog
 
-The published simulator currently includes 21 scenarios. Each row below summarizes the current source-backed scenario data.
+The published simulator currently includes 21 source-backed scenarios.
+
+<details>
+<summary>Show all scenarios</summary>
 
 | # | Scenario | ID | Drones / sorties | Summary |
 |---|---|---|---:|---|
@@ -74,7 +135,9 @@ The published simulator currently includes 21 scenarios. Each row below summariz
 | 20 | Multi-Agency - SF -> Albany Hills Suspect Pursuit | `extreme_multiagency_sf_pursuit` | 8 / 2 | SFPD/OPD/CHP/BART PD pursuit from SF through the East Bay. Eight drones cover shadows, overwatch, forward intercepts, perimeter sealing, and C2 relay with explicit SF, Jack London Square, East Bay, and Oakland Airport staging. |
 | 21 | CBP Laredo - Rio Grande 25-Mile Relay Patrol | `extreme_cbp_rio_grande_longrange` | 5 / 6 | Long-range corridor patrol from Falcon Lake toward Mission, TX. Drones advance through staged mobile recharge vehicles on US-83 instead of returning to origin, with long-range battery kits and forward recovery discipline. |
 
-## Local Setup
+</details>
+
+## Run Locally
 
 ```bash
 npm install
@@ -82,6 +145,8 @@ npm run dev
 ```
 
 Open `http://127.0.0.1:5173/`.
+
+For venue demos where network map tiles may be unavailable, open `http://127.0.0.1:5173/?map=fallback` to use the local tactical fallback map.
 
 ## Verification Commands
 
@@ -95,7 +160,7 @@ Expected build note: Vite may warn about a large chunk because MapLibre/Recharts
 
 ## Investor Demo Script
 
-1. Load `USCG Coastal SAR` (`demo_sar_coastal`) and let preflight / launch bay planning appear.
+1. Load `SAR - Coastal / Ocean Beach` (`demo_sar_coastal`) and let preflight / launch bay planning appear.
 2. Turn on `DEMO MODE` in the bottom control bar.
 3. Complete launch planning, start the mission, and select a drone from the fleet panel.
 4. Drag a yellow route marker or issue `SUGGEST` / `Deep Scan` from OPS HUB to show validated route edits and autosave.
@@ -106,7 +171,7 @@ Expected build note: Vite may warn about a large chunk because MapLibre/Recharts
 
 ## Known Limitations
 
-- This is a browser simulator only. It does not connect to real drones, Remote ID hardware, FAA services, LAANC, UTM providers, cameras, or cloud APIs.
+- This is a browser simulator only. It does not connect to real drones, Remote ID hardware, FAA services, LAANC, UTM providers, cameras, dispatch systems, or cloud APIs.
 - Regulatory and UTM surfaces are deterministic simulation layers for demo credibility, not operational authorization tools.
-- Map tiles load from OpenFreeMap; the app keeps tactical UI state local, but a venue with no network can still affect base-map detail.
+- Map tiles load from OpenFreeMap by default. The fallback map keeps tactical UI state local, but it is not a geographic base-map replacement.
 - Generated build output, runtime logs, local environment files, and agent handoff artifacts are intentionally excluded from the published repository.
