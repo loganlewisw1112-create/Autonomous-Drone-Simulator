@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.local
+logs/
+*.log
+*.tsbuildinfo
+
+# Local agent/workspace artifacts
+.agents/
+.claude/
+.codex/
+HANDOFF.md
+START_HERE.md
+TASKS.md
+PROJECT_PLAN.md
+Build Plan for Autonomous Drone Mission Simulator.txt
