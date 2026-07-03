@@ -17,3 +17,6 @@ START_HERE.md
 TASKS.md
 PROJECT_PLAN.md
 Build Plan for Autonomous Drone Mission Simulator.txt
+
+# Launch/GTM kit + packaged distributables — built locally, not part of the source repo
+outputs/

@@ -10,7 +10,10 @@ export default defineConfig({
     },
   },
   test: {
+    // Default environment stays 'node' so the 178 existing simulation/state tests remain fast.
+    // Component specs opt into jsdom per-file via a `// @vitest-environment jsdom` docblock.
     environment: 'node',
     globals: true,
+    setupFiles: ['./src/tests/setup.ts'],
   },
 })
