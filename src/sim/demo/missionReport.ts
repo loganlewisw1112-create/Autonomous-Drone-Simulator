@@ -1,6 +1,7 @@
 import { buildComplianceState } from '@/sim/demo/complianceEngine'
 import { buildMissionOutcomeSummary } from '@/sim/demo/missionOutcome'
 import { buildUtmAirspaceState } from '@/sim/demo/utmEngine'
+import { verifyChain } from '@/utils/chainOfCustody'
 import type {
   AfterActionPackage,
   DroneState,
@@ -66,6 +67,7 @@ export function buildAfterActionPackage(input: BuildAfterActionPackageInput): Af
     utm,
     evidence: {
       chainHash,
+      chainVerified: verifyChain(input.events),
       kpiCount: 8,
       droneCount: input.drones.length,
       positionSampleCount,

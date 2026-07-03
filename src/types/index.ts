@@ -675,6 +675,7 @@ export interface AfterActionPackage {
   utm: UTMAirspaceState
   evidence: {
     chainHash: string
+    chainVerified: boolean   // result of verifyChain() over the full event log at export time
     kpiCount: number
     droneCount: number
     positionSampleCount: number

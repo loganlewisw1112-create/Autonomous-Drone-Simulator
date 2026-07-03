@@ -17,7 +17,6 @@ import { checkThermalDetections } from '@/sim/sensors/ThermalSim'
 import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import { tickGroundUnit, computeGroundUnitEta } from '@/sim/mission/groundUnits'
 import { tickRecoveryTeam, tickRecoveryExtraction, needsRecovery, recoveryTransitionState, createRecoveryTeam } from '@/sim/mission/recoveryManager'
-import { buildEvent, getGenesisHash } from '@/utils/chainOfCustody'
 import { haversineDistanceM } from '@/utils/geometry'
 import type { DroneState, EventType, FullMissionFrame, LatLng, Waypoint } from '@/types'
 
@@ -154,8 +153,6 @@ function tick() {
 
       // Emit chain-of-custody events for significant transitions
       if (stateChanged || wpAdvanced) {
-        const prevHash = useDroneStore.getState().lastHash
-
         let eventType: EventType
         let payload: Record<string, unknown>
 
@@ -215,13 +212,10 @@ function tick() {
           payload = { from: prevState, to: nextState }
         }
 
-        buildEvent(prevHash, currentTick, drone.id, 'operator-1', 'pic', eventType, payload)
-          .then((event) => {
-            useDroneStore.getState().addEvent(event)
-            const { metrics } = useDroneStore.getState()
-            if (eventType === 'waypoint_reached') useDroneStore.getState().updateMetrics({ waypointsReached: metrics.waypointsReached + 1 })
-            if (eventType === 'rtb_triggered') useDroneStore.getState().updateMetrics({ rtbTriggers: metrics.rtbTriggers + 1 })
-          })
+        useDroneStore.getState().emitEvent({ eventType, droneId: drone.id, tick: currentTick, payload })
+        const { metrics } = useDroneStore.getState()
+        if (eventType === 'waypoint_reached') useDroneStore.getState().updateMetrics({ waypointsReached: metrics.waypointsReached + 1 })
+        if (eventType === 'rtb_triggered') useDroneStore.getState().updateMetrics({ rtbTriggers: metrics.rtbTriggers + 1 })
       }
 
       if (currentTick % TELEMETRY_SAMPLE_INTERVAL === 0) {
@@ -268,15 +262,19 @@ function tick() {
       // Signal restored — was previously lost
       const wasLost = (drone.commsLostSec ?? 0) > 0
       if (wasLost) {
-        const prevHash = useDroneStore.getState().lastHash
-        buildEvent(prevHash, currentTick, drone.id, 'operator-1', 'pic', 'comms_restored', {
-          lostDurationSec: Math.round(drone.commsLostSec ?? 0),
-          missionState: drone.missionState,
-          waypointIndex: drone.currentWaypointIndex,
-          batteryPct: Math.round(drone.batteryPct),
-          position: drone.position,
-          status: 'on_task',
-        }).then((event) => useDroneStore.getState().addEvent(event))
+        useDroneStore.getState().emitEvent({
+          eventType: 'comms_restored',
+          droneId: drone.id,
+          tick: currentTick,
+          payload: {
+            lostDurationSec: Math.round(drone.commsLostSec ?? 0),
+            missionState: drone.missionState,
+            waypointIndex: drone.currentWaypointIndex,
+            batteryPct: Math.round(drone.batteryPct),
+            position: drone.position,
+            status: 'on_task',
+          },
+        })
       }
 
       return { ...drone, commsLostSec: 0, lastKnownPosition: undefined }
@@ -284,42 +282,50 @@ function tick() {
 
     // Emit conflict events (throttled)
     if (conflicts.length > 0 && currentTick % 20 === 0) {
-      const prevHash = useDroneStore.getState().lastHash
-      buildEvent(prevHash, currentTick, conflicts[0].idA, 'operator-1', 'pic', 'conflict_detected', {
-        conflictWith: conflicts[0].idB,
-        horizDistM: Math.round(conflicts[0].horizDistM),
-        vertDistFt: Math.round(conflicts[0].vertDistFt),
-      }).then((event) => {
-        useDroneStore.getState().addEvent(event)
-        const { metrics } = useDroneStore.getState()
-        useDroneStore.getState().updateMetrics({ conflictsDetected: metrics.conflictsDetected + 1 })
+      useDroneStore.getState().emitEvent({
+        eventType: 'conflict_detected',
+        droneId: conflicts[0].idA,
+        tick: currentTick,
+        payload: {
+          conflictWith: conflicts[0].idB,
+          horizDistM: Math.round(conflicts[0].horizDistM),
+          vertDistFt: Math.round(conflicts[0].vertDistFt),
+        },
       })
+      const { metrics } = useDroneStore.getState()
+      useDroneStore.getState().updateMetrics({ conflictsDetected: metrics.conflictsDetected + 1 })
     }
 
     // Emit geofence breach events (throttled)
     const breachedDrone = withCommsTracking.find((d) => d.geofenceBreachFlag)
     if (breachedDrone && currentTick % 20 === 0) {
-      const prevHash = useDroneStore.getState().lastHash
-      buildEvent(prevHash, currentTick, breachedDrone.id, 'operator-1', 'pic', 'geofence_breach', {
-        position: breachedDrone.position,
-        altitudeFt: Math.round(breachedDrone.altitudeFt),
-        geofenceId: breachedDrone.geofenceBreach?.id,
-      }).then((event) => {
-        useDroneStore.getState().addEvent(event)
-        const { metrics } = useDroneStore.getState()
-        useDroneStore.getState().updateMetrics({ geofenceBreaches: metrics.geofenceBreaches + 1 })
+      useDroneStore.getState().emitEvent({
+        eventType: 'geofence_breach',
+        droneId: breachedDrone.id,
+        tick: currentTick,
+        payload: {
+          position: breachedDrone.position,
+          altitudeFt: Math.round(breachedDrone.altitudeFt),
+          geofenceId: breachedDrone.geofenceBreach?.id,
+        },
       })
+      const { metrics } = useDroneStore.getState()
+      useDroneStore.getState().updateMetrics({ geofenceBreaches: metrics.geofenceBreaches + 1 })
     }
 
     // Emit comms degradation events (throttled)
     const commsDrone = withCommsTracking.find((d) => d.signalDbm < -80)
     if (commsDrone && currentTick % 40 === 0) {
-      const prevHash = useDroneStore.getState().lastHash
       const eventType: EventType = commsDrone.signalDbm < -90 ? 'comms_lost' : 'comms_degraded'
-      buildEvent(prevHash, currentTick, commsDrone.id, 'operator-1', 'pic', eventType, {
-        signalDbm: Math.round(commsDrone.signalDbm),
-        ...(eventType === 'comms_lost' ? { position: commsDrone.lastKnownPosition ?? commsDrone.position } : {}),
-      }).then((event) => useDroneStore.getState().addEvent(event))
+      useDroneStore.getState().emitEvent({
+        eventType,
+        droneId: commsDrone.id,
+        tick: currentTick,
+        payload: {
+          signalDbm: Math.round(commsDrone.signalDbm),
+          ...(eventType === 'comms_lost' ? { position: commsDrone.lastKnownPosition ?? commsDrone.position } : {}),
+        },
+      })
     }
 
     // ── Drone recovery detection ───────────────────────────────────────────────
@@ -331,13 +337,17 @@ function tick() {
       if (newState === drone.missionState) return drone
 
       // Transition drone to recovery state
-      const prevHash = useDroneStore.getState().lastHash
-      buildEvent(prevHash, currentTick, drone.id, 'operator-1', 'pic', 'drone_recovery_requested', {
-        from: drone.missionState,
-        batteryPct: Math.round(drone.batteryPct),
-        position: drone.position,
-        commsLostSec: drone.commsLostSec,
-      }).then((event) => useDroneStore.getState().addEvent(event))
+      useDroneStore.getState().emitEvent({
+        eventType: 'drone_recovery_requested',
+        droneId: drone.id,
+        tick: currentTick,
+        payload: {
+          from: drone.missionState,
+          batteryPct: Math.round(drone.batteryPct),
+          position: drone.position,
+          commsLostSec: drone.commsLostSec,
+        },
+      })
 
       // Dispatch a recovery team from staging
       const stagingPos = scenario.startPosition
@@ -366,19 +376,23 @@ function tick() {
           // setDrones() applies at the end of this tick, so mutate it directly here.
           const finalDroneIdx = finalDrones.findIndex((d) => d.id === team.droneId)
           if (finalDroneIdx !== -1) finalDrones[finalDroneIdx] = { ...finalDrones[finalDroneIdx], missionState: 'recovered' }
-          const prevHash = useDroneStore.getState().lastHash
-          buildEvent(prevHash, currentTick, team.droneId, 'operator-1', 'pic', 'drone_recovered', {
-            teamId: team.id,
-          }).then((event) => useDroneStore.getState().addEvent(event))
+          useDroneStore.getState().emitEvent({
+            eventType: 'drone_recovered',
+            droneId: team.droneId,
+            tick: currentTick,
+            payload: { teamId: team.id },
+          })
         }
       } else if (team.status === 'enroute' && drone) {
         const updated = tickRecoveryTeam(team, weatherState, FIXED_DT * stepsPerFrame)
         useDroneStore.getState().updateRecoveryTeam(team.id, updated)
         if (updated.status === 'on_scene') {
-          const prevHash = useDroneStore.getState().lastHash
-          buildEvent(prevHash, currentTick, team.droneId, 'operator-1', 'pic', 'ground_unit_on_scene', {
-            teamId: team.id,
-          }).then((event) => useDroneStore.getState().addEvent(event))
+          useDroneStore.getState().emitEvent({
+            eventType: 'ground_unit_on_scene',
+            droneId: team.droneId,
+            tick: currentTick,
+            payload: { teamId: team.id },
+          })
         }
       }
     }
@@ -394,12 +408,16 @@ function tick() {
       useDroneStore.getState().updateGroundUnit(unit.id, updated)
       // Emit on_scene event once
       if (updated.status === 'on_scene') {
-        const prevHash = useDroneStore.getState().lastHash
-        buildEvent(prevHash, currentTick, 'system', 'operator-1', 'pic', 'ground_unit_on_scene', {
-          unitId: unit.id,
-          thermalId: unit.targetThermalId,
-          etaWas: etaBefore,
-        }).then((event) => useDroneStore.getState().addEvent(event))
+        useDroneStore.getState().emitEvent({
+          eventType: 'ground_unit_on_scene',
+          droneId: 'system',
+          tick: currentTick,
+          payload: {
+            unitId: unit.id,
+            thermalId: unit.targetThermalId,
+            etaWas: etaBefore,
+          },
+        })
       }
     }
 
@@ -423,13 +441,17 @@ function tick() {
           useDroneStore.getState().addThermalContact(det)
           const { metrics } = useDroneStore.getState()
           useDroneStore.getState().updateMetrics({ thermalContacts: metrics.thermalContacts + 1 })
-          const prevHash = useDroneStore.getState().lastHash
-          buildEvent(prevHash, currentTick, drone.id, 'operator-1', 'pic', 'thermal_detection', {
-            sourceId: det.sourceId,
-            class: det.class,
-            confidence: Math.round(det.confidence * 100),
-            position: det.position,
-          }).then((event) => useDroneStore.getState().addEvent(event))
+          useDroneStore.getState().emitEvent({
+            eventType: 'thermal_detection',
+            droneId: drone.id,
+            tick: currentTick,
+            payload: {
+              sourceId: det.sourceId,
+              class: det.class,
+              confidence: Math.round(det.confidence * 100),
+              position: det.position,
+            },
+          })
 
           // High-confidence contact triggers a brief automatic hover-and-confirm
           // instead of leaving the operator's only options as "ignore" or manual hover.
@@ -554,11 +576,17 @@ export function initFleet() {
   useDroneStore.getState().setDroneWaypoints(restoredRoutes.routes)
   useDroneStore.getState().setRouteSaveStatuses(restoredRoutes.statuses)
 
-  buildEvent(getGenesisHash(), 0, 'system', 'operator-1', 'pic', 'mission_start', {
-    scenarioId: scenario.id,
-    droneCount: scenario.droneCount,
-    seed: scenario.seed,
-    weatherSeverity: weatherState.activeHazards.length,
-    activeHazards: weatherState.activeHazards,
-  }).then((event) => useDroneStore.getState().addEvent(event))
+  // resetMission() above restored lastHash to the genesis hash, so this becomes link #1.
+  useDroneStore.getState().emitEvent({
+    eventType: 'mission_start',
+    droneId: 'system',
+    tick: 0,
+    payload: {
+      scenarioId: scenario.id,
+      droneCount: scenario.droneCount,
+      seed: scenario.seed,
+      weatherSeverity: weatherState.activeHazards.length,
+      activeHazards: weatherState.activeHazards,
+    },
+  })
 }
