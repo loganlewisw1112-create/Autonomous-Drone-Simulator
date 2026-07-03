@@ -1,17 +1,29 @@
+import { sha256 } from '@noble/hashes/sha256'
+import { bytesToHex } from '@noble/hashes/utils'
 import type { MissionEvent, EventType, OperatorRole } from '@/types'
 
 const GENESIS_HASH = '0'.repeat(64)
 
-// SHA-256 via Web Crypto API (async but called at event-log time, not in tight loop)
-async function sha256(message: string): Promise<string> {
-  const data = new TextEncoder().encode(message)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
+// Synchronous SHA-256 (audited @noble/hashes implementation).
+//
+// Hashing MUST be synchronous here: events are appended inside the Zustand reducer so that
+// reading `lastHash` and committing the next link is one atomic step. The previous
+// crypto.subtle-based implementation was async, which let every event emitted within a single
+// sim tick capture the same stale prevHash and fork the chain.
+function sha256Hex(message: string): string {
+  return bytesToHex(sha256(message))
 }
 
-export async function buildEvent(
+type MissionEventPartial = Omit<MissionEvent, 'hash'>
+
+/** Hash one chain link. Preimage format is prevHash + JSON(partial-including-prevHash). */
+export function hashEvent(prevHash: string, partial: MissionEventPartial): string {
+  return sha256Hex(prevHash + JSON.stringify(partial))
+}
+
+/** Build a fully-hashed event from explicit fields. Prefer the store's emitEvent action,
+ *  which reads prevHash atomically; this exists for tests and offline tooling. */
+export function buildEvent(
   prevHash: string,
   tick: number,
   droneId: string,
@@ -19,8 +31,8 @@ export async function buildEvent(
   role: OperatorRole,
   eventType: EventType,
   payload: Record<string, unknown>,
-): Promise<MissionEvent> {
-  const partial = {
+): MissionEvent {
+  const partial: MissionEventPartial = {
     tick,
     timestamp: Date.now(),
     droneId,
@@ -30,21 +42,20 @@ export async function buildEvent(
     payload,
     prevHash,
   }
-  const hash = await sha256(prevHash + JSON.stringify(partial))
-  return { ...partial, hash }
+  return { ...partial, hash: hashEvent(prevHash, partial) }
 }
 
 export function getGenesisHash(): string {
   return GENESIS_HASH
 }
 
-// Verify the full chain — returns true if intact
-export async function verifyChain(events: MissionEvent[]): Promise<boolean> {
+/** Verify the full chain — true only if every link's prevHash and hash check out. */
+export function verifyChain(events: MissionEvent[]): boolean {
   for (let i = 0; i < events.length; i++) {
     const e = events[i]
     const expectedPrev = i === 0 ? GENESIS_HASH : events[i - 1].hash
     if (e.prevHash !== expectedPrev) return false
-    const partial = {
+    const partial: MissionEventPartial = {
       tick: e.tick,
       timestamp: e.timestamp,
       droneId: e.droneId,
@@ -54,12 +65,20 @@ export async function verifyChain(events: MissionEvent[]): Promise<boolean> {
       payload: e.payload,
       prevHash: e.prevHash,
     }
-    const expected = await sha256(e.prevHash + JSON.stringify(partial))
-    if (expected !== e.hash) return false
+    if (hashEvent(e.prevHash, partial) !== e.hash) return false
   }
   return true
 }
 
+/** Export the chain as JSONL. Line 1 is a header stamped with the verification result so a
+ *  recipient can immediately see whether the log verified at export time — and re-check it. */
 export function exportChainAsJsonl(events: MissionEvent[]): string {
-  return events.map((e) => JSON.stringify(e)).join('\n')
+  const header = {
+    kind: 'chain_of_custody_export',
+    eventCount: events.length,
+    genesisHash: GENESIS_HASH,
+    chainVerified: verifyChain(events),
+    exportedAt: new Date().toISOString(),
+  }
+  return [JSON.stringify(header), ...events.map((e) => JSON.stringify(e))].join('\n')
 }

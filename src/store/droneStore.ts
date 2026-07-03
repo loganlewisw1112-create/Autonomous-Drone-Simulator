@@ -2,10 +2,11 @@ import { create } from 'zustand'
 import { devtools, subscribeWithSelector } from 'zustand/middleware'
 import { buildOperatorCommandRoute, buildRouteSuggestions, validateOperatorRoute } from '@/sim/mission/operatorRoutes'
 import { clearAllSavedWaypointPlans, clearSavedDroneWaypointRoute, saveDroneWaypointRoute } from '@/sim/mission/waypointPersistence'
-import { buildEvent } from '@/utils/chainOfCustody'
+import { hashEvent } from '@/utils/chainOfCustody'
 import { getDefaultWeatherState } from '@/sim/weather/weatherEngine'
 import type {
   DroneState,
+  EventType,
   FullMissionFrame,
   MissionEvent,
   MissionReplaySession,
@@ -61,6 +62,16 @@ const DEMO_CHAPTER_IDS = [
   'safe-recovery',
   'after-action',
 ]
+
+/** Input for emitEvent — prevHash/hash/timestamp are derived inside the reducer. */
+export interface EmitEventInput {
+  eventType: EventType
+  droneId: string
+  payload: Record<string, unknown>
+  tick?: number
+  operatorId?: string
+  role?: OperatorRole
+}
 
 interface DroneStore {
   // Fleet
@@ -131,7 +142,7 @@ interface DroneStore {
   // Actions
   setDrones: (drones: DroneState[]) => void
   updateDrone: (id: string, patch: Partial<DroneState>) => void
-  addEvent: (event: MissionEvent) => void
+  emitEvent: (input: EmitEventInput) => void
   addTelemetryPoint: (droneId: string, point: TelemetryPoint) => void
   addPositionSample: (droneId: string, pos: LatLng) => void
   addReplayFrame: (frame: FullMissionFrame) => void
@@ -189,11 +200,12 @@ export const useDroneStore = create<DroneStore>()(
   devtools(
     subscribeWithSelector((set, get) => {
       const recordOperatorCommand = (droneId: string, command: OperatorRouteCommand, payload: Record<string, unknown> = {}) => {
-        const st = get()
-        buildEvent(st.lastHash, st.tick, droneId, 'operator-1', st.operatorRole, 'operator_command', {
-          command,
-          ...payload,
-        }).then((event) => get().addEvent(event))
+        get().emitEvent({
+          eventType: 'operator_command',
+          droneId,
+          role: get().operatorRole,
+          payload: { command, ...payload },
+        })
       }
 
       const persistDroneRouteDraft = (droneId: string, route: Waypoint[], source: WaypointSaveSource): WaypointSaveStatus => {
@@ -302,11 +314,25 @@ export const useDroneStore = create<DroneStore>()(
             drones: s.drones.map((d) => (d.id === id ? { ...d, ...patch } : d)),
           })),
 
-        addEvent: (event) =>
-          set((s) => ({
-            events: [...s.events, event],
-            lastHash: event.hash,
-          })),
+        // The ONLY way events enter the chain. prevHash is read and the new hash committed
+        // inside one reducer pass, so links can never fork — even when many events are
+        // emitted within a single sim tick. (See chainOfCustody.ts for why hashing is sync.)
+        emitEvent: (input) =>
+          set((s) => {
+            const partial = {
+              tick: input.tick ?? s.tick,
+              timestamp: Date.now(),
+              droneId: input.droneId,
+              operatorId: input.operatorId ?? 'operator-1',
+              role: input.role ?? ('pic' as OperatorRole),
+              eventType: input.eventType,
+              payload: input.payload,
+              prevHash: s.lastHash,
+            }
+            const hash = hashEvent(s.lastHash, partial)
+            const event: MissionEvent = { ...partial, hash }
+            return { events: [...s.events, event], lastHash: hash }
+          }),
 
         addTelemetryPoint: (droneId, point) =>
           set((s) => {

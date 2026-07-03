@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
 import { useDroneStore } from '@/store/droneStore'
+import { verifyChain } from '@/utils/chainOfCustody'
 import { encodeDroneTelemetry, formatMAVLinkLine } from '@/utils/mavlink'
 import { buildComplianceState } from '@/sim/demo/complianceEngine'
 import { buildMissionOutcomeSummary } from '@/sim/demo/missionOutcome'
@@ -56,6 +57,10 @@ export function TelemetryPanel() {
 
   const history = selected ? (telemetryHistory[selected.id] ?? []) : []
   const recentEvents = [...events].reverse().slice(0, 60)
+
+  // Re-verify the whole hash chain whenever the event log changes. Synchronous and cheap
+  // (one SHA-256 per event); memoized so it does NOT run on every sim tick — only on new events.
+  const chainValid = useMemo(() => verifyChain(events), [events])
 
   const batColor = selected
     ? selected.batteryPct < 10 ? C_RED : selected.batteryPct < 25 ? C_YELLOW : C_GREEN
@@ -263,9 +268,26 @@ export function TelemetryPanel() {
               <span style={{ marginLeft: 6, fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)' }}>
                 {events.length} events
               </span>
+              {events.length > 0 && (
+                <span
+                  data-testid="chain-verify-badge"
+                  title={chainValid
+                    ? 'verifyChain(): every prevHash link and SHA-256 recomputation checks out'
+                    : 'verifyChain() FAILED — hash chain is broken or tampered'}
+                  style={{
+                    marginLeft: 6, fontFamily: 'var(--font-mono)', fontSize: 8, fontWeight: 700,
+                    padding: '1px 5px', borderRadius: 2, letterSpacing: '0.06em',
+                    color: chainValid ? 'var(--accent-green)' : '#fff',
+                    background: chainValid ? 'rgba(68,255,136,0.12)' : 'var(--accent-red)',
+                    border: `1px solid ${chainValid ? '#44ff8855' : 'var(--accent-red)'}`,
+                  }}
+                >
+                  {chainValid ? 'CHAIN VERIFIED' : 'CHAIN BROKEN'}
+                </span>
+              )}
             </div>
             <div className="event-log">
-              {recentEvents.map((e, i) => <EventRow key={i} event={e} />)}
+              {recentEvents.map((e, i) => <EventRow key={i} event={e} chainValid={chainValid} />)}
               {events.length === 0 && (
                 <div style={{ color: 'var(--text-dim)', fontSize: 10, padding: 4 }}>No events yet — start a mission</div>
               )}
@@ -443,17 +465,20 @@ function ReadinessPill({ label, value, tone }: { label: string; value: string; t
   )
 }
 
-function EventRow({ event: e }: { event: MissionEvent }) {
+function EventRow({ event: e, chainValid }: { event: MissionEvent; chainValid: boolean }) {
   const color = EVENT_COLORS[e.eventType] ?? '#8899aa'
   const shortHash = e.hash.slice(0, 8)
   const label = e.eventType.replace(/_/g, ' ')
   const droneShort = e.droneId === 'system' ? 'SYS' : e.droneId.toUpperCase().slice(-4)
+  // The mark reflects the verifyChain() result — never an unconditional checkmark.
   return (
     <div className="event-row" title={`Full hash: ${e.hash}`}>
       <span className="event-tick" style={{ minWidth: 44 }}>T+{e.tick}</span>
       <span className="event-drone" style={{ minWidth: 32, color: '#8899aa' }}>{droneShort}</span>
       <span className="event-type" style={{ flex: 1, color }}>{label}</span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: '#44cc66', letterSpacing: 0 }}>{shortHash}✓</span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: chainValid ? '#44cc66' : 'var(--accent-red)', letterSpacing: 0 }}>
+        {shortHash}{chainValid ? '✓' : '✗'}
+      </span>
     </div>
   )
 }
