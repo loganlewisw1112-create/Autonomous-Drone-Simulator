@@ -411,12 +411,11 @@ export function TelemetryPanel() {
       {activeTab === 'readiness' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }} data-testid="investor-readiness-panel">
           <div className="panel-section">
-            <div className="panel-label" style={{ marginBottom: 8 }}>Mission Outcome / ROI</div>
+            <div className="panel-label" style={{ marginBottom: 8 }}>Mission Outcome (measured)</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <MetricRow label="OUTCOME" value={outcome.headline} color={C_BLUE} />
               <MetricRow label="SEARCH COVERAGE" value={`${Math.round(outcome.searchCoveragePct)}%`} color={C_GREEN} />
               <MetricRow label="CONTACTS" value={`${outcome.detectedContacts} detected / ${outcome.resolvedContacts} actioned`} color={C_MAGENTA} />
-              <MetricRow label="TIME SAVED" value={`${outcome.responseTimeSavedMin.toFixed(1)} min`} color={C_YELLOW} />
               <MetricRow label="FLEET HEALTH" value={`${Math.round(outcome.fleetHealthScore)}%`} color={outcome.fleetHealthScore < 60 ? C_YELLOW : C_GREEN} />
             </div>
           </div>

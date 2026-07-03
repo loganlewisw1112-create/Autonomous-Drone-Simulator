@@ -46,10 +46,12 @@ describe('investor demo readiness engines', () => {
       'mission-brief',
       'launch-and-edit',
       'live-retask',
-      'ai-detection',
+      'thermal-detection',
       'safe-recovery',
       'after-action',
     ])
+    // No "AI" overclaim anywhere on the demo spine — detections are a sensor model, not ML.
+    expect(chapters.some((chapter) => /\bAI\b/i.test(chapter.title))).toBe(false)
     expect(chapters.some((chapter) => chapter.status === 'complete')).toBe(true)
     expect(chapters.find((chapter) => chapter.id === 'after-action')?.successSignal).toContain('report')
   })
@@ -66,6 +68,20 @@ describe('investor demo readiness engines', () => {
     expect(compliance.airspace.authorization.kind).toBe('simulated_laanc')
     expect(compliance.waiverFlags.some((flag) => flag.kind === 'altitude_limit')).toBe(true)
     expect(compliance.disclaimer).toContain('simulation')
+  })
+
+  it('keeps Remote ID broadcasting through C2 link loss (RID is independent of comms)', () => {
+    const compliance = buildComplianceState({
+      scenario,
+      drones: [makeDrone('uav-01', { signalDbm: -98, bvlosFlag: true, missionState: 'navigate' })],
+      scenarioVariant: VARIANT,
+      elapsedSec: 120,
+    })
+
+    // C2 loss must surface as a BVLOS/command-link flag — never as a Remote ID outage.
+    expect(compliance.remoteId.status).toBe('broadcasting')
+    expect(compliance.remoteId.broadcastingDroneIds).toContain('uav-01')
+    expect(compliance.waiverFlags.some((flag) => flag.kind === 'bvlos')).toBe(true)
   })
 
   it('creates deterministic UTM external tracks, reservations, and map features', () => {
@@ -86,7 +102,7 @@ describe('investor demo readiness engines', () => {
     expect(buildExternalTrafficFeatures(state.externalTracks)[0]?.geometry.type).toBe('Point')
   })
 
-  it('turns raw metrics into investor-readable outcome and ROI signals', () => {
+  it('turns raw metrics into a measured outcome summary (no fabricated ROI fields)', () => {
     const outcome = buildMissionOutcomeSummary({
       scenario,
       drones: [makeDrone('uav-01'), makeDrone('uav-02', { batteryPct: 31 })],
@@ -98,9 +114,10 @@ describe('investor demo readiness engines', () => {
 
     expect(outcome.searchCoveragePct).toBeGreaterThan(0)
     expect(outcome.detectedContacts).toBe(2)
-    expect(outcome.responseTimeSavedMin).toBeGreaterThan(0)
-    expect(outcome.routeRiskReductionPct).toBeGreaterThanOrEqual(0)
     expect(outcome.headline).toContain('contacts')
+    // Fabricated ROI projections must never reappear in the outcome summary.
+    expect(outcome).not.toHaveProperty('responseTimeSavedMin')
+    expect(outcome).not.toHaveProperty('routeRiskReductionPct')
   })
 
   it('bundles replay, compliance, UTM, outcome, and evidence into an after-action package', () => {

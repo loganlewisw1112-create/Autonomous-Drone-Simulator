@@ -58,7 +58,7 @@ const DEMO_CHAPTER_IDS = [
   'mission-brief',
   'launch-and-edit',
   'live-retask',
-  'ai-detection',
+  'thermal-detection',
   'safe-recovery',
   'after-action',
 ]

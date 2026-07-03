@@ -645,14 +645,15 @@ export interface UTMAirspaceState {
   coordinationMode: string
 }
 
+// Every field here is measured from simulation state — no synthetic "ROI" projections.
+// (An earlier responseTimeSavedMin / routeRiskReductionPct pair was removed: both were
+// arbitrary formulas presented as outcomes, which is exactly what diligence flags.)
 export interface MissionOutcomeSummary {
   headline: string
   missionTimeSec: number
   searchCoveragePct: number
   detectedContacts: number
   resolvedContacts: number
-  responseTimeSavedMin: number
-  routeRiskReductionPct: number
   fleetHealthScore: number
   evidenceEvents: number
   exportReady: boolean

@@ -16,12 +16,22 @@ interface BuildComplianceStateInput {
 
 const SIM_DISCLAIMER = 'simulation-only compliance readiness for investor demo use; no real FAA, LAANC, USS, or drone broadcast integration is performed.'
 
+// Remote ID is an independent onboard broadcast (ASTM F3411): it keeps transmitting even when
+// the C2 command link degrades or drops. Only a drone that is down/failed stops broadcasting —
+// so RID status is derived from mission state, NOT from signalDbm. (C2-link health is still
+// surfaced separately via the BVLOS waiver flag below.)
+const RID_SILENT_STATES = new Set<DroneState['missionState']>([
+  'idle', 'preflight', 'stranded', 'remote_landed', 'recovery_requested',
+  'recovery_enroute', 'recovered', 'unrecoverable_sim',
+])
+
 export function buildComplianceState(input: BuildComplianceStateInput): ComplianceState {
-  const degradedDroneIds = input.drones
-    .filter((drone) => drone.signalDbm <= -90 || drone.bvlosFlag)
-    .map((drone) => drone.id)
   const broadcastingDroneIds = input.drones
-    .filter((drone) => drone.signalDbm > -90)
+    .filter((drone) => !RID_SILENT_STATES.has(drone.missionState))
+    .map((drone) => drone.id)
+  // A grounded/failed airframe is the only modeled way to lose the RID broadcast.
+  const degradedDroneIds = input.drones
+    .filter((drone) => ['stranded', 'unrecoverable_sim'].includes(drone.missionState))
     .map((drone) => drone.id)
   const maxObservedAltitudeFt = input.drones.reduce((max, drone) => Math.max(max, drone.altitudeFt), 0)
   const authorization = buildAuthorization(input.scenario)
@@ -29,7 +39,7 @@ export function buildComplianceState(input: BuildComplianceStateInput): Complian
 
   return {
     remoteId: {
-      status: input.drones.length === 0
+      status: broadcastingDroneIds.length === 0
         ? 'offline'
         : degradedDroneIds.length > 0 ? 'degraded' : 'broadcasting',
       broadcastingDroneIds,
@@ -51,8 +61,8 @@ export function buildComplianceState(input: BuildComplianceStateInput): Complian
         severity: degradedDroneIds.length > 0 ? 'advisory' : 'routine',
         label: 'Remote ID broadcast',
         detail: degradedDroneIds.length > 0
-          ? `${degradedDroneIds.length} simulated broadcast links degraded.`
-          : `${broadcastingDroneIds.length} simulated drones broadcasting.`
+          ? `${degradedDroneIds.length} downed airframe(s) no longer broadcasting.`
+          : `${broadcastingDroneIds.length} simulated airframes broadcasting (independent of C2 link).`
       },
       {
         kind: 'laanc',
