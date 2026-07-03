@@ -1,0 +1,28 @@
+Copyright (c) 2026 Logan Lewis-Whitfield. All rights reserved.
+
+Source-Available License — Autonomous Drone Mission Simulator
+
+This repository is made publicly viewable for portfolio, evaluation, and
+educational review purposes only. It is NOT open-source.
+
+You MAY:
+- View, read, and clone this source code for personal evaluation of the
+  author's work.
+- Run the simulator locally for non-commercial evaluation.
+
+You MAY NOT, without the prior written permission of the copyright holder:
+- Copy, redistribute, resell, sublicense, or publicly host this software or
+  substantial portions of it.
+- Modify or create derivative works for distribution.
+- Use this software or its source, in whole or in part, for any commercial
+  purpose.
+
+Third-party open-source components included via package dependencies remain
+governed by their own respective licenses. Those licenses apply only to those
+components and do not relicense this project.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. THIS IS A SIMULATION
+FOR DEMONSTRATION PURPOSES ONLY AND IS NOT CERTIFIED, APPROVED, OR INTENDED
+FOR ANY REAL-WORLD AVIATION, PUBLIC-SAFETY, OR OPERATIONAL USE.
