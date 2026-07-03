@@ -31,7 +31,7 @@ export function buildInvestorDemoChapters(input: BuildInvestorDemoChaptersInput)
     ['mission-brief', complete.brief],
     ['launch-and-edit', complete.launch],
     ['live-retask', complete.retask],
-    ['ai-detection', complete.detection],
+    ['thermal-detection', complete.detection],
     ['safe-recovery', complete.recovery],
     ['after-action', complete.review],
   ].find(([, done]) => !done)?.[0] as string | undefined
@@ -62,12 +62,13 @@ export function buildInvestorDemoChapters(input: BuildInvestorDemoChaptersInput)
       status: chapterStatus('live-retask', complete.retask, activeId),
     },
     {
-      id: 'ai-detection',
+      id: 'thermal-detection',
       phase: 'detection',
-      title: 'AI Detection Cue',
+      // "Thermal", not "AI" — detections come from a deterministic sensor model, not ML.
+      title: 'Thermal Detection Cue',
       operatorCue: 'Switch to IR and select a thermal contact card.',
       successSignal: 'Detection confidence, evidence, and dispatch action are visible.',
-      status: chapterStatus('ai-detection', complete.detection, activeId),
+      status: chapterStatus('thermal-detection', complete.detection, activeId),
     },
     {
       id: 'safe-recovery',

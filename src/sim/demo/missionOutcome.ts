@@ -24,7 +24,6 @@ export function buildMissionOutcomeSummary(input: BuildMissionOutcomeSummaryInpu
   const detectedContacts = uniqueContacts.size
   const resolvedContacts = Array.from(uniqueContacts.values()).filter((contact) => contact.resolvedAt !== undefined || contact.groundUnitId).length
   const searchCoveragePct = clampPct((input.metrics.waypointsReached / plannedWaypointCount) * 100)
-  const routeRiskReductionPct = clampPct(100 - input.metrics.geofenceBreaches * 35 - input.metrics.conflictsDetected * 8)
   const fleetHealthScore = input.drones.length === 0
     ? 0
     : clampPct(input.drones.reduce((sum, drone) => {
@@ -33,16 +32,15 @@ export function buildMissionOutcomeSummary(input: BuildMissionOutcomeSummaryInpu
         const statePenalty = drone.missionState === 'emergency' || drone.missionState === 'stranded' ? 35 : 0
         return sum + clampPct((batteryScore * 0.55) + (signalScore * 0.45) - statePenalty)
       }, 0) / input.drones.length)
-  const responseTimeSavedMin = Math.max(1, Math.round((detectedContacts * 3 + input.metrics.groundUnitDispatch * 2 + searchCoveragePct / 25) * 10) / 10)
 
+  // Deliberately no "time saved" / "risk reduction" projections here: those were formula-invented
+  // numbers, and one fabricated KPI contaminates every real one in a diligence read.
   return {
     headline: `${detectedContacts} contacts, ${Math.round(searchCoveragePct)}% route coverage, fleet health ${Math.round(fleetHealthScore)}%.`,
     missionTimeSec: Math.round(input.elapsedSec),
     searchCoveragePct,
     detectedContacts,
     resolvedContacts,
-    responseTimeSavedMin,
-    routeRiskReductionPct,
     fleetHealthScore,
     evidenceEvents: input.eventsCount,
     exportReady: input.eventsCount > 0 || input.metrics.waypointsReached > 0 || detectedContacts > 0,

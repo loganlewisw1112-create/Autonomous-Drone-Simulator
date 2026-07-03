@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useDroneStore } from '@/store/droneStore'
 
 const CHECKLIST = [
@@ -11,7 +12,9 @@ const CHECKLIST = [
   { id: 8, text: 'Compass calibration verified', category: 'vehicle' },
   { id: 9, text: 'Geofences loaded and active', category: 'mission' },
   { id: 10, text: 'Mission waypoints reviewed', category: 'mission' },
-  { id: 11, text: 'Lost-link procedure confirmed: RTB at 30s', category: 'mission' },
+  // Matches the simulated lost-link doctrine: drones continue their task through comms loss and
+  // reconnect on signal restore; RTB triggers on battery reserve, geofence, weather, or operator.
+  { id: 11, text: 'Lost-link procedure confirmed: continue task, reconnect on restore; RTB on reserve/geofence', category: 'mission' },
   { id: 12, text: 'Observers briefed and in position', category: 'crew' },
 ]
 
@@ -24,10 +27,42 @@ const CATEGORY_COLORS: Record<string, string> = {
 }
 
 export function PreflightChecklist() {
-  const { ui, scenario, setShowPreflight, setShowLaunchBay } = useDroneStore()
+  const { ui, scenario, setShowPreflight, setShowLaunchBay, emitEvent } = useDroneStore()
+  const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set())
+
+  // Fresh checklist every time the modal opens — items must be confirmed per mission.
+  useEffect(() => {
+    if (ui.showPreflight) setCheckedIds(new Set())
+  }, [ui.showPreflight])
+
   if (!ui.showPreflight) return null
 
+  const allChecked = checkedIds.size === CHECKLIST.length
+
+  function toggleItem(id: number) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function handleCheckAll() {
+    setCheckedIds(new Set(CHECKLIST.map((item) => item.id)))
+  }
+
   function handleContinue() {
+    if (!allChecked) return
+    emitEvent({
+      eventType: 'preflight_complete',
+      droneId: 'system',
+      payload: {
+        scenarioId: scenario?.id,
+        itemsConfirmed: CHECKLIST.length,
+        categories: Array.from(new Set(CHECKLIST.map((item) => item.category))),
+      },
+    })
     setShowPreflight(false)
     setShowLaunchBay(true)
   }
@@ -43,21 +78,44 @@ export function PreflightChecklist() {
           {' · '}
           Seed: <strong style={{ color: 'var(--accent-blue)', fontFamily: 'var(--font-mono)' }}>{scenario?.seed}</strong>
         </div>
+        <div style={{ marginBottom: 10, fontSize: 10, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+          {checkedIds.size}/{CHECKLIST.length} items confirmed — each item must be checked before launch planning.
+        </div>
 
-        {CHECKLIST.map((item) => (
-          <div key={item.id} className="checklist-item">
-            <span className="check-icon" style={{ color: CATEGORY_COLORS[item.category] }}>✓</span>
-            <span style={{ flex: 1 }}>{item.text}</span>
-            <span style={{
-              fontSize: 9, padding: '1px 4px', borderRadius: 2,
-              background: CATEGORY_COLORS[item.category] + '22',
-              color: CATEGORY_COLORS[item.category],
-              fontFamily: 'var(--font-mono)',
-            }}>
-              {item.category.toUpperCase()}
-            </span>
-          </div>
-        ))}
+        {CHECKLIST.map((item) => {
+          const checked = checkedIds.has(item.id)
+          return (
+            <div
+              key={item.id}
+              className="checklist-item"
+              role="checkbox"
+              aria-checked={checked}
+              tabIndex={0}
+              onClick={() => toggleItem(item.id)}
+              onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleItem(item.id) } }}
+              style={{ cursor: 'pointer', opacity: checked ? 1 : 0.75 }}
+            >
+              <span
+                className="check-icon"
+                style={{
+                  color: checked ? CATEGORY_COLORS[item.category] : 'var(--text-dim)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              >
+                {checked ? '✓' : '○'}
+              </span>
+              <span style={{ flex: 1 }}>{item.text}</span>
+              <span style={{
+                fontSize: 9, padding: '1px 4px', borderRadius: 2,
+                background: CATEGORY_COLORS[item.category] + '22',
+                color: CATEGORY_COLORS[item.category],
+                fontFamily: 'var(--font-mono)',
+              }}>
+                {item.category.toUpperCase()}
+              </span>
+            </div>
+          )
+        })}
 
         {scenario?.perDroneMissionRoles && Object.keys(scenario.perDroneMissionRoles).length > 0 && (
           <div style={{ marginTop: 16 }}>
@@ -94,8 +152,16 @@ export function PreflightChecklist() {
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+          <button className="btn" onClick={handleCheckAll} style={{ marginRight: 'auto' }} disabled={allChecked}>
+            ✓ Check All
+          </button>
           <button className="btn" onClick={() => setShowPreflight(false)}>Cancel</button>
-          <button className="btn primary" onClick={handleContinue}>
+          <button
+            className="btn primary"
+            onClick={handleContinue}
+            disabled={!allChecked}
+            title={allChecked ? undefined : `${CHECKLIST.length - checkedIds.size} item(s) unconfirmed`}
+          >
             ✓ Checklist Complete — Assign Launch Bays
           </button>
         </div>
