@@ -82,6 +82,7 @@ describe('replaySession', () => {
       makeFrame(200, [makeDrone('uav-01', 'return_to_base')]),
       makeFrame(300, [makeDrone('uav-01', 'landed')]),
     ]
+    const finalDrones = [makeDrone('uav-01', 'landed')]
     const session: MissionReplaySession = {
       scenarioId: 'sarCoastal',
       scenarioVariant: DEFAULT_VARIANT,
@@ -90,11 +91,17 @@ describe('replaySession', () => {
       events: [],
       metrics: DEFAULT_METRICS,
       completedAt: Date.now(),
+      finalDrones,
+      finalThermalContacts: [],
+      finalGroundUnits: [],
+      finalRecoveryTeams: [],
+      finalWeatherState: getDefaultWeatherState(1337),
     }
     expect(session.frames).toHaveLength(4)
     expect(session.scenarioId).toBe('sarCoastal')
     expect(session.frames[0].drones[0].missionState).toBe('launch')
     expect(session.frames[3].drones[0].missionState).toBe('landed')
+    expect(session.finalDrones[0].missionState).toBe('landed')
   })
 
   it('scrubbing to frame restores drone states at that tick', () => {

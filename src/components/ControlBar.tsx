@@ -71,10 +71,9 @@ export function ControlBar() {
       const ws = buildWeatherState(found.config.weatherProfile, scenarioVariant)
       setWeatherState(ws)
     }
-    setTimeout(() => {
-      initFleet()
-      setShowPreflight(true)
-    }, 50)
+    // Zustand writes are synchronous — initFleet reads the scenario set above directly.
+    initFleet()
+    setShowPreflight(true)
   }
 
   function handleVariantChange(patch: Partial<ScenarioVariantConfig>) {
@@ -92,9 +91,7 @@ export function ControlBar() {
   function handleDemoReset() {
     stopSimLoop()
     resetInvestorDemo()
-    if (scenario) {
-      setTimeout(() => initFleet(), 25)
-    }
+    if (scenario) initFleet()
   }
 
   function handleExportLog() {
@@ -128,6 +125,7 @@ export function ControlBar() {
       elapsedSec,
       replayFrameCount: replaySession?.frames.length ?? 0,
       positionHistory,
+      replaySession,
     })
     triggerDownload(
       serializeAfterActionPackage(packageData),

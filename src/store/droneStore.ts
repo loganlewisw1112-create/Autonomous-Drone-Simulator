@@ -35,7 +35,10 @@ import type {
 
 const MAX_TELEMETRY_POINTS = 240
 const MAX_POSITION_SAMPLES = 500
-const MAX_FRAMES = 300           // for replay (≈5 min at 1× with 40-tick interval)
+// Rolling replay buffer: SNAPSHOT_INTERVAL is 40 ticks → one frame per 2 sim-seconds, so 300
+// frames cover the LAST ≈10 minutes of mission time. Longer missions drop their earliest
+// frames; ReplayPanel surfaces a truncation note when that happens.
+const MAX_FRAMES = 300
 
 const DEFAULT_VARIANT: ScenarioVariantConfig = {
   seed: 1337,
@@ -387,6 +390,13 @@ export const useDroneStore = create<DroneStore>()(
               events: s.events,
               metrics: s.metrics,
               completedAt: Date.now(),
+              // Snapshot the true end-of-mission state. Replay scrubbing overwrites the live
+              // drones/thermalContacts/etc., so exports read these finals instead.
+              finalDrones: s.drones.map((d) => ({ ...d })),
+              finalThermalContacts: s.thermalContacts.map((c) => ({ ...c })),
+              finalGroundUnits: s.groundUnits.map((u) => ({ ...u })),
+              finalRecoveryTeams: s.recoveryTeams.map((t) => ({ ...t })),
+              finalWeatherState: { ...s.weatherState },
             }
             return { replaySession: session }
           }),
@@ -435,7 +445,8 @@ export const useDroneStore = create<DroneStore>()(
           set((s) => {
             const contact = s.thermalContacts.find((c) => c.sourceId === thermalId)
             if (!contact || contact.groundUnitId) return {}
-            const unitId = `gu-${Date.now()}`
+            // Deterministic id: one dispatch per contact (guarded above), keyed by sim tick.
+            const unitId = `gu-${thermalId}-t${s.tick}`
             const newUnit: GroundUnitState = {
               id: unitId,
               role,

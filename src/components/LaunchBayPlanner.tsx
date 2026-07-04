@@ -21,13 +21,13 @@ export function LaunchBayPlanner() {
   })
 
   const bayStatuses: LaunchBayStatus[] = useMemo(() => {
-    return siteEntries.map(([siteId], i) => {
+    return siteEntries.map(([siteId, site], i) => {
       const bayKey = `bay-${i}`
       const weatherClosed = weatherState.launchBayAvailability[bayKey] === false
       const assignedDroneIds = droneIds.filter((d) => assignments[d] === siteId)
       return {
         siteId,
-        capacityDrones: 2,
+        capacityDrones: site.capacityDrones ?? 2,
         assignedDroneIds,
         weatherClosed,
         closureReason: weatherClosed

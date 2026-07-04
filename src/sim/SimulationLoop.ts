@@ -35,9 +35,11 @@ const NON_INSPECTABLE_STATES = new Set<DroneState['missionState']>([
 const lastPositions = new Map<string, LatLng>()
 const onSceneTicksMap = new Map<string, number>()  // recoveryTeamId → ticks on scene
 
-let intervalId: ReturnType<typeof setInterval> | null = null
-
-function tick() {
+/**
+ * One fixed-timestep tick (runs `simSpeed` physics sub-steps). Exported so tests and the
+ * setInterval fallback can drive the REAL production step directly — never reimplement it.
+ */
+export function tick() {
   const store = useDroneStore.getState()
   if (!store.ui.isRunning) return
 
@@ -421,14 +423,14 @@ function tick() {
       }
     }
 
-    // ── Compute ETA on first dispatch tick (set etaSec properly) ──────────────
+    // ── Compute ETA on first dispatch tick ─────────────────────────────────────
     const { groundUnits: gus } = useDroneStore.getState()
     for (const unit of gus) {
-      if (unit.status === 'enroute' && (unit.etaSec === undefined || unit.etaSec === 60) && unit.targetThermalId) {
+      if (unit.status === 'enroute' && !unit.etaComputed && unit.targetThermalId) {
         const contact = thermalContacts.find((c) => c.sourceId === unit.targetThermalId)
         if (contact) {
           const eta = computeGroundUnitEta(unit.position, contact.position, weatherState)
-          useDroneStore.getState().updateGroundUnit(unit.id, { etaSec: eta })
+          useDroneStore.getState().updateGroundUnit(unit.id, { etaSec: eta, etaComputed: true })
         }
       }
     }
@@ -505,16 +507,93 @@ function tick() {
   }
 }
 
+// ─── Loop driver: fixed-timestep accumulator on requestAnimationFrame ─────────
+//
+// The previous driver was a bare setInterval(tick, 50). Browsers throttle timers in hidden
+// tabs (measured in the audit: an 11× silent slowdown at 5× speed), so sim time silently
+// diverged from its nominal rate with no indication to the operator.
+//
+// New contract:
+//  - Sim pacing accumulates real frame deltas and runs whole FIXED_DT steps — physics stays
+//    byte-identical (results depend only on step count, never wall time).
+//  - Hidden tab = honest pause. rAF stops firing; on return the accumulator and frame clock
+//    reset, so the mission resumes exactly where it paused — no fast-forward burst.
+//  - A per-frame catch-up cap absorbs ordinary hiccups (GC, brief stalls) but drops larger
+//    time debt rather than bursting through it.
+//  - Non-browser environments (vitest node env) fall back to setInterval; tests may also call
+//    the exported tick() directly.
+
+const MAX_CATCHUP_STEPS_PER_FRAME = 4
+
+let rafId: number | null = null
+let intervalId: ReturnType<typeof setInterval> | null = null
+let accumulatorMs = 0
+let lastFrameTs: number | null = null
+
+/** Pure accumulator step: how many ticks to run for an elapsed delta, with capped catch-up.
+ *  Exported for unit tests. */
+export function advanceAccumulator(
+  accMs: number,
+  deltaMs: number,
+  tickMs: number = TICK_INTERVAL_MS,
+  maxSteps: number = MAX_CATCHUP_STEPS_PER_FRAME,
+): { steps: number; remainingMs: number } {
+  let remaining = accMs + Math.max(0, deltaMs)
+  let steps = 0
+  while (remaining >= tickMs && steps < maxSteps) {
+    remaining -= tickMs
+    steps++
+  }
+  // At the cap we were stalled beyond ordinary jitter — drop the debt (honest pause, no burst).
+  if (steps === maxSteps && remaining >= tickMs) remaining = 0
+  return { steps, remainingMs: remaining }
+}
+
+function frame(now: number) {
+  if (rafId === null) return
+  const delta = lastFrameTs === null ? TICK_INTERVAL_MS : now - lastFrameTs
+  lastFrameTs = now
+  const { steps, remainingMs } = advanceAccumulator(accumulatorMs, delta)
+  accumulatorMs = remainingMs
+  for (let i = 0; i < steps; i++) tick()
+  rafId = requestAnimationFrame(frame)
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    // Resume cleanly from the pause: forget hidden-time entirely.
+    lastFrameTs = null
+    accumulatorMs = 0
+  }
+}
+
+const hasRafDriver = () =>
+  typeof requestAnimationFrame === 'function' && typeof document !== 'undefined'
+
 export function startSimLoop() {
-  if (intervalId !== null) return
-  intervalId = setInterval(tick, TICK_INTERVAL_MS)
+  if (rafId !== null || intervalId !== null) return
+  accumulatorMs = 0
+  lastFrameTs = null
+  if (hasRafDriver()) {
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    rafId = requestAnimationFrame(frame)
+  } else {
+    intervalId = setInterval(tick, TICK_INTERVAL_MS)
+  }
 }
 
 export function stopSimLoop() {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }
   if (intervalId !== null) {
     clearInterval(intervalId)
     intervalId = null
   }
+  accumulatorMs = 0
+  lastFrameTs = null
   // Finalize the replay session so scrubbing is available
   useDroneStore.getState().finalizeReplaySession()
 }
@@ -532,11 +611,11 @@ export function initFleet() {
       lat: scenario.startPosition.lat + i * 0.00005,
       lng: scenario.startPosition.lng + i * 0.00005,
     }
-    // Prefer launch plan assignment, then scenario launch site, then default offset
+    // Prefer launch plan assignment, then scenario launch site, then default offset.
+    // Assignments are keyed by the launchSites record key (LaunchBayPlanner uses the same
+    // keys), so reassigning a drone to another bay actually moves its spawn position.
     const launchSiteId = launchPlan?.assignments[id]
-    const launchSite = launchSiteId
-      ? Object.values(scenario.launchSites ?? {}).find((_, si) => `site-${si}` === launchSiteId)
-      : undefined
+    const launchSite = launchSiteId ? scenario.launchSites?.[launchSiteId] : undefined
     return {
       id,
       label: id.toUpperCase(),

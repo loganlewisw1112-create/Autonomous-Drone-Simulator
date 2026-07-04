@@ -55,6 +55,8 @@ export function ReplayPanel() {
   }
 
   function handleExportAfterAction() {
+    // replaySession carries the end-of-mission snapshot, so exporting while scrubbed to any
+    // frame still produces the mission's FINAL state (live drones/thermal are frame-overwritten).
     const packageData = buildAfterActionPackage({
       scenario,
       scenarioVariant,
@@ -65,6 +67,7 @@ export function ReplayPanel() {
       elapsedSec,
       replayFrameCount: replaySession?.frames.length ?? 0,
       positionHistory,
+      replaySession,
     })
     const blob = new Blob([serializeAfterActionPackage(packageData)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -87,6 +90,10 @@ export function ReplayPanel() {
   const currentFrame = frames[replayIndex]
   const lastFrame = frames[total - 1]
   const pct = total > 1 ? ((replayIndex / (total - 1)) * 100).toFixed(1) : '0'
+  // Rolling buffer keeps only the last MAX_FRAMES snapshots; if frame 0 isn't tick 0, the
+  // earliest mission minutes were dropped and the operator should know.
+  const truncated = frames.length > 0 && frames[0].tick > 0
+  const coveredDur = truncated ? formatDur((lastFrame?.elapsedSec ?? 0) - frames[0].elapsedSec) : null
 
   if (!ui.isReplayMode) {
     return (
@@ -102,6 +109,11 @@ export function ReplayPanel() {
           {total} frames · {formatDur(lastFrame?.elapsedSec ?? 0)} mission ·{' '}
           {replaySession?.scenarioId ?? ''}
         </span>
+        {truncated && (
+          <span style={{ color: 'var(--accent-yellow)' }} title="The rolling replay buffer keeps the most recent frames; the earliest mission minutes were dropped.">
+            ⚠ last {coveredDur} only
+          </span>
+        )}
         <button className="btn primary" onClick={handleEnterReplay} style={{ padding: '3px 10px', fontSize: 9 }}>
           ENTER REPLAY
         </button>
@@ -154,8 +166,13 @@ export function ReplayPanel() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         {/* Mode label */}
         <span style={{ color: 'var(--accent-blue)', letterSpacing: 1, minWidth: 80 }}>
-          ◈ REPLAY
+          ◈ REPLAY{truncated ? ' ⚠' : ''}
         </span>
+        {truncated && (
+          <span style={{ color: 'var(--accent-yellow)', fontSize: 9 }} title="Rolling buffer — earliest mission frames were dropped.">
+            last {coveredDur}
+          </span>
+        )}
 
         {/* Play/pause */}
         <button className="btn primary" onClick={handlePlayPause} style={{ padding: '3px 10px', fontSize: 11, minWidth: 32 }}>
