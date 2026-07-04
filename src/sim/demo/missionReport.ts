@@ -8,6 +8,7 @@ import type {
   LatLng,
   MissionEvent,
   MissionMetrics,
+  MissionReplaySession,
   ScenarioConfig,
   ScenarioVariantConfig,
   ThermalContactState,
@@ -23,26 +24,32 @@ interface BuildAfterActionPackageInput {
   elapsedSec: number
   replayFrameCount: number
   positionHistory: Record<string, LatLng[]>
+  // When a finalized replay session exists, its end-of-mission snapshot takes precedence over
+  // the live store fields — scrubbing overwrites those, and an after-action must always
+  // describe the mission's final state, not wherever the scrubber happens to sit.
+  replaySession?: MissionReplaySession | null
 }
 
 export function buildAfterActionPackage(input: BuildAfterActionPackageInput): AfterActionPackage {
+  const drones = input.replaySession?.finalDrones ?? input.drones
+  const thermalContacts = input.replaySession?.finalThermalContacts ?? input.thermalContacts
   const outcome = buildMissionOutcomeSummary({
     scenario: input.scenario,
-    drones: input.drones,
+    drones,
     metrics: input.metrics,
-    thermalContacts: input.thermalContacts,
+    thermalContacts,
     eventsCount: input.events.length,
     elapsedSec: input.elapsedSec,
   })
   const compliance = buildComplianceState({
     scenario: input.scenario,
-    drones: input.drones,
+    drones,
     scenarioVariant: input.scenarioVariant,
     elapsedSec: input.elapsedSec,
   })
   const utm = buildUtmAirspaceState({
     scenario: input.scenario,
-    drones: input.drones,
+    drones,
     elapsedSec: input.elapsedSec,
   })
   const scenarioId = input.scenario?.id ?? 'no-scenario'
@@ -69,7 +76,7 @@ export function buildAfterActionPackage(input: BuildAfterActionPackageInput): Af
       chainHash,
       chainVerified: verifyChain(input.events),
       kpiCount: 8,
-      droneCount: input.drones.length,
+      droneCount: drones.length,
       positionSampleCount,
     },
   }

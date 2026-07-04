@@ -113,6 +113,7 @@ export interface LaunchRecoverySite {
   position: LatLng
   surfaceNote: string
   isPrimaryRecovery?: boolean
+  capacityDrones?: number   // simultaneous launch slots at this surface (default 2)
 }
 
 export interface MissionBrief {
@@ -362,6 +363,7 @@ export interface GroundUnitState {
   targetThermalId?: string
   targetDroneId?: string
   etaSec?: number
+  etaComputed?: boolean   // true once the initial route ETA has been calculated
   weatherRiskNote?: string
 }
 
@@ -415,6 +417,14 @@ export interface MissionReplaySession {
   events: MissionEvent[]
   metrics: MissionMetrics
   completedAt: number
+  // Final mission state, snapshotted at stop time. Replay scrubbing overwrites the live store's
+  // drones/thermalContacts/etc., so exports MUST read these instead of live fields — otherwise an
+  // after-action generated mid-scrub mixes an old frame's fleet state with final metrics.
+  finalDrones: DroneState[]
+  finalThermalContacts: ThermalContactState[]
+  finalGroundUnits: GroundUnitState[]
+  finalRecoveryTeams: RecoveryTeamState[]
+  finalWeatherState: WeatherVariantState
 }
 
 // ─── Weather / Procedural Variants ─────────────────────────────────────────────
