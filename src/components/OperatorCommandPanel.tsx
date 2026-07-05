@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { RECOVERY_STATES } from '@/components/FleetPanel'
 import type { DispatchTimelineEntry, OperatorRouteCommand, WaypointSaveStatus } from '@/types'
@@ -39,7 +40,17 @@ export function OperatorCommandPanel() {
     rejectRouteSuggestion,
     saveDroneRouteDraft,
     clearDroneRouteDraft,
-  } = useDroneStore()
+  } = useDroneStore(
+    useShallow((s) => ({
+      scenario: s.scenario, elapsedSec: s.elapsedSec, drones: s.drones, droneWaypoints: s.droneWaypoints,
+      routeSuggestions: s.routeSuggestions, routeCommandError: s.routeCommandError, routeSaveStatuses: s.routeSaveStatuses,
+      ui: s.ui, hoverDrone: s.hoverDrone, resumeDrone: s.resumeDrone, returnDroneToBase: s.returnDroneToBase,
+      abortRecovery: s.abortRecovery, commandDroneRoute: s.commandDroneRoute,
+      generateRouteSuggestionsForDrone: s.generateRouteSuggestionsForDrone,
+      acceptRouteSuggestion: s.acceptRouteSuggestion, rejectRouteSuggestion: s.rejectRouteSuggestion,
+      saveDroneRouteDraft: s.saveDroneRouteDraft, clearDroneRouteDraft: s.clearDroneRouteDraft,
+    })),
+  )
 
   const selectedDrone = useMemo(
     () => drones.find((d) => d.id === ui.selectedDroneId) ?? drones[0],

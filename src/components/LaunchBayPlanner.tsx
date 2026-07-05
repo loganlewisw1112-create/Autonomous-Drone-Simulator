@@ -1,15 +1,26 @@
 import { useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import type { LaunchBayPlan, LaunchBayStatus, LaunchRecoverySite } from '@/types'
 
 export function LaunchBayPlanner() {
-  const { scenario, ui, weatherState, setLaunchPlan, setShowLaunchBay } = useDroneStore()
+  const { scenario, ui, weatherState, setLaunchPlan, setShowLaunchBay } = useDroneStore(
+    useShallow((s) => ({
+      scenario: s.scenario, ui: s.ui, weatherState: s.weatherState,
+      setLaunchPlan: s.setLaunchPlan, setShowLaunchBay: s.setShowLaunchBay,
+    })),
+  )
 
   const launchSites: Record<string, LaunchRecoverySite> = scenario?.launchSites ?? {}
   const siteEntries = Object.entries(launchSites)
-  const droneIds = scenario
-    ? Array.from({ length: scenario.droneCount }, (_, i) => `uav-${String(i + 1).padStart(2, '0')}`)
-    : []
+  // Memoized so identity is stable across renders when scenario doesn't change — otherwise
+  // this fresh array recreated every render defeats the bayStatuses/blockers memos below.
+  const droneIds = useMemo(
+    () => scenario
+      ? Array.from({ length: scenario.droneCount }, (_, i) => `uav-${String(i + 1).padStart(2, '0')}`)
+      : [],
+    [scenario],
+  )
 
   // Assignments state: droneId → siteId (string key like 'site-0')
   const [assignments, setAssignments] = useState<Record<string, string>>(() => {

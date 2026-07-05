@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { buildMissionStatusFeed } from '@/sim/mission/dispatchFeed'
 import { buildInvestorDemoChapters } from '@/sim/demo/demoScript'
@@ -20,7 +21,13 @@ const CATEGORY_LABEL: Record<DispatchTimelineCategory, string> = {
 }
 
 export function MissionStatusFeed() {
-  const { scenario, elapsedSec, events, drones, thermalContacts, routeSuggestions, replaySession, investorDemo } = useDroneStore()
+  const { scenario, elapsedSec, events, drones, thermalContacts, routeSuggestions, replaySession, investorDemo } = useDroneStore(
+    useShallow((s) => ({
+      scenario: s.scenario, elapsedSec: s.elapsedSec, events: s.events, drones: s.drones,
+      thermalContacts: s.thermalContacts, routeSuggestions: s.routeSuggestions,
+      replaySession: s.replaySession, investorDemo: s.investorDemo,
+    })),
+  )
   const feed = useMemo(
     () => buildMissionStatusFeed({ scenario, elapsedSec, events, drones, thermalDetections: thermalContacts }),
     [scenario, elapsedSec, events, drones, thermalContacts],

@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import type { DroneState, MissionState, RecoveryTeamState } from '@/types'
 
@@ -23,8 +24,10 @@ function fmtTime(sec: number): string {
 export const RECOVERY_STATES = new Set<MissionState>(['stranded', 'recovery_requested', 'recovery_enroute', 'recovered', 'unrecoverable_sim', 'remote_landed'])
 
 function DroneCard({ drone, recoveryTeam }: { drone: DroneState; recoveryTeam?: RecoveryTeamState }) {
-  const { ui, setSelectedDrone, elapsedSec } = useDroneStore()
-  const selected = ui.selectedDroneId === drone.id
+  const { selectedDroneId, setSelectedDrone, elapsedSec } = useDroneStore(
+    useShallow((s) => ({ selectedDroneId: s.ui.selectedDroneId, setSelectedDrone: s.setSelectedDrone, elapsedSec: s.elapsedSec })),
+  )
+  const selected = selectedDroneId === drone.id
 
   const flightSec = drone.launchTimeSec !== undefined ? Math.max(0, elapsedSec - drone.launchTimeSec) : null
 
@@ -128,7 +131,9 @@ function DroneCard({ drone, recoveryTeam }: { drone: DroneState; recoveryTeam?: 
 }
 
 export function FleetPanel() {
-  const { drones, scenario, elapsedSec, recoveryTeams } = useDroneStore()
+  const { drones, scenario, elapsedSec, recoveryTeams } = useDroneStore(
+    useShallow((s) => ({ drones: s.drones, scenario: s.scenario, elapsedSec: s.elapsedSec, recoveryTeams: s.recoveryTeams })),
+  )
 
   return (
     <div className="fleet-panel">

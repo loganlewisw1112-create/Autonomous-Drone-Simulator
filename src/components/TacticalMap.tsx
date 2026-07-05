@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
+import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { generateGridLines } from '@/sim/mission/SARPlanner'
 import { PerfMonitor } from '@/components/PerfMonitor'
@@ -97,7 +98,14 @@ export function TacticalMap() {
   const [mapReady, setMapReady] = useState(false)
   const [mapMode,  setMapMode]  = useState<MapMode>('remote')
 
-  const { drones, scenario, thermalContacts, positionHistory, ui, droneWaypoints, routeSuggestions, selectedThermalId, selectThermal, groundUnits, recoveryTeams, elapsedSec } = useDroneStore()
+  const { drones, scenario, thermalContacts, positionHistory, ui, droneWaypoints, routeSuggestions, selectedThermalId, selectThermal, groundUnits, recoveryTeams } = useDroneStore(
+    useShallow((s) => ({
+      drones: s.drones, scenario: s.scenario, thermalContacts: s.thermalContacts, positionHistory: s.positionHistory,
+      ui: s.ui, droneWaypoints: s.droneWaypoints, routeSuggestions: s.routeSuggestions,
+      selectedThermalId: s.selectedThermalId, selectThermal: s.selectThermal,
+      groundUnits: s.groundUnits, recoveryTeams: s.recoveryTeams,
+    })),
+  )
 
   // Latest-data refs — written by sync effects below, read by the GeoJSON interval
   // so the interval never needs to depend on React state and never re-registers
@@ -107,7 +115,11 @@ export function TacticalMap() {
   const latestScenarioRef      = useRef(scenario)
   const latestSuggestionsRef   = useRef(routeSuggestions)
   const latestSelectedDroneRef = useRef(ui.selectedDroneId)
-  const utmState = useMemo(() => buildUtmAirspaceState({ scenario, drones, elapsedSec }), [scenario, drones, elapsedSec])
+  // UTM state used to recompute on every render via a useMemo keyed on elapsedSec — which
+  // changes every physics tick (20-200Hz), rebuilding traffic/reservation geometry far more
+  // often than the map can even show it. Now computed inside the existing 10fps interval below,
+  // matching the cadence already used for GeoJSON overlay updates.
+  const [utmState, setUtmState] = useState(() => buildUtmAirspaceState({ scenario, drones, elapsedSec: 0 }))
 
   // Sync refs every render (O(1) pointer assignment — no side effects)
   useEffect(() => { latestDronesRef.current = drones },              [drones])
@@ -122,6 +134,14 @@ export function TacticalMap() {
   // Marker positions / SVG stay at 20fps via the rAF loop (cheap CSS transforms).
   useEffect(() => {
     const id = setInterval(() => {
+      // UTM recompute at the same 10fps cadence, reading elapsedSec straight from the store
+      // (not a subscribed prop) so this interval doesn't need to depend on it.
+      setUtmState(buildUtmAirspaceState({
+        scenario: latestScenarioRef.current,
+        drones: latestDronesRef.current,
+        elapsedSec: useDroneStore.getState().elapsedSec,
+      }))
+
       const map = mapRef.current
       if (!map || !mapStyleLoadedRef.current) return
       const d  = latestDronesRef.current
@@ -187,6 +207,14 @@ export function TacticalMap() {
   // ── Effect 1: Create map + start rAF loop ──────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
+
+    // Captured once at setup time for the cleanup below — these refs hold the same mutable
+    // Map object for the component's whole lifetime (mutated via .set/.delete, never
+    // reassigned), so this capture is equivalent to reading `.current` at unmount, but
+    // satisfies react-hooks/exhaustive-deps' ref-in-cleanup rule.
+    const hudDivsAtSetup = hudDivsRef.current
+    const routeEditMarkersAtSetup = routeEditMarkersRef.current
+    const groundUnitMarkersAtSetup = groundUnitMarkersRef.current
 
     mapStyleLoadedRef.current = false
     const initialMapMode = parseMapMode(window.location.search)
@@ -381,12 +409,12 @@ export function TacticalMap() {
     mapRef.current = map
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      hudDivsRef.current.forEach((d) => d.remove())
-      hudDivsRef.current.clear()
-      routeEditMarkersRef.current.forEach((m) => m.remove())
-      routeEditMarkersRef.current.clear()
-      groundUnitMarkersRef.current.forEach((m) => m.remove())
-      groundUnitMarkersRef.current.clear()
+      hudDivsAtSetup.forEach((d) => d.remove())
+      hudDivsAtSetup.clear()
+      routeEditMarkersAtSetup.forEach((m) => m.remove())
+      routeEditMarkersAtSetup.clear()
+      groundUnitMarkersAtSetup.forEach((m) => m.remove())
+      groundUnitMarkersAtSetup.clear()
       if (fallbackTimer) window.clearTimeout(fallbackTimer)
       map.remove()
       mapRef.current = null
@@ -580,6 +608,10 @@ export function TacticalMap() {
     )
     cameraLockedRef.current = false
     setCameraLocked(false)
+    // Intentionally fires only on the isRunning transition (mission start), reading
+    // scenario/droneWaypoints at that instant — adding them as deps would re-fit the
+    // camera on every route edit during a live mission, which is not the intended behavior.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ui.isRunning])
 
   // ── Effect 4: Auto-follow — specific drone lock or centroid of fleet ────────

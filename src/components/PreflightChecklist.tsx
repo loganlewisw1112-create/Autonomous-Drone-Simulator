@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 
 const CHECKLIST = [
@@ -27,7 +28,12 @@ const CATEGORY_COLORS: Record<string, string> = {
 }
 
 export function PreflightChecklist() {
-  const { ui, scenario, setShowPreflight, setShowLaunchBay, emitEvent } = useDroneStore()
+  const { ui, scenario, setShowPreflight, setShowLaunchBay, emitEvent } = useDroneStore(
+    useShallow((s) => ({
+      ui: s.ui, scenario: s.scenario, setShowPreflight: s.setShowPreflight,
+      setShowLaunchBay: s.setShowLaunchBay, emitEvent: s.emitEvent,
+    })),
+  )
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set())
 
   // Fresh checklist every time the modal opens — items must be confirmed per mission.

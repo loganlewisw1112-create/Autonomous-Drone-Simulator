@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { startSimLoop, stopSimLoop, initFleet } from '@/sim/SimulationLoop'
 import { SCENARIO_OPTIONS } from '@/scenarios/catalog'
@@ -21,7 +22,18 @@ export function ControlBar() {
     launchPlan, weatherState, scenarioVariant, metrics, elapsedSec, replaySession, investorDemo,
     setRunning, setSimSpeed, setScenario, setShowPreflight, setOperatorRole,
     setWeatherState, setScenarioVariant, resetInvestorDemo, setInvestorDemoEnabled,
-  } = useDroneStore()
+  } = useDroneStore(
+    useShallow((s) => ({
+      ui: s.ui, scenario: s.scenario, events: s.events, drones: s.drones,
+      positionHistory: s.positionHistory, thermalContacts: s.thermalContacts, operatorRole: s.operatorRole,
+      launchPlan: s.launchPlan, weatherState: s.weatherState, scenarioVariant: s.scenarioVariant,
+      metrics: s.metrics, elapsedSec: s.elapsedSec, replaySession: s.replaySession, investorDemo: s.investorDemo,
+      setRunning: s.setRunning, setSimSpeed: s.setSimSpeed, setScenario: s.setScenario,
+      setShowPreflight: s.setShowPreflight, setOperatorRole: s.setOperatorRole,
+      setWeatherState: s.setWeatherState, setScenarioVariant: s.setScenarioVariant,
+      resetInvestorDemo: s.resetInvestorDemo, setInvestorDemoEnabled: s.setInvestorDemoEnabled,
+    })),
+  )
 
   const [showVariant, setShowVariant] = useState(false)
   const [exportStatus, setExportStatus] = useState<string | null>(null)

@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { weatherSummaryLabel } from '@/sim/weather/weatherEngine'
 import { buildAfterActionPackage, serializeAfterActionPackage } from '@/sim/demo/missionReport'
 
 export function ReplayPanel() {
-  const { replaySession, replayIndex, ui, scenario, scenarioVariant, drones, metrics, thermalContacts, events, elapsedSec, positionHistory, setReplayIndex, setIsReplayMode } = useDroneStore()
+  const { replaySession, replayIndex, ui, scenario, scenarioVariant, drones, metrics, thermalContacts, events, elapsedSec, positionHistory, setReplayIndex, setIsReplayMode } = useDroneStore(
+    useShallow((s) => ({
+      replaySession: s.replaySession, replayIndex: s.replayIndex, ui: s.ui, scenario: s.scenario,
+      scenarioVariant: s.scenarioVariant, drones: s.drones, metrics: s.metrics, thermalContacts: s.thermalContacts,
+      events: s.events, elapsedSec: s.elapsedSec, positionHistory: s.positionHistory,
+      setReplayIndex: s.setReplayIndex, setIsReplayMode: s.setIsReplayMode,
+    })),
+  )
   const [playing, setPlaying] = useState(false)
   const [playSpeed, setPlaySpeed] = useState(1)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)

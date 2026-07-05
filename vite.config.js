@@ -8,4 +8,15 @@ export default defineConfig({
             '@': resolve(__dirname, 'src'),
         },
     },
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    maplibre: ['maplibre-gl'],
+                    charts: ['recharts'],
+                    'react-vendor': ['react', 'react-dom'],
+                },
+            },
+        },
+    },
 });
