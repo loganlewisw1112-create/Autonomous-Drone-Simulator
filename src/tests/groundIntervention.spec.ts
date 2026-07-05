@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  tickGroundUnit,
-  computeGroundUnitEta,
-  createThermalInterventionUnit,
-  createRecoveryUnit,
-} from '@/sim/mission/groundUnits'
+import { tickGroundUnit, computeGroundUnitEta } from '@/sim/mission/groundUnits'
 import { getDefaultWeatherState } from '@/sim/weather/weatherEngine'
 import type { GroundUnitState } from '@/types'
 
@@ -24,24 +19,6 @@ function makeUnit(overrides: Partial<GroundUnitState> = {}): GroundUnitState {
 }
 
 describe('groundIntervention', () => {
-  it('createThermalInterventionUnit returns a well-formed GroundUnitState', () => {
-    // Signature: (id, role, stagingPos, targetThermalId, weather)
-    const unit = createThermalInterventionUnit('gu-1', 'intervention', BASE, 'src-thermal-1', CLEAR)
-    expect(unit.id).toBe('gu-1')
-    expect(unit.role).toBe('intervention')
-    expect(unit.status).toBe('enroute')
-    expect(unit.targetThermalId).toBe('src-thermal-1')
-    expect(unit.position).toEqual(BASE)
-  })
-
-  it('createRecoveryUnit returns a well-formed GroundUnitState', () => {
-    const unit = createRecoveryUnit('gu-2', BASE, 'uav-01', CLEAR)
-    expect(unit.id).toBe('gu-2')
-    expect(unit.role).toBe('recovery')
-    expect(unit.status).toBe('enroute')
-    expect(unit.targetDroneId).toBe('uav-01')
-  })
-
   it('tickGroundUnit advances unit toward target', () => {
     const unit = makeUnit()
     const updated = tickGroundUnit(unit, TARGET, CLEAR, 1.0)

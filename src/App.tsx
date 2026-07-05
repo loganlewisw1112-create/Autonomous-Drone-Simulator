@@ -5,6 +5,7 @@ import { TacticalMap } from '@/components/TacticalMap'
 import { TelemetryPanel } from '@/components/TelemetryPanel'
 import { ControlBar } from '@/components/ControlBar'
 import { LoadingScreen } from '@/components/LoadingScreen'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useDroneStore } from '@/store/droneStore'
 import '@/styles/tactical.css'
 
@@ -34,49 +35,51 @@ export default function App() {
   const [loadingDone, setLoadingDone] = useState(false)
 
   return (
-    <div className="app-shell">
-      {/* Header */}
-      <header className="header-bar">
-        <span className="header-logo">⬡ Drone Ops Center</span>
-        <span className="header-mission-id">
-          {scenario ? `MISSION: ${scenario.id.toUpperCase()} · SEED: ${scenario.seed}` : 'NO MISSION LOADED'}
-        </span>
-        <div className="header-spacer" />
-        <span className="sim-label">SIMULATION</span>
-        {isRunning && <div className="rec-dot" title="Recording" />}
-        <MissionClock />
-      </header>
+    <ErrorBoundary>
+      <div className="app-shell">
+        {/* Header */}
+        <header className="header-bar">
+          <span className="header-logo">⬡ Drone Ops Center</span>
+          <span className="header-mission-id">
+            {scenario ? `MISSION: ${scenario.id.toUpperCase()} · SEED: ${scenario.seed}` : 'NO MISSION LOADED'}
+          </span>
+          <div className="header-spacer" />
+          <span className="sim-label">SIMULATION</span>
+          {isRunning && <div className="rec-dot" title="Recording" />}
+          <MissionClock />
+        </header>
 
-      {/* Left: Fleet panel */}
-      <FleetPanel />
+        {/* Left: Fleet panel */}
+        <FleetPanel />
 
-      {/* Center: Map */}
-      <TacticalMap />
+        {/* Center: Map */}
+        <TacticalMap />
 
-      {/* Right: Telemetry */}
-      <TelemetryPanel />
+        {/* Right: Telemetry */}
+        <TelemetryPanel />
 
-      {/* Bottom: Control bar */}
-      <ControlBar />
+        {/* Bottom: Control bar */}
+        <ControlBar />
 
-      {/* Preflight modal, launch bay planning modal, and after-action replay panel — each
-          renders null most of the time (gated on ui state), so they're lazy chunks with no
-          fallback UI needed for the common "not shown yet" case. */}
-      <Suspense fallback={null}>
-        <PreflightChecklist />
-        <LaunchBayPlanner />
-        <ReplayPanel />
-      </Suspense>
+        {/* Preflight modal, launch bay planning modal, and after-action replay panel — each
+            renders null most of the time (gated on ui state), so they're lazy chunks with no
+            fallback UI needed for the common "not shown yet" case. */}
+        <Suspense fallback={null}>
+          <PreflightChecklist />
+          <LaunchBayPlanner />
+          <ReplayPanel />
+        </Suspense>
 
-      {/* Audit footer */}
-      <div className="audit-bar">
-        commit: {GIT_HASH} · sim only · no real flight data
+        {/* Audit footer */}
+        <div className="audit-bar">
+          commit: {GIT_HASH} · sim only · no real flight data
+        </div>
+
+        {/* Loading screen — rendered on top until all systems validated */}
+        {!loadingDone && (
+          <LoadingScreen mapReady={mapReady} onComplete={() => setLoadingDone(true)} />
+        )}
       </div>
-
-      {/* Loading screen — rendered on top until all systems validated */}
-      {!loadingDone && (
-        <LoadingScreen mapReady={mapReady} onComplete={() => setLoadingDone(true)} />
-      )}
-    </div>
+    </ErrorBoundary>
   )
 }

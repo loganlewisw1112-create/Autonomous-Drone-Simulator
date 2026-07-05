@@ -1,5 +1,5 @@
 import { generatePerDroneWaypoints } from '@/sim/mission/SARPlanner'
-import { haversineDistanceM } from '@/utils/geometry'
+import { haversineDistanceM, pointInPolygon } from '@/utils/geometry'
 import type { Geofence, LatLng, ScenarioConfig, Waypoint } from '@/types'
 
 const DEFAULT_TRACK_SPACING_FT = 50
@@ -331,20 +331,6 @@ function boundingBox(polygon: LatLng[]) {
     minLng: Math.min(...polygon.map((p) => p.lng)),
     maxLng: Math.max(...polygon.map((p) => p.lng)),
   }
-}
-
-function pointInPolygon(point: LatLng, polygon: LatLng[]): boolean {
-  let inside = false
-  const n = polygon.length
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = polygon[i].lng, yi = polygon[i].lat
-    const xj = polygon[j].lng, yj = polygon[j].lat
-    const intersect =
-      yi > point.lat !== yj > point.lat &&
-      point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi
-    if (intersect) inside = !inside
-  }
-  return inside
 }
 
 function pointReason(geofence: Geofence, altitudeFt: number): string {
