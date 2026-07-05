@@ -154,9 +154,30 @@ For venue demos where network map tiles may be unavailable, open `http://127.0.0
 npm test
 npm run lint
 npm run build
+npm audit
 ```
 
-Expected build note: Vite may warn about a large chunk because MapLibre/Recharts are bundled into the app. That warning is known and does not block the local demo.
+The production build splits MapLibre and Recharts into their own vendor chunks
+(`build.rollupOptions.output.manualChunks` in `vite.config.ts`), so the app's own code ships as
+a single chunk well under Vite's 500 kB warning threshold. MapLibre and Recharts themselves are
+still reported as large chunks — that's the libraries' own size, isolated into cacheable
+vendor bundles rather than inlined into app code.
+
+## Architecture & Verification
+
+See [`docs/ARCHITECTURE_NOTES.md`](docs/ARCHITECTURE_NOTES.md) for the deterministic simulation
+kernel, the sim/render decoupling strategy, the evidence-chain design, and the test layering
+(node unit tests, production-loop integration tests with fake timers, and jsdom component
+tests). The claims below are checkable directly, not just asserted:
+
+| Claim | How to verify | Expected result |
+|---|---|---|
+| Deterministic simulation (same seed → identical output) | `npx vitest run src/tests/determinism.spec.ts src/tests/simulationLoop.integration.spec.ts` | All pass, including two production-loop runs producing identical replay frames |
+| Chain-of-custody hash chain actually verifies | `npx vitest run src/tests/simulationLoop.integration.spec.ts` | `verifyChain()` returns `true` against a live mission's event log; a tampered copy returns `false` |
+| No dead-vocabulary safety states (deconfliction acts, not just flags) | `npx vitest run src/tests/avoidManeuver.spec.ts` | A detected conflict drives the give-way drone through a real `avoid` maneuver with paired chain events |
+| Reassigning a launch bay actually moves the spawn | `npx vitest run src/tests/launchBayAssignment.spec.ts` | Spawn position matches the reassigned site, not the default |
+| Component layer has real UI tests, not just simulation-state tests | `npx vitest run src/tests/controlBar.spec.tsx src/tests/operatorCommandPanel.spec.tsx src/tests/replayPanel.spec.tsx src/tests/fleetPanel.spec.tsx src/tests/errorBoundary.spec.tsx` | All pass against the real Zustand store, not mocks |
+| Full gate is green | `npm test && npm run lint && npm run build && npm audit` | 0 type errors, 0 lint errors, successful build, 0 known vulnerabilities |
 
 ## Investor Demo Script
 
@@ -174,4 +195,10 @@ Expected build note: Vite may warn about a large chunk because MapLibre/Recharts
 - This is a browser simulator only. It does not connect to real drones, Remote ID hardware, FAA services, LAANC, UTM providers, cameras, dispatch systems, or cloud APIs.
 - Regulatory and UTM surfaces are deterministic simulation layers for demo credibility, not operational authorization tools.
 - Map tiles load from OpenFreeMap by default. The fallback map keeps tactical UI state local, but it is not a geographic base-map replacement.
+- The thermal sensor model is intentionally simplified: detection range is short (forcing
+  close-approach search behavior) rather than modeling a real radiometric payload's actual
+  range, and reported contact positions carry seeded localization error rather than being
+  exact. See the model-assumptions comment in `src/sim/sensors/ThermalSim.ts`.
+- Replay keeps a rolling window of the most recent ~10 minutes of mission frames; longer
+  missions drop their earliest frames (the UI flags this when it happens).
 - Generated build output, runtime logs, local environment files, and agent handoff artifacts are intentionally excluded from the published repository.
