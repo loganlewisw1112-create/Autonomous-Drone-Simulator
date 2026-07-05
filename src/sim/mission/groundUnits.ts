@@ -1,5 +1,5 @@
 import { haversineDistanceM } from '@/utils/geometry'
-import type { GroundUnitState, GroundUnitRole, LatLng, WeatherVariantState } from '@/types'
+import type { GroundUnitState, LatLng, WeatherVariantState } from '@/types'
 
 const VEHICLE_SPEED_MPS = 8.0  // ~30 km/h urban response speed
 
@@ -38,50 +38,4 @@ export function computeGroundUnitEta(
   const dist = haversineDistanceM(from, to)
   const speed = VEHICLE_SPEED_MPS / weather.groundUnitEtaMultiplier
   return Math.round(dist / speed)
-}
-
-/** Build a new ground unit dispatched to a thermal contact. */
-export function createThermalInterventionUnit(
-  id: string,
-  role: GroundUnitRole,
-  stagingPos: LatLng,
-  targetThermalId: string,
-  weather: WeatherVariantState,
-): GroundUnitState {
-  const risks: string[] = []
-  if (weather.activeHazards.includes('rain'))     risks.push('wet roads')
-  if (weather.activeHazards.includes('snow_ice')) risks.push('icy conditions')
-  if (weather.activeHazards.includes('smoke'))    risks.push('smoke — PPE required')
-  if (weather.activeHazards.includes('heat'))     risks.push('high heat index')
-
-  return {
-    id,
-    role,
-    position: { ...stagingPos },
-    status: 'enroute',
-    targetThermalId,
-    weatherRiskNote: risks.length > 0 ? risks.join('; ') : undefined,
-  }
-}
-
-/** Build a new ground unit dispatched to a downed drone. */
-export function createRecoveryUnit(
-  id: string,
-  stagingPos: LatLng,
-  targetDroneId: string,
-  weather: WeatherVariantState,
-): GroundUnitState {
-  const risks: string[] = []
-  if (weather.activeHazards.includes('rain'))     risks.push('wet terrain')
-  if (weather.activeHazards.includes('snow_ice')) risks.push('icy access route')
-  if (weather.activeHazards.includes('smoke'))    risks.push('smoke hazard — PPE required')
-
-  return {
-    id,
-    role: 'recovery',
-    position: { ...stagingPos },
-    status: 'enroute',
-    targetDroneId,
-    weatherRiskNote: risks.length > 0 ? risks.join('; ') : undefined,
-  }
 }

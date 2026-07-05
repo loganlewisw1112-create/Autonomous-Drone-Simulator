@@ -55,12 +55,16 @@ export function buildWeatherState(
 ): WeatherVariantState {
   const rng = mulberry32(variant.seed ^ 0xdeadbeef)
 
-  // Select hazards based on severity
+  // Select hazards based on severity. Seeded Fisher–Yates — sort(() => rng() - 0.5) is a
+  // well-known biased-shuffle antipattern (comparator isn't a valid total order).
   const pool = profile.possibleHazards
   const hazardCount = Math.min(pool.length, variant.weatherSeverity)
-  const activeHazards: WeatherHazard[] = []
-  const shuffled = [...pool].sort(() => rng() - 0.5)
-  for (let i = 0; i < hazardCount; i++) activeHazards.push(shuffled[i])
+  const shuffled = [...pool]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  const activeHazards: WeatherHazard[] = shuffled.slice(0, hazardCount)
 
   const base = profile.baseConditions
   const sev = variant.weatherSeverity / 3  // 0–1 normalised

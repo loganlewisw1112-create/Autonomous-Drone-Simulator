@@ -1,5 +1,11 @@
 import type { DroneState, MAVLinkMessage } from '@/types'
 
+// This encodes MAVLink v2 message NAMES/FIELDS for the operator's decoded telemetry feed —
+// it is NOT wire-format MAVLink (no frame header, sequence, checksum, or signing) and isn't
+// meant to be parsed by real ground-control software. Field values follow MAVLink field
+// semantics with one known simplification: encodeGlobalPositionInt's vx/vy below are
+// east/north (matching this sim's heading convention), not MAVLink's north/east order.
+//
 // MAVLink v2 enumerations (MAVLink common dialect)
 const MAV_TYPE_QUADROTOR = 2
 const MAV_AUTOPILOT_ARDUPILOTMEGA = 3

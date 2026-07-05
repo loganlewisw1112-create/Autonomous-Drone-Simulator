@@ -14,6 +14,17 @@ function coordStr(pos: LatLng, altM = 0): string {
   return `${pos.lng},${pos.lat},${altM.toFixed(1)}`
 }
 
+// Scenario/waypoint/geofence labels are hardcoded catalog data today, but <name>/<description>
+// text still needs XML-escaping to be a well-formed document regardless of source.
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
 /**
  * Exports a full KML document with:
  * - LineString flight path per drone (with timestamps)
@@ -45,7 +56,11 @@ export function buildFullKML(
       </LineStyle>
     </Style>`).join('')
 
-  // Flight path LineString per drone
+  // Flight path LineString per drone.
+  // Known simplification: positionHistory only samples lat/lng, not per-point altitude, so
+  // every point in a drone's path is stamped with its FINAL altitude rather than the altitude
+  // at that point in time. Fine for a flat 2D track review; a 3D altitude-profile flythrough
+  // would need altitude captured alongside each position sample.
   const paths = drones.map((d) => {
     const positions = positionHistory[d.id] ?? []
     if (positions.length < 2) return ''
@@ -55,7 +70,7 @@ export function buildFullKML(
     }).join('\n          ')
     return `
     <Placemark>
-      <name>${d.label} — Flight Path</name>
+      <name>${escapeXml(d.label)} — Flight Path</name>
       <description>Sampled flight track — ${positions.length} points</description>
       <styleUrl>#drone-${d.id}</styleUrl>
       <TimeSpan><begin>${ts}</begin></TimeSpan>
@@ -72,8 +87,8 @@ export function buildFullKML(
   // Final position placemarks
   const finalPos = drones.map((d) => `
     <Placemark>
-      <name>${d.label} — Final Position</name>
-      <description>State: ${d.missionState} | Battery: ${Math.round(d.batteryPct)}% | Alt: ${Math.round(d.altitudeFt)}ft</description>
+      <name>${escapeXml(d.label)} — Final Position</name>
+      <description>State: ${escapeXml(d.missionState)} | Battery: ${Math.round(d.batteryPct)}% | Alt: ${Math.round(d.altitudeFt)}ft</description>
       <styleUrl>#drone-${d.id}</styleUrl>
       <Point>
         <altitudeMode>relativeToGround</altitudeMode>
@@ -84,7 +99,7 @@ export function buildFullKML(
   // Waypoints
   const waypoints = scenario.waypoints.map((wp, i) => `
     <Placemark>
-      <name>${wp.label ?? `WP${i + 1}`}</name>
+      <name>${escapeXml(wp.label ?? `WP${i + 1}`)}</name>
       <description>Alt: ${wp.altitudeFt}ft AGL</description>
       <Style><IconStyle><color>ff00aaff</color><scale>0.7</scale></IconStyle></Style>
       <Point>
@@ -98,7 +113,7 @@ export function buildFullKML(
     const ring = [...gf.polygon, gf.polygon[0]].map((p) => coordStr(p)).join(' ')
     return `
     <Placemark>
-      <name>${gf.label}</name>
+      <name>${escapeXml(gf.label)}</name>
       <description>Type: ${gf.type} | Max Alt: ${gf.maxAltitudeFt}ft</description>
       <Style>
         <LineStyle><color>ff4444ff</color><width>2</width></LineStyle>
@@ -116,7 +131,7 @@ export function buildFullKML(
     return `
     <Placemark>
       <name>SAR Search Area</name>
-      <description>Scenario: ${scenario.name}</description>
+      <description>Scenario: ${escapeXml(scenario.name)}</description>
       <Style>
         <LineStyle><color>ff00aaff</color><width>2</width></LineStyle>
         <PolyStyle><color>1100aaff</color></PolyStyle>
@@ -141,7 +156,7 @@ export function buildFullKML(
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
   <Document>
-    <name>Mission: ${scenario.name}</name>
+    <name>Mission: ${escapeXml(scenario.name)}</name>
     <description>Exported from Autonomous Drone Mission Simulator — SIMULATION ONLY — Seed: ${scenario.seed} — ${ts}</description>
     ${droneStyles}
     <Folder>
