@@ -71,4 +71,36 @@ describe('SARPlanner', () => {
     }
     expect(lines.length).toBeGreaterThan(0)
   })
+
+  it('clips lawnmower rows to non-rectangular polygons (no bounding-box overshoot)', () => {
+    // Right triangle: hypotenuse from NW to SE. Bounding-box rows would extend far east of
+    // the hypotenuse on northern rows; clipped rows must stay inside the triangle.
+    const TRIANGLE: LatLng[] = [
+      { lat: 37.7700, lng: -122.4880 }, // SW
+      { lat: 37.7720, lng: -122.4880 }, // NW
+      { lat: 37.7700, lng: -122.4840 }, // SE
+    ]
+    const wps = generatePerDroneWaypoints(TRIANGLE, SPACING_FT, 0, 1, 120)
+    expect(wps.length).toBeGreaterThanOrEqual(4)
+
+    for (const wp of wps) {
+      // For this triangle, the inside condition along a row is:
+      // lng <= west edge + width * (1 - (lat - south)/height)
+      const frac = (wp.position.lat - 37.7700) / 0.0020
+      const maxLngAtRow = -122.4880 + 0.0040 * (1 - frac)
+      expect(wp.position.lng, `row at ${wp.position.lat}`).toBeLessThanOrEqual(maxLngAtRow + 1e-9)
+      expect(wp.position.lng).toBeGreaterThanOrEqual(-122.4880 - 1e-9)
+    }
+
+    // Northern rows must be shorter than southern rows (triangle narrows northward).
+    const rows = new Map<number, number[]>()
+    for (const wp of wps) {
+      const key = wp.position.lat
+      rows.set(key, [...(rows.get(key) ?? []), wp.position.lng])
+    }
+    const widths = [...rows.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, lngs]) => Math.max(...lngs) - Math.min(...lngs))
+    expect(widths[0]).toBeGreaterThan(widths[widths.length - 1])
+  })
 })

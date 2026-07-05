@@ -17,7 +17,7 @@ import { checkThermalDetections } from '@/sim/sensors/ThermalSim'
 import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import { tickGroundUnit, computeGroundUnitEta } from '@/sim/mission/groundUnits'
 import { tickRecoveryTeam, tickRecoveryExtraction, needsRecovery, recoveryTransitionState, createRecoveryTeam } from '@/sim/mission/recoveryManager'
-import { haversineDistanceM } from '@/utils/geometry'
+import { bearingDeg, haversineDistanceM } from '@/utils/geometry'
 import type { DroneState, EventType, FullMissionFrame, LatLng, Waypoint } from '@/types'
 
 const THERMAL_CHECK_INTERVAL = 50
@@ -145,10 +145,17 @@ export function tick() {
         : nextState !== 'thermal_hold' ? { thermalHoldStartSec: undefined }
         : {}
 
+      // Clear avoidance bookkeeping once the maneuver window ends (entry fields are set by
+      // the conflict-avoidance pass below, not here).
+      const avoidPatch: Partial<DroneState> =
+        nextState !== 'avoid' && drone.avoidStartSec !== undefined
+          ? { avoidStartSec: undefined, avoidHeadingDeg: undefined, avoidReturnState: undefined }
+          : {}
+
       const updated = isGrounded
-        ? { ...drone, missionState: nextState, currentWaypointIndex: wpIdxForDrone, ...hoverPatch, ...rechargePatch, ...launchPatch, ...emergencyPatch, ...thermalHoldPatch }
+        ? { ...drone, missionState: nextState, currentWaypointIndex: wpIdxForDrone, ...hoverPatch, ...rechargePatch, ...launchPatch, ...emergencyPatch, ...thermalHoldPatch, ...avoidPatch }
         : stepDrone(
-            { ...drone, missionState: nextState, currentWaypointIndex: wpIdxForDrone, ...hoverPatch, ...rechargePatch, ...launchPatch, ...emergencyPatch, ...thermalHoldPatch },
+            { ...drone, missionState: nextState, currentWaypointIndex: wpIdxForDrone, ...hoverPatch, ...rechargePatch, ...launchPatch, ...emergencyPatch, ...thermalHoldPatch, ...avoidPatch },
             { ...cmd, batteryDrainRatePerSec },
             FIXED_DT,
           )
@@ -206,6 +213,9 @@ export function tick() {
         } else if (stateChanged && prevState === 'recharge' && nextState === 'launch') {
           eventType = 'sortie_launch'
           payload = { sortieNum: drone.sortieCount ?? 0, resumeWpIdx: drone.sortieResumeWpIdx ?? 0 }
+        } else if (stateChanged && prevState === 'avoid') {
+          eventType = 'avoidance_complete'
+          payload = { resumedState: nextState, headingDeg: Math.round(drone.headingDeg) }
         } else if (wpAdvanced) {
           eventType = 'waypoint_reached'
           payload = { waypointIndex: prevWpIdx, nextWaypointIndex, elapsedSec: Math.round(elapsedSec) }
@@ -246,7 +256,39 @@ export function tick() {
     const withGeo = applyGeofenceFlags(updatedDrones, scenario.geofences)
     const withComms = applyCommsModel(withGeo, elapsedSec, scenario, weatherState)
     const conflicts = detectConflicts(withComms)
-    const withDeconflict = applyConflictFlags(withComms, conflicts)
+    const flaggedDrones = applyConflictFlags(withComms, conflicts)
+
+    // ── Conflict avoidance: the give-way drone diverges ───────────────────────
+    // For each detected pair the second aircraft (idB) is the give-way drone: it breaks off
+    // onto a divergence heading pointing directly away from the other aircraft, holds it for
+    // AVOID_MANEUVER_SEC (see MissionManager), then resumes its interrupted task. Completion
+    // is emitted through the standard state-transition path as avoidance_complete.
+    const withDeconflict: DroneState[] = flaggedDrones.map((drone) => {
+      if (drone.missionState !== 'navigate' && drone.missionState !== 'sar_grid') return drone
+      const conflict = conflicts.find((c) => c.idB === drone.id)
+      if (!conflict) return drone
+      const other = flaggedDrones.find((d) => d.id === conflict.idA)
+      if (!other) return drone
+      const divergenceHeading = bearingDeg(other.position, drone.position)
+      useDroneStore.getState().emitEvent({
+        eventType: 'avoidance_start',
+        droneId: drone.id,
+        tick: currentTick,
+        payload: {
+          conflictWith: conflict.idA,
+          divergenceHeadingDeg: Math.round(divergenceHeading),
+          horizDistM: Math.round(conflict.horizDistM),
+          vertDistFt: Math.round(conflict.vertDistFt),
+        },
+      })
+      return {
+        ...drone,
+        missionState: 'avoid' as const,
+        avoidStartSec: elapsedSec,
+        avoidHeadingDeg: divergenceHeading,
+        avoidReturnState: drone.missionState,
+      }
+    })
 
     // Track comms loss duration on each drone; snapshot position at first dropout.
     // Drones continue their flight plan during comms loss — no loiter/hover injected here.

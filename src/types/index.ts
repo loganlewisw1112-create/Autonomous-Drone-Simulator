@@ -63,6 +63,9 @@ export interface DroneState {
   inspectStartSec?: number    // elapsedSec when drone entered 'inspect' for a thermal contact
   inspectReturnState?: MissionState  // missionState to restore once inspect dwell completes
   thermalHoldStartSec?: number  // sim-time when drone entered 'thermal_hold'
+  avoidStartSec?: number        // elapsedSec when drone entered 'avoid' for a traffic conflict
+  avoidHeadingDeg?: number      // divergence heading held during the avoid maneuver
+  avoidReturnState?: MissionState  // missionState to restore once the conflict clears
 }
 
 export interface DroneCmd {
@@ -276,7 +279,6 @@ export type EventType =
   | 'low_battery'
   | 'rtb_triggered'
   | 'emergency_land'
-  | 'obstacle_detected'
   | 'avoidance_start'
   | 'avoidance_complete'
   | 'geofence_breach'

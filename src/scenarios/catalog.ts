@@ -3,6 +3,7 @@ import { suspectSearch, vehiclePursuit, sarCoastal, portPerimeter, wildfireRecon
 import { EXTREME_SCENARIOS } from '@/scenarios/extremeScenarios'
 import { buildSafeDroneRoutes, droneIdForIndex, relocatePointOutsideGeofences } from '@/sim/mission/routeAudit'
 import { getWeatherProfile } from '@/sim/weather/weatherEngine'
+import { haversineDistanceM } from '@/utils/geometry'
 import type {
   DispatchTimelineCategory,
   DispatchTimelineEntry,
@@ -27,6 +28,15 @@ const RAW_SCENARIOS: ScenarioConfig[] = [
   wildfireRecon,
   ...EXTREME_SCENARIOS,
 ]
+
+// Recognized agency tokens, scanned in name-then-description order. This replaces a fragile
+// name-prefix split that produced non-agencies like "SAR — COASTAL" as the commanding agency.
+// NOTE: declared BEFORE ALL_SCENARIOS below — enhanceScenarioForOperations runs at module
+// evaluation time and reads this via deriveAgencies.
+const KNOWN_AGENCIES = [
+  'SFPD', 'OPD', 'CHP', 'BART PD', 'LAPD', 'NYPD', 'FDNY', 'USCG', 'CAL FIRE', 'USFS',
+  'CBP', 'FBI', 'ATF', 'USSS', 'DHS', 'FEMA', 'LAHSA', 'DMH',
+] as const
 
 export const ALL_SCENARIOS: ScenarioConfig[] = RAW_SCENARIOS.map((scenario) => enhanceScenarioForOperations(scenario))
 
@@ -154,44 +164,44 @@ function deriveRecoverySites(
 
 function defaultLaunchSiteFor(scenario: ScenarioConfig, droneId: string, position: LatLng): LaunchRecoverySite {
   const agency = primaryAgencyFor(scenario)
-  const labelPrefix = `${agency} ${droneId.toUpperCase()}`
+  const pad = droneId.toUpperCase()
 
   if (isCityScenario(scenario)) {
     return {
       kind: 'mobile_command',
-      label: `${labelPrefix} named mobile command launch site`,
+      label: `${agency} mobile command — pad ${pad}`,
       agency,
       position,
-      surfaceNote: `Explicit simulated mobile command launch surface for ${missionClassFor(scenario)} staging.`,
+      surfaceNote: `Mobile command vehicle pad; ${missionClassFor(scenario)} launch crew staged.`,
     }
   }
 
   if (isMaritimeScenario(scenario)) {
     return {
       kind: 'vessel',
-      label: `${labelPrefix} vessel command launch deck`,
+      label: `${agency} vessel deck — pad ${pad}`,
       agency,
       position,
-      surfaceNote: 'Explicit simulated vessel deck launch surface with recovery crew assigned.',
+      surfaceNote: 'Aft deck launch surface; deck recovery crew assigned.',
     }
   }
 
   if (scenario.name.toLowerCase().includes('airport')) {
     return {
       kind: 'helipad',
-      label: `${labelPrefix} helipad launch pad`,
+      label: `${agency} helipad — pad ${pad}`,
       agency,
       position,
-      surfaceNote: 'Explicit simulated helipad launch surface inside the incident command footprint.',
+      surfaceNote: 'Helipad surface inside the incident command footprint.',
     }
   }
 
   return {
     kind: 'field_icp',
-    label: `${labelPrefix} field ICP launch lane`,
+    label: `${agency} field ICP — pad ${pad}`,
     agency,
     position,
-    surfaceNote: `Explicit simulated field ICP launch surface for ${missionClassFor(scenario)} operations.`,
+    surfaceNote: `Field ICP launch lane; ${missionClassFor(scenario)} crew staged.`,
   }
 }
 
@@ -211,10 +221,10 @@ function recoveryFromRechargeStation(
   const kind = isCityScenario(scenario) ? 'mobile_command' : 'field_icp'
   return {
     kind,
-    label: `${label} primary recovery`,
+    label: `${label} — primary recovery`,
     agency,
     position: matchedStation?.position ?? position ?? scenario.startPosition,
-    surfaceNote: `Explicit simulated recovery surface at ${matchedStation?.road ?? 'the forward ICP route'}.`,
+    surfaceNote: `Forward recovery point at ${matchedStation?.road ?? 'the forward ICP route'}; battery swap and airframe check staged.`,
     isPrimaryRecovery: true,
   }
 }
@@ -222,14 +232,23 @@ function recoveryFromRechargeStation(
 function recoveryFromLaunchSite(launchSite: LaunchRecoverySite): LaunchRecoverySite {
   return {
     ...launchSite,
-    label: `${launchSite.label} recovery lane`,
-    surfaceNote: `${launchSite.surfaceNote} Primary RTB recovery lane is colocated for this simulation.`,
+    label: `${launchSite.label} (recovery)`,
+    surfaceNote: 'RTB recovery lane colocated with the launch surface.',
     isPrimaryRecovery: true,
   }
 }
 
 function nearestStation(position: LatLng, stations: RechargeStation[]): RechargeStation | undefined {
-  return stations.find((station) => station.position.lat === position.lat && station.position.lng === position.lng)
+  let best: RechargeStation | undefined
+  let bestDist = Infinity
+  for (const station of stations) {
+    const dist = haversineDistanceM(station.position, position)
+    if (dist < bestDist) {
+      bestDist = dist
+      best = station
+    }
+  }
+  return best
 }
 
 function deriveMissionBrief(scenario: ScenarioConfig): MissionBrief {
@@ -347,8 +366,8 @@ function deriveDroneRouteBriefs(scenario: ScenarioConfig, routes: Record<string,
     briefs[id] = {
       role,
       launchRationale: launchSite
-        ? `${id.toUpperCase()} launches from ${launchSite.label} (${launchSite.agency}); ${launchSite.surfaceNote}`
-        : `${id.toUpperCase()} starts from the closest safe staging point for its assigned sector.`,
+        ? `Launches from ${launchSite.label}. ${launchSite.surfaceNote}`
+        : 'Starts from the closest safe staging point for its assigned sector.',
       routePattern: routePatternFor(scenario, role),
       altitudeBand: `${minAlt}-${maxAlt}ft AGL`,
       standoffOrRelayLogic: role.toLowerCase().includes('relay')
@@ -453,11 +472,16 @@ function deriveOperationalFeatures(scenario: ScenarioConfig, routes: Record<stri
 }
 
 function deriveAgencies(scenario: ScenarioConfig): string[] {
-  const first = scenario.name.split('-')[0]?.trim()
-  const fromName = first ? first.split('/').map((a) => a.trim()).filter(Boolean) : []
-  if (fromName.length > 0) return fromName
-  if (scenario.description.includes('USCG')) return ['USCG']
-  if (scenario.description.includes('FEMA')) return ['FEMA']
+  const text = `${scenario.name} ${scenario.description}`
+  const found = KNOWN_AGENCIES.filter((agency) =>
+    new RegExp(`\\b${agency.replace(/ /g, '\\s+')}\\b`, 'i').test(text),
+  )
+  if (found.length > 0) return [...found]
+  // Fall back to the name prefix only when it looks like an actual org token (short, no dashes).
+  const first = scenario.name.split(/[—-]/)[0]?.trim()
+  if (first && first.length <= 12 && /^[A-Z0-9 /]+$/.test(first)) {
+    return first.split('/').map((a) => a.trim()).filter(Boolean)
+  }
   return ['UAS OPERATIONS']
 }
 
@@ -496,12 +520,20 @@ function defaultRoleFor(scenario: ScenarioConfig, index: number): string {
 }
 
 function routePatternFor(scenario: ScenarioConfig, role: string): string {
-  const text = `${scenario.name} ${scenario.description} ${role}`.toLowerCase()
-  if (text.includes('relay')) return 'High standoff relay hold with short reposition legs.'
-  if (text.includes('pursuit') || text.includes('shadow') || text.includes('intercept')) return 'Corridor-following pursuit shadow/intercept route.'
-  if (text.includes('sar') || text.includes('search')) return 'Patterned search sweep around last-known and probability-sector cues.'
-  if (text.includes('perimeter') || text.includes('gate')) return 'Layered perimeter/standoff observation loop.'
-  if (text.includes('fire') || text.includes('hazmat') || text.includes('plume')) return 'Hazard standoff lane with flank or plume-edge checks.'
+  // Match on the DRONE'S ROLE first — matching free scenario text here once mislabeled a
+  // primary search drone as a "relay hold" because the description mentioned a relay drone.
+  const r = role.toLowerCase()
+  if (r.includes('relay') || r.includes('c2')) return 'High standoff relay hold with short reposition legs.'
+  if (r.includes('intercept') || r.includes('shadow') || r.includes('pursuit')) return 'Corridor-following pursuit shadow/intercept route.'
+  if (r.includes('perimeter') || r.includes('gate') || r.includes('seal')) return 'Layered perimeter/standoff observation loop.'
+  if (r.includes('overwatch') || r.includes('standoff')) return 'Elevated overwatch orbit with standoff spacing.'
+
+  // Otherwise describe the pattern by mission class (a scenario-level property).
+  const missionClass = missionClassFor(scenario)
+  if (missionClass.includes('search')) return 'Patterned search sweep around last-known and probability-sector cues.'
+  if (missionClass.includes('pursuit')) return 'Corridor-following pursuit shadow/intercept route.'
+  if (missionClass.includes('perimeter')) return 'Layered perimeter/standoff observation loop.'
+  if (missionClass.includes('wildfire') || missionClass.includes('hazmat')) return 'Hazard standoff lane with flank or plume-edge checks.'
   return 'Mission-specific corridor route with standoff turns and RTB recovery.'
 }
 

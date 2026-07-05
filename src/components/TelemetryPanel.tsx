@@ -26,7 +26,6 @@ const EVENT_COLORS: Record<string, string> = {
   rtb_triggered: C_YELLOW,
   emergency_land: C_RED,
   low_battery: C_YELLOW,
-  obstacle_detected: C_RED,
   avoidance_start: C_YELLOW,
   avoidance_complete: C_GREEN,
   geofence_breach: C_RED,
@@ -238,7 +237,7 @@ export function TelemetryPanel() {
                 {selected.signalDbm < -90 && <WarnBadge level="critical" text="COMMS LOST — BVLOS DEGRADED" />}
                 {selected.signalDbm < -80 && selected.signalDbm >= -90 && <WarnBadge level="caution" text="COMMS DEGRADED" />}
                 {selected.altitudeFt > 390 && <WarnBadge level="caution" text="APPROACHING 400ft AGL LIMIT" />}
-                {selected.missionState === 'avoid' && <WarnBadge level="caution" text="OBSTACLE AVOIDANCE ACTIVE" />}
+                {selected.missionState === 'avoid' && <WarnBadge level="caution" text="CONFLICT AVOIDANCE — GIVING WAY" />}
                 {selected.missionState === 'emergency' && <WarnBadge level="critical" text="EMERGENCY LANDING IN PROGRESS" />}
                 {selected.batteryPct >= 25 && !selected.conflictFlag && !selected.geofenceBreachFlag &&
                  selected.signalDbm >= -80 && selected.altitudeFt <= 390 &&
