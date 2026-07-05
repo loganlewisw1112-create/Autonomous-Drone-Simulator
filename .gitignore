@@ -7,6 +7,7 @@ dist/
 logs/
 *.log
 *.tsbuildinfo
+.tsbuild-node/
 
 # Local agent/workspace artifacts
 .agents/

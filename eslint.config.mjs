@@ -3,7 +3,7 @@ import parserTs from '@typescript-eslint/parser'
 import reactHooks from 'eslint-plugin-react-hooks'
 
 export default [
-  { ignores: ['dist/', 'node_modules/', 'vite.config.js'] },
+  { ignores: ['dist/', 'node_modules/'] },
   {
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
