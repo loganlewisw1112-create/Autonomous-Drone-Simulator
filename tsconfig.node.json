@@ -8,6 +8,7 @@
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "skipLibCheck": true,
+    "outDir": ".tsbuild-node",
     "types": ["node"]
   },
   "include": ["vite.config.ts", "scripts"]
