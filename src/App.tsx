@@ -1,19 +1,36 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { FleetPanel } from '@/components/FleetPanel'
 import { TacticalMap } from '@/components/TacticalMap'
 import { TelemetryPanel } from '@/components/TelemetryPanel'
 import { ControlBar } from '@/components/ControlBar'
-import { PreflightChecklist } from '@/components/PreflightChecklist'
-import { LaunchBayPlanner } from '@/components/LaunchBayPlanner'
-import { ReplayPanel } from '@/components/ReplayPanel'
 import { LoadingScreen } from '@/components/LoadingScreen'
 import { useDroneStore } from '@/store/droneStore'
 import '@/styles/tactical.css'
 
+// Modal/conditional components (gated behind ui.showX or replaySession) are lazy-loaded —
+// they're never needed on first paint, so they shouldn't cost bytes in the initial bundle.
+const PreflightChecklist = lazy(() => import('@/components/PreflightChecklist').then((m) => ({ default: m.PreflightChecklist })))
+const LaunchBayPlanner = lazy(() => import('@/components/LaunchBayPlanner').then((m) => ({ default: m.LaunchBayPlanner })))
+const ReplayPanel = lazy(() => import('@/components/ReplayPanel').then((m) => ({ default: m.ReplayPanel })))
+
 const GIT_HASH = import.meta.env.VITE_GIT_HASH ?? 'dev'
 
+// Isolated so the 20-200Hz tick clock re-renders only this tiny span, not the whole header
+// or the rest of the app shell (which are independent siblings, not children of this).
+function MissionClock() {
+  const { tick, elapsedSec } = useDroneStore(useShallow((s) => ({ tick: s.tick, elapsedSec: s.elapsedSec })))
+  return (
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)' }}>
+      T+{Math.floor(elapsedSec / 60)}:{Math.floor(elapsedSec % 60).toString().padStart(2, '0')} · #{tick}
+    </span>
+  )
+}
+
 export default function App() {
-  const { scenario, tick, elapsedSec, ui, mapReady } = useDroneStore()
+  const { scenario, isRunning, mapReady } = useDroneStore(
+    useShallow((s) => ({ scenario: s.scenario, isRunning: s.ui.isRunning, mapReady: s.mapReady })),
+  )
   const [loadingDone, setLoadingDone] = useState(false)
 
   return (
@@ -26,10 +43,8 @@ export default function App() {
         </span>
         <div className="header-spacer" />
         <span className="sim-label">SIMULATION</span>
-        {ui.isRunning && <div className="rec-dot" title="Recording" />}
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)' }}>
-          T+{Math.floor(elapsedSec / 60)}:{Math.floor(elapsedSec % 60).toString().padStart(2, '0')} · #{tick}
-        </span>
+        {isRunning && <div className="rec-dot" title="Recording" />}
+        <MissionClock />
       </header>
 
       {/* Left: Fleet panel */}
@@ -44,14 +59,14 @@ export default function App() {
       {/* Bottom: Control bar */}
       <ControlBar />
 
-      {/* Preflight modal */}
-      <PreflightChecklist />
-
-      {/* Launch bay planning modal (opens after preflight) */}
-      <LaunchBayPlanner />
-
-      {/* After-action replay panel */}
-      <ReplayPanel />
+      {/* Preflight modal, launch bay planning modal, and after-action replay panel — each
+          renders null most of the time (gated on ui state), so they're lazy chunks with no
+          fallback UI needed for the common "not shown yet" case. */}
+      <Suspense fallback={null}>
+        <PreflightChecklist />
+        <LaunchBayPlanner />
+        <ReplayPanel />
+      </Suspense>
 
       {/* Audit footer */}
       <div className="audit-bar">

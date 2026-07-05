@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
+import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { verifyChain } from '@/utils/chainOfCustody'
 import { encodeDroneTelemetry, formatMAVLinkLine } from '@/utils/mavlink'
@@ -48,7 +49,13 @@ export function TelemetryPanel() {
   const [mavlinkFeed, setMavlinkFeed] = useState<string[]>([])
   const mavFeedRef = useRef<HTMLDivElement>(null)
 
-  const { drones, ui, events, telemetryHistory, thermalContacts, metrics, elapsedSec, scenario, scenarioVariant, setSensorMode } = useDroneStore()
+  const { drones, ui, events, telemetryHistory, thermalContacts, metrics, elapsedSec, scenario, scenarioVariant, setSensorMode } = useDroneStore(
+    useShallow((s) => ({
+      drones: s.drones, ui: s.ui, events: s.events, telemetryHistory: s.telemetryHistory,
+      thermalContacts: s.thermalContacts, metrics: s.metrics, elapsedSec: s.elapsedSec,
+      scenario: s.scenario, scenarioVariant: s.scenarioVariant, setSensorMode: s.setSensorMode,
+    })),
+  )
 
   const selected = ui.selectedDroneId
     ? drones.find((d) => d.id === ui.selectedDroneId)
@@ -92,16 +99,24 @@ export function TelemetryPanel() {
 
   // Unique thermal contacts
   const uniqueContacts = new Set(thermalContacts.map((d) => d.sourceId)).size
-  const outcome = buildMissionOutcomeSummary({
-    scenario,
-    drones,
-    metrics,
-    thermalContacts,
-    eventsCount: events.length,
-    elapsedSec,
-  })
-  const compliance = buildComplianceState({ scenario, drones, scenarioVariant, elapsedSec })
-  const utm = buildUtmAirspaceState({ scenario, drones, elapsedSec })
+
+  // These three rebuild derived state from full fleet/scenario objects — expensive enough
+  // (and irrelevant enough on other tabs) that they should only run while READY is visible,
+  // not on every 20Hz tick regardless of active tab.
+  const outcome = useMemo(
+    () => activeTab === 'readiness'
+      ? buildMissionOutcomeSummary({ scenario, drones, metrics, thermalContacts, eventsCount: events.length, elapsedSec })
+      : null,
+    [activeTab, scenario, drones, metrics, thermalContacts, events.length, elapsedSec],
+  )
+  const compliance = useMemo(
+    () => activeTab === 'readiness' ? buildComplianceState({ scenario, drones, scenarioVariant, elapsedSec }) : null,
+    [activeTab, scenario, drones, scenarioVariant, elapsedSec],
+  )
+  const utm = useMemo(
+    () => activeTab === 'readiness' ? buildUtmAirspaceState({ scenario, drones, elapsedSec }) : null,
+    [activeTab, scenario, drones, elapsedSec],
+  )
 
   return (
     <div className="telemetry-panel">
@@ -407,7 +422,7 @@ export function TelemetryPanel() {
         </div>
       )}
       {/* ── READINESS TAB ────────────────────────────────────────────────── */}
-      {activeTab === 'readiness' && (
+      {activeTab === 'readiness' && outcome && compliance && utm && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }} data-testid="investor-readiness-panel">
           <div className="panel-section">
             <div className="panel-label" style={{ marginBottom: 8 }}>Mission Outcome (measured)</div>
