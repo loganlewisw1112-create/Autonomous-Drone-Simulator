@@ -4,6 +4,7 @@ import { isBatteryCritical } from '@/sim/drone/DroneEntity'
 
 const ARRIVAL_RADIUS_M = 10
 const INSPECT_DWELL_SEC = 8
+export const AVOID_MANEUVER_SEC = 4
 
 export interface MissionManagerState {
   waypoints: Waypoint[]
@@ -139,10 +140,29 @@ export function getNextCommand(drone: DroneState, mm: MissionManagerState): Comm
       }
     }
 
-    case 'avoid':
-      targetPos = drone.position
-      throttle = 0.5
-      break
+    case 'avoid': {
+      // Traffic-conflict avoidance: the give-way drone holds a divergence heading (set by
+      // SimulationLoop when the conflict was detected) for a fixed maneuver window, then
+      // resumes its interrupted task. Safety guards at the top of this function still
+      // override (battery reserve / geofence / weather RTB take precedence over avoid).
+      const elapsed = mm.elapsedSec - (drone.avoidStartSec ?? mm.elapsedSec)
+      if (elapsed >= AVOID_MANEUVER_SEC) {
+        return {
+          cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0.8, targetAltitudeFt: assignedAltitudeFt },
+          nextState: drone.avoidReturnState ?? 'navigate',
+          nextWaypointIndex: drone.currentWaypointIndex,
+        }
+      }
+      return {
+        cmd: {
+          targetHeadingDeg: drone.avoidHeadingDeg ?? drone.headingDeg,
+          throttle: 0.55,
+          targetAltitudeFt: assignedAltitudeFt,
+        },
+        nextState: 'avoid',
+        nextWaypointIndex: drone.currentWaypointIndex,
+      }
+    }
 
     case 'recharge': {
       const elapsed = mm.elapsedSec - (drone.rechargeStartSec ?? mm.elapsedSec)

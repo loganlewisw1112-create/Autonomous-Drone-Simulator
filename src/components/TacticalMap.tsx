@@ -504,11 +504,28 @@ export function TacticalMap() {
         }
       }
 
+      // Zone semantics drive the styling so an operator can read authority at a glance:
+      //  - active no-fly:        solid red, strong fill (hard boundary — never enter)
+      //  - restricted ≤ maxAlt:  dashed amber (conditional — altitude-dependent)
+      //  - bypassForMission:     dashed green, faint fill (authorized for this tasking;
+      //                          visible for awareness but never triggers RTB)
       scenario.geofences.forEach((gf, i) => {
         const coords = [...gf.polygon.map((p) => [p.lng, p.lat]), [gf.polygon[0].lng, gf.polygon[0].lat]]
+        const style = gf.bypassForMission
+          ? { color: '#44ff88', fillOpacity: 0.12, width: 1.5, dash: [2, 4] as number[] | undefined }
+          : gf.type === 'restricted'
+            ? { color: '#ffaa00', fillOpacity: 0.28, width: 2, dash: [3, 2] as number[] | undefined }
+            : { color: '#ff4444', fillOpacity: 0.42, width: 2.5, dash: undefined }
         map.addSource(`gf-${i}`, { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] }, properties: {} } })
-        map.addLayer({ id: `gf-fill-${i}`,    type: 'fill', source: `gf-${i}`, paint: { 'fill-color': '#ff444422', 'fill-opacity': 0.4 } })
-        map.addLayer({ id: `gf-outline-${i}`, type: 'line', source: `gf-${i}`, paint: { 'line-color': '#ff4444', 'line-width': 2, 'line-dasharray': [3, 2] } })
+        map.addLayer({ id: `gf-fill-${i}`,    type: 'fill', source: `gf-${i}`, paint: { 'fill-color': `${style.color}22`, 'fill-opacity': style.fillOpacity } })
+        map.addLayer({
+          id: `gf-outline-${i}`, type: 'line', source: `gf-${i}`,
+          paint: {
+            'line-color': style.color,
+            'line-width': style.width,
+            ...(style.dash ? { 'line-dasharray': style.dash } : {}),
+          },
+        })
       })
 
       if (scenario.searchArea && scenario.searchArea.length >= 3) {
@@ -920,18 +937,10 @@ export function TacticalMap() {
         </button>
       )}
 
-      {/* IR thermal overlay */}
+      {/* IR thermal overlay — tint + banner only. Actual thermal contacts render through the
+          geolocated `thermal-detections` map layer; no fake screen-anchored heat blobs. */}
       {ui.sensorMode === 'ir' && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,20,0,0.55)', pointerEvents: 'none' }}>
-          {scenario?.heatSources.map((hs) => (
-            <div key={hs.id} style={{
-              position: 'absolute', top: '50%', left: '50%',
-              width: 28, height: 28, marginLeft: -14, marginTop: -14,
-              borderRadius: '50%',
-              background: `radial-gradient(circle, ${hs.tempC > 50 ? '#ff6600cc' : '#ff990066'} 0%, transparent 70%)`,
-              pointerEvents: 'none',
-            }} />
-          ))}
           <div style={{
             position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)',
             fontFamily: 'var(--font-mono)', fontSize: 11,
@@ -940,6 +949,24 @@ export function TacticalMap() {
           }}>
             IR / THERMAL MODE
           </div>
+        </div>
+      )}
+
+      {/* Airspace zone legend — matches geofence layer styling */}
+      {scenario && scenario.geofences.length > 0 && (
+        <div
+          data-testid="zone-legend"
+          style={{
+            position: 'absolute', bottom: 28, left: 8,
+            display: 'flex', gap: 10, alignItems: 'center',
+            fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.05em',
+            color: 'var(--text-dim)', background: 'var(--bg-panel)',
+            padding: '3px 8px', borderRadius: 'var(--radius-sm)', pointerEvents: 'none',
+          }}
+        >
+          <span><span style={{ color: '#ff4444' }}>▬</span> NO-FLY</span>
+          <span><span style={{ color: '#ffaa00' }}>┅</span> RESTRICTED ≤ALT</span>
+          <span><span style={{ color: '#44ff88' }}>┅</span> AUTHORIZED BYPASS</span>
         </div>
       )}
 

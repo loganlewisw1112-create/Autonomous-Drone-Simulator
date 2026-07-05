@@ -1,12 +1,24 @@
 import { mulberry32 } from '@/utils/rng'
-import { haversineDistanceM } from '@/utils/geometry'
+import { haversineDistanceM, offsetLatLng } from '@/utils/geometry'
 import type { DroneState, HeatSource, ThermalDetection } from '@/types'
 
-// Thermal sensor model parameters
+// Thermal sensor model parameters.
+//
+// MODEL ASSUMPTIONS (documented deliberately — this is a teaching-grade sensor model, not a
+// radiometric payload simulation):
+//  - Detection range is deliberately conservative (~60 m at low altitude, decaying with height).
+//    Real uncooled radiometric payloads detect person-sized signatures at several hundred
+//    meters from 400 ft AGL; the short range here forces close-approach search behavior,
+//    which demos operator workflow better. Treat absolute ranges as gameplay values.
+//  - Reported positions carry seeded localization error (below) — a detection is a sensor
+//    estimate, never ground truth.
+//  - Confidence is proximity-scaled with seeded noise; weather degradation is applied
+//    downstream via WeatherVariantState.sensorConfidenceFactor.
 const SENSOR_RANGE_M = 60       // max detection range at cruise altitude
 const ALT_RANGE_FACTOR = 0.4    // per 100ft altitude, range reduces by this fraction
 const BASE_CONFIDENCE = 0.85
 const NOISE_AMPLITUDE = 0.15
+const MAX_LOCALIZATION_ERROR_M = 9   // worst-case reported-position error at zero confidence
 
 /**
  * Effective sensor range in meters, degraded by altitude.
@@ -48,10 +60,18 @@ export function checkThermalDetections(
     // Only report above a minimum confidence threshold
     if (confidence < 0.3) continue
 
+    // Localization error: low-confidence contacts localize worse. Seeded (same rng stream)
+    // so replays and same-seed runs reproduce identical estimates.
+    const errorM = (1 - confidence) * MAX_LOCALIZATION_ERROR_M * rng()
+    const errorBearing = rng() * 360
+    const estimatedPosition = errorM > 0.01
+      ? offsetLatLng(source.position, errorBearing, errorM)
+      : source.position
+
     detections.push({
       sourceId: source.id,
       class: source.class,
-      position: source.position,
+      position: estimatedPosition,
       confidence,
       tick,
     })
