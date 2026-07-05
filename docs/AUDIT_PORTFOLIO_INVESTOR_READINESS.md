@@ -5,6 +5,11 @@
 
 Findings are tagged **[PORTFOLIO]** (hiring-manager lens), **[INVESTOR]** (dual-use seed-fund lens), or both, with severity and `file:line` evidence.
 
+> **Remediation status (2026-07-04):** every Critical and High finding, plus all but three Medium/Low
+> items, has been fixed — see [`REMEDIATION_LOG.md`](REMEDIATION_LOG.md) for the finding-by-finding
+> disposition and [`ARCHITECTURE_NOTES.md`](ARCHITECTURE_NOTES.md) for the resulting design. This
+> report is preserved unedited below as the original point-in-time audit.
+
 ---
 
 ## 1. Executive Summary
