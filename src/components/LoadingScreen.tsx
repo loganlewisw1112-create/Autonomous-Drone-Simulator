@@ -4,8 +4,12 @@ import { getGenesisHash } from '@/utils/chainOfCustody'
 
 const MIN_DISPLAY_MS = 900
 const STAGGER_MS = 160
+// Hard ceiling so the app is never stuck behind this screen. MapLibre's 'load' event doesn't
+// fire in some real environments (backgrounded/hidden tab, WebGL unavailable, restrictive
+// corporate browser) — mapReady staying false forever must not block the rest of the app.
+const MAX_WAIT_MS = 8000
 
-type CheckStatus = 'pending' | 'pass' | 'waiting'
+type CheckStatus = 'pending' | 'pass' | 'waiting' | 'degraded'
 
 interface Check {
   label: string
@@ -73,6 +77,7 @@ export function LoadingScreen({ mapReady, onComplete }: Props) {
   useEffect(() => {
     if (!mapReady) return
     const tryComplete = () => {
+      if (completedRef.current) return
       if (!minTimeElapsed.current) {
         setTimeout(tryComplete, 50)
         return
@@ -91,6 +96,28 @@ export function LoadingScreen({ mapReady, onComplete }: Props) {
       }, 1400)
     }
     tryComplete()
+  }, [mapReady, onComplete])
+
+  // Hard timeout fallback: if the map never confirms ready, proceed anyway rather than
+  // hanging the whole app behind this screen. Marked 'degraded', not 'pass' — honest about
+  // the fact tactical map confirmation didn't complete, matching this app's no-overclaim norm.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (completedRef.current || mapReady) return
+      setChecks((prev) => prev.map((c, ci) =>
+        ci === 4 ? { ...c, status: 'degraded', detail: 'timeout — continuing' } : c,
+      ))
+      setProgress(100)
+      setPhase('all_pass')
+      setTimeout(() => setPhase('fading'), 750)
+      setTimeout(() => {
+        if (!completedRef.current) {
+          completedRef.current = true
+          onComplete()
+        }
+      }, 1100)
+    }, MAX_WAIT_MS)
+    return () => clearTimeout(t)
   }, [mapReady, onComplete])
 
   const passCount = checks.filter((c) => c.status === 'pass').length
@@ -160,16 +187,17 @@ export function LoadingScreen({ mapReady, onComplete }: Props) {
               >
                 {/* Status icon */}
                 <span style={{ width: 16, textAlign: 'center', flexShrink: 0 }}>
-                  {check.status === 'pass'    && <span style={{ color: 'var(--accent-green)' }}>✓</span>}
-                  {check.status === 'waiting' && <span className="ls-spinner" style={{ color: 'var(--accent-yellow)', fontSize: 12 }}>⟳</span>}
-                  {check.status === 'pending' && <span style={{ color: 'var(--text-dim)' }}>·</span>}
+                  {check.status === 'pass'     && <span style={{ color: 'var(--accent-green)' }}>✓</span>}
+                  {check.status === 'waiting'  && <span className="ls-spinner" style={{ color: 'var(--accent-yellow)', fontSize: 12 }}>⟳</span>}
+                  {check.status === 'degraded' && <span style={{ color: 'var(--accent-yellow)' }}>△</span>}
+                  {check.status === 'pending'  && <span style={{ color: 'var(--text-dim)' }}>·</span>}
                 </span>
 
                 {/* Label */}
                 <span style={{
                   color: check.status === 'pass'
                     ? 'var(--text-primary)'
-                    : check.status === 'waiting'
+                    : check.status === 'waiting' || check.status === 'degraded'
                     ? 'var(--accent-yellow)'
                     : 'var(--text-dim)',
                   letterSpacing: '0.08em',
@@ -188,15 +216,16 @@ export function LoadingScreen({ mapReady, onComplete }: Props) {
                   fontSize: 10,
                   color: check.status === 'pass'
                     ? 'var(--accent-green)'
-                    : check.status === 'waiting'
+                    : check.status === 'waiting' || check.status === 'degraded'
                     ? 'var(--accent-yellow)'
                     : 'var(--text-dim)',
                   minWidth: 90,
                   textAlign: 'right',
                 }}>
-                  {check.status === 'pass'    ? check.detail || 'PASS' : ''}
-                  {check.status === 'waiting' ? 'WAIT' : ''}
-                  {check.status === 'pending' ? '—' : ''}
+                  {check.status === 'pass'     ? check.detail || 'PASS' : ''}
+                  {check.status === 'waiting'  ? 'WAIT' : ''}
+                  {check.status === 'degraded' ? check.detail || 'DEGRADED' : ''}
+                  {check.status === 'pending'  ? '—' : ''}
                 </span>
               </div>
             ))}
@@ -242,7 +271,11 @@ export function LoadingScreen({ mapReady, onComplete }: Props) {
             display: 'flex',
             alignItems: 'center',
           }}>
-            {phase === 'all_pass' || phase === 'fading' ? (
+            {(phase === 'all_pass' || phase === 'fading') && checks.some((c) => c.status === 'degraded') ? (
+              <span style={{ color: 'var(--accent-yellow)', fontWeight: 700, letterSpacing: '0.1em' }}>
+                △ PROCEEDING WITHOUT MAP CONFIRMATION — LAUNCHING COMMAND INTERFACE
+              </span>
+            ) : phase === 'all_pass' || phase === 'fading' ? (
               <span style={{ color: 'var(--accent-green)', fontWeight: 700, letterSpacing: '0.1em' }}>
                 ✓ ALL SYSTEMS NOMINAL — LAUNCHING COMMAND INTERFACE
               </span>
