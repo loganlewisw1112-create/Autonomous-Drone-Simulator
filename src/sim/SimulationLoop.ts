@@ -263,8 +263,12 @@ export function tick() {
     // onto a divergence heading pointing directly away from the other aircraft, holds it for
     // AVOID_MANEUVER_SEC (see MissionManager), then resumes its interrupted task. Completion
     // is emitted through the standard state-transition path as avoidance_complete.
+    // 'launch' is included: fleets spawn from adjacent launch points a few meters apart, so
+    // climb-out is where conflicts actually occur in practice (cruise altitude bands are
+    // separated enough that conflicts rarely happen once established) — excluding 'launch'
+    // meant the maneuver almost never fired outside forced/artificial scenarios.
     const withDeconflict: DroneState[] = flaggedDrones.map((drone) => {
-      if (drone.missionState !== 'navigate' && drone.missionState !== 'sar_grid') return drone
+      if (!['navigate', 'sar_grid', 'launch'].includes(drone.missionState)) return drone
       const conflict = conflicts.find((c) => c.idB === drone.id)
       if (!conflict) return drone
       const other = flaggedDrones.find((d) => d.id === conflict.idA)
