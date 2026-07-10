@@ -6,6 +6,7 @@ import { applyGeofenceFlags, applyCommsModel } from '@/sim/safety/SafetyManager'
 import { buildSafeDroneRoutes } from '@/sim/mission/routeAudit'
 import { validateOperatorRoute } from '@/sim/mission/operatorRoutes'
 import { restoreSavedWaypointRoutes } from '@/sim/mission/waypointPersistence'
+import { planCoordinatedLaunch } from '@/sim/mission/LaunchCoordinator'
 import {
   batteryProfileForDrone,
   batteryReservePctForDrone,
@@ -46,7 +47,7 @@ export function tick() {
   const stepsPerFrame = store.ui.simSpeed
 
   for (let i = 0; i < stepsPerFrame; i++) {
-    const { drones, scenario, tick: currentTick, elapsedSec, weatherState } = useDroneStore.getState()
+    const { drones, scenario, tick: currentTick, elapsedSec, weatherState, launchCommandedSec } = useDroneStore.getState()
     if (!scenario) break
 
     const { droneWaypoints } = useDroneStore.getState()
@@ -85,12 +86,13 @@ export function tick() {
         batteryReservePct: batteryReservePctForDrone(scenario, drone.id),
         weatherForceRtb: isWeatherForceRtb(weatherState),
         weatherHazard: weatherState.activeHazards[0],
+        launchCommandedSec: launchCommandedSec ?? undefined,
       }
 
       const { cmd: rawCmd, nextState, nextWaypointIndex, hoverStartSec, rechargeStartSec, sortieResumeWpIdx } = getNextCommand(drone, mm)
 
       // Skip physics for grounded/recovery states — drone is not airborne, battery shouldn't drain
-      const isGrounded = ['idle', 'landed', 'remote_landed', 'stranded', 'recovery_requested', 'recovery_enroute', 'recovered', 'unrecoverable_sim'].includes(nextState)
+      const isGrounded = ['idle', 'preflight', 'landed', 'remote_landed', 'stranded', 'recovery_requested', 'recovery_enroute', 'recovered', 'unrecoverable_sim'].includes(nextState)
 
       // Apply weather speed cap via throttle reduction
       const cmd = isGrounded
@@ -651,45 +653,10 @@ export function initFleet() {
   onSceneTicksMap.clear()
 
   const colors = ['#00d4ff', '#44ff88', '#ffaa00', '#ff88ff', '#ff6644', '#cc44ff', '#ffdd00', '#ff4488']
-  const drones = Array.from({ length: scenario.droneCount }, (_, i) => {
-    const id = `uav-${String(i + 1).padStart(2, '0')}`
-    const defaultPos = {
-      lat: scenario.startPosition.lat + i * 0.00005,
-      lng: scenario.startPosition.lng + i * 0.00005,
-    }
-    // Prefer launch plan assignment, then scenario launch site, then default offset.
-    // Assignments are keyed by the launchSites record key (LaunchBayPlanner uses the same
-    // keys), so reassigning a drone to another bay actually moves its spawn position.
-    const launchSiteId = launchPlan?.assignments[id]
-    const launchSite = launchSiteId ? scenario.launchSites?.[launchSiteId] : undefined
-    return {
-      id,
-      label: id.toUpperCase(),
-      color: colors[i % colors.length],
-      position: launchSite?.position ?? scenario.launchSites?.[id]?.position ?? scenario.perDroneStartPositions?.[id] ?? defaultPos,
-      altitudeFt: 0,
-      headingDeg: 0,
-      speedMs: 0,
-      batteryPct: scenario.batteryStartPct,
-      signalDbm: -55,
-      missionState: 'idle' as const,
-      currentWaypointIndex: 0,
-      conflictFlag: false,
-      geofenceBreachFlag: false,
-      geofenceBreach: undefined,
-      bvlosFlag: false,
-      sortieCount: 0,
-      weatherDivertFlag: false,
-      commsLostSec: 0,
-    }
-  })
+  const droneIds = Array.from({ length: scenario.droneCount }, (_, i) => `uav-${String(i + 1).padStart(2, '0')}`)
 
-  useDroneStore.getState().setDrones(drones)
-  useDroneStore.getState().resetMission()
-
-  // Re-apply weather state (in case variant changed since last load)
-  useDroneStore.getState().setWeatherState(weatherState)
-
+  // Routes are computed first: the coordinated launch planner needs each drone's
+  // first outbound target to orient its launch bay and sequence its takeoff slot.
   const baselineRoutes = buildSafeDroneRoutes(scenario)
   const restoredRoutes = restoreSavedWaypointRoutes({
     scenarioId: scenario.id,
@@ -697,6 +664,54 @@ export function initFleet() {
     baselineRoutes,
     validateRoute: (droneId, route) => validateOperatorRoute(scenario, droneId, route).accepted,
   })
+
+  // Explicit bays (operator assignment → scenario launch site → per-drone start)
+  // are honored as-is; drones with no explicit bay get a fanned-out bay so no two
+  // launch from the same spot.
+  const explicitBays: Record<string, LatLng> = {}
+  const firstTargets: Record<string, LatLng> = {}
+  for (const id of droneIds) {
+    const launchSiteId = launchPlan?.assignments[id]
+    const assigned = launchSiteId ? scenario.launchSites?.[launchSiteId]?.position : undefined
+    const bay = assigned ?? scenario.launchSites?.[id]?.position ?? scenario.perDroneStartPositions?.[id]
+    if (bay) explicitBays[id] = bay
+    firstTargets[id] = restoredRoutes.routes[id]?.[0]?.position ?? scenario.startPosition
+  }
+
+  const launchSlots = planCoordinatedLaunch({
+    startPosition: scenario.startPosition,
+    droneIds,
+    firstTargets,
+    explicitBays,
+  })
+
+  const drones = droneIds.map((id, i) => ({
+    id,
+    label: id.toUpperCase(),
+    color: colors[i % colors.length],
+    position: launchSlots[id]?.bay ?? explicitBays[id] ?? scenario.startPosition,
+    altitudeFt: 0,
+    headingDeg: 0,
+    speedMs: 0,
+    batteryPct: scenario.batteryStartPct,
+    signalDbm: -55,
+    missionState: 'idle' as const,
+    currentWaypointIndex: 0,
+    conflictFlag: false,
+    geofenceBreachFlag: false,
+    geofenceBreach: undefined,
+    bvlosFlag: false,
+    sortieCount: 0,
+    weatherDivertFlag: false,
+    commsLostSec: 0,
+    scheduledLaunchSec: launchSlots[id]?.scheduledLaunchSec ?? 0,
+  }))
+
+  useDroneStore.getState().setDrones(drones)
+  useDroneStore.getState().resetMission()
+
+  // Re-apply weather state (in case variant changed since last load)
+  useDroneStore.getState().setWeatherState(weatherState)
 
   useDroneStore.getState().setDroneWaypoints(restoredRoutes.routes)
   useDroneStore.getState().setRouteSaveStatuses(restoredRoutes.statuses)

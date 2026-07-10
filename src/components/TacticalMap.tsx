@@ -6,7 +6,7 @@ import { generateGridLines } from '@/sim/mission/SARPlanner'
 import { PerfMonitor } from '@/components/PerfMonitor'
 import { MissionStatusFeed } from '@/components/MissionStatusFeed'
 import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
-import { buildConflictFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
+import { buildConflictFeatures, buildIrFootprintFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
 import { buildAirspaceReservationFeatures, buildExternalTrafficFeatures, buildUtmAirspaceState } from '@/sim/demo/utmEngine'
 
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
@@ -98,12 +98,12 @@ export function TacticalMap() {
   const [mapReady, setMapReady] = useState(false)
   const [mapMode,  setMapMode]  = useState<MapMode>('remote')
 
-  const { drones, scenario, thermalContacts, positionHistory, ui, droneWaypoints, routeSuggestions, selectedThermalId, selectThermal, groundUnits, recoveryTeams } = useDroneStore(
+  const { drones, scenario, thermalContacts, positionHistory, ui, droneWaypoints, routeSuggestions, selectedThermalId, selectThermal, groundUnits, recoveryTeams, toggleLayer } = useDroneStore(
     useShallow((s) => ({
       drones: s.drones, scenario: s.scenario, thermalContacts: s.thermalContacts, positionHistory: s.positionHistory,
       ui: s.ui, droneWaypoints: s.droneWaypoints, routeSuggestions: s.routeSuggestions,
       selectedThermalId: s.selectedThermalId, selectThermal: s.selectThermal,
-      groundUnits: s.groundUnits, recoveryTeams: s.recoveryTeams,
+      groundUnits: s.groundUnits, recoveryTeams: s.recoveryTeams, toggleLayer: s.toggleLayer,
     })),
   )
 
@@ -169,6 +169,12 @@ export function TacticalMap() {
       const czSrc = map.getSource('conflict-zones') as maplibregl.GeoJSONSource | undefined
       if (czSrc) {
         czSrc.setData({ type: 'FeatureCollection', features: buildConflictFeatures(d) })
+      }
+
+      // IR sensor footprints (layer only visible in IR mode)
+      const irSrc = map.getSource('ir-footprints') as maplibregl.GeoJSONSource | undefined
+      if (irSrc) {
+        irSrc.setData({ type: 'FeatureCollection', features: buildIrFootprintFeatures(d) })
       }
 
       // Last-known-position ghost pins
@@ -242,6 +248,20 @@ export function TacticalMap() {
             'circle-stroke-width': 2,
             'circle-stroke-color': '#ffaa00',
           },
+        })
+      }
+      if (!map.getSource('ir-footprints')) {
+        // Thermal sensor FOV cones — hidden until IR sensor mode is active
+        map.addSource('ir-footprints', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+        map.addLayer({
+          id: 'ir-footprint-fill', type: 'fill', source: 'ir-footprints',
+          layout: { visibility: 'none' },
+          paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.05 },
+        })
+        map.addLayer({
+          id: 'ir-footprint-line', type: 'line', source: 'ir-footprints',
+          layout: { visibility: 'none' },
+          paint: { 'line-color': '#eaf6ff', 'line-width': 1, 'line-opacity': 0.32 },
         })
       }
       if (!map.getSource('conflict-zones')) {
@@ -462,23 +482,9 @@ export function TacticalMap() {
 
       map.flyTo({ center: [scenario.startPosition.lng, scenario.startPosition.lat], zoom: 15, duration: 600 })
 
-      if (scenario.waypoints.length > 0) {
-        map.addSource('waypoints', {
-          type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: scenario.waypoints.map((wp, i) => ({
-              type: 'Feature' as const,
-              geometry: { type: 'Point' as const, coordinates: [wp.position.lng, wp.position.lat] },
-              properties: { label: wp.label ?? `WP${i + 1}`, alt: wp.altitudeFt },
-            })),
-          },
-        })
-        map.addLayer({
-          id: 'waypoints-circle', type: 'circle', source: 'waypoints',
-          paint: { 'circle-radius': 6, 'circle-color': '#ffaa00', 'circle-stroke-width': 2, 'circle-stroke-color': '#000', 'circle-opacity': 0.85 },
-        })
-      }
+      // NOTE: the static yellow waypoint dots were removed — they duplicated the
+      // faint route backbone below and the numbered draggable per-drone nodes
+      // (route-edit-marker). Only the dashed backbone line is kept for context.
 
       const routeCoords = scenario.waypoints.map((wp) => [wp.position.lng, wp.position.lat])
       if (routeCoords.length > 1) {
@@ -589,6 +595,47 @@ export function TacticalMap() {
     if (mapStyleLoadedRef.current) setup()
     else map.once('load', setup)
   }, [scenario])
+
+  // ── Effect 2b: Sensor-mode + layer-toggle visibility ───────────────────────
+  // EO = daylight planning view (routes, relays, gates, traffic).
+  // IR = thermal camera view (world desaturated via CSS on the canvas; heat and
+  // sensor cones revealed; daylight planning clutter hidden). Numbered waypoint
+  // nodes, drone tracks, and safety geofences stay visible in both modes.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapStyleLoadedRef.current) return
+    const ir = ui.sensorMode === 'ir'
+    const lv = ui.layerVisibility
+    const setVis = (id: string, on: boolean) => {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none')
+    }
+
+    // Heat contacts + sensor FOV cones: IR only
+    setVis('thermal-circle', ir && lv.thermal)
+    setVis('thermal-selected-ring', ir && lv.thermal)
+    setVis('ir-footprint-fill', ir && lv.irFootprints)
+    setVis('ir-footprint-line', ir && lv.irFootprints)
+
+    // External air traffic + airspace reservations: EO only, gated by toggle
+    setVis('utm-traffic-circle', !ir && lv.traffic)
+    setVis('utm-reservation-fill', !ir && lv.traffic)
+    setVis('utm-reservation-line', !ir && lv.traffic)
+
+    // Daylight planning overlays hidden in IR to declutter the thermal view
+    ;['route-line', 'next-wp-line', 'search-area-fill', 'search-area-outline', 'sar-grid-lines']
+      .forEach((id) => setVis(id, !ir))
+
+    // Operational points: EO only; per-category filter driven by the toggles
+    const opTypes = ['last_known']
+    if (lv.relays) opTypes.push('relay')
+    if (lv.gates) opTypes.push('gate')
+    if (lv.recharge) opTypes.push('recharge_station')
+    ;['operational-point-circle', 'operational-point-label'].forEach((id) => {
+      if (!map.getLayer(id)) return
+      map.setFilter(id, ['in', ['get', 'type'], ['literal', opTypes]])
+      map.setLayoutProperty(id, 'visibility', ir ? 'none' : 'visible')
+    })
+  }, [ui.sensorMode, ui.layerVisibility, scenario, mapReady])
 
   // ── Effect 3: Zoom-to-fit all waypoints when mission starts ────────────────
   useEffect(() => {
@@ -919,7 +966,7 @@ export function TacticalMap() {
   }, [ui.selectedDroneId, droneWaypoints, mapReady])
 
   return (
-    <div className="map-area">
+    <div className={`map-area${ui.sensorMode === 'ir' ? ' ir-active' : ''}`}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
       {/* Fallback mode: tactical grid overlay + status badge */}
@@ -969,18 +1016,71 @@ export function TacticalMap() {
         </button>
       )}
 
-      {/* IR thermal overlay — tint + banner only. Actual thermal contacts render through the
-          geolocated `thermal-detections` map layer; no fake screen-anchored heat blobs. */}
+      {/* IR / thermal camera mode. The desaturated "white-hot" world is produced by a CSS
+          filter on the map canvas (see .map-area.ir-active in tactical.css); heat contacts
+          and sensor FOV cones are revealed by Effect 2b. This banner is a live HUD readout. */}
       {ui.sensorMode === 'ir' && (
-        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,20,0,0.55)', pointerEvents: 'none' }}>
-          <div style={{
+        <div
+          data-testid="ir-hud"
+          style={{
             position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)',
-            fontFamily: 'var(--font-mono)', fontSize: 11,
-            color: '#44ff88', background: '#00000088',
-            padding: '2px 8px', borderRadius: 4, letterSpacing: 2,
-          }}>
-            IR / THERMAL MODE
-          </div>
+            pointerEvents: 'none', zIndex: 40,
+            fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: 2,
+            color: '#eaf6ff', background: '#00000099',
+            padding: '2px 10px', borderRadius: 4, border: '1px solid #eaf6ff44',
+          }}
+        >
+          {(() => {
+            const n = new Set(thermalContacts.map((d) => d.sourceId)).size
+            return `◍ IR / THERMAL · WHITE-HOT · ${n} HEAT CONTACT${n !== 1 ? 'S' : ''}`
+          })()}
+        </div>
+      )}
+
+      {/* Map layers control — toggle operator overlays. Numbered waypoint nodes, drone
+          tracks, and safety geofences are always on and intentionally not listed here. */}
+      {scenario && (
+        <div
+          data-testid="layers-control"
+          style={{
+            position: 'absolute', bottom: 28, right: 8, zIndex: 60,
+            fontFamily: 'var(--font-mono)', fontSize: 8.5, letterSpacing: '0.04em',
+            color: 'var(--text-dim)', background: 'var(--bg-panel)',
+            padding: '5px 8px', borderRadius: 'var(--radius-sm)',
+            display: 'flex', flexDirection: 'column', gap: 3, minWidth: 96,
+          }}
+        >
+          <div style={{ color: 'var(--text-secondary)', letterSpacing: '0.12em', marginBottom: 1 }}>LAYERS</div>
+          {([
+            { key: 'relays' as const, label: 'Relays', swatch: '#00d4ff', irOnly: false },
+            { key: 'gates' as const, label: 'Gates', swatch: '#ffaa00', irOnly: false },
+            { key: 'recharge' as const, label: 'Recharge', swatch: '#44ff88', irOnly: false },
+            { key: 'traffic' as const, label: 'Air Traffic', swatch: '#00d4ff', irOnly: false },
+            { key: 'thermal' as const, label: 'Heat (IR)', swatch: '#ffffff', irOnly: true },
+            { key: 'irFootprints' as const, label: 'Sensor FOV (IR)', swatch: '#eaf6ff', irOnly: true },
+          ]).map(({ key, label, swatch, irOnly }) => {
+            const on = ui.layerVisibility[key]
+            const inactive = irOnly && ui.sensorMode !== 'ir'
+            return (
+              <label
+                key={key}
+                title={inactive ? 'Visible in IR sensor mode' : undefined}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer',
+                  opacity: inactive ? 0.4 : 1,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() => toggleLayer(key)}
+                  style={{ width: 10, height: 10, accentColor: swatch, margin: 0, cursor: 'pointer' }}
+                />
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: swatch, flex: '0 0 auto' }} />
+                <span style={{ color: on ? 'var(--text-secondary)' : 'var(--text-dim)' }}>{label}</span>
+              </label>
+            )
+          })}
         </div>
       )}
 

@@ -3,7 +3,8 @@ import { suspectSearch, vehiclePursuit, sarCoastal, portPerimeter, wildfireRecon
 import { EXTREME_SCENARIOS } from '@/scenarios/extremeScenarios'
 import { buildSafeDroneRoutes, droneIdForIndex, relocatePointOutsideGeofences } from '@/sim/mission/routeAudit'
 import { getWeatherProfile } from '@/sim/weather/weatherEngine'
-import { haversineDistanceM } from '@/utils/geometry'
+import { haversineDistanceM, bearingDeg, offsetLatLng } from '@/utils/geometry'
+import { BAY_SPACING_M } from '@/sim/mission/LaunchCoordinator'
 import type {
   DispatchTimelineCategory,
   DispatchTimelineEntry,
@@ -121,14 +122,55 @@ function deriveWeatherProfile(scenario: ScenarioConfig): ScenarioWeatherProfile 
   return getWeatherProfile(tag)
 }
 
+/** First outbound target for a drone — its first waypoint, else the shared route
+ *  start, else the search-area centroid. Used to orient the launch-bay fan. */
+function firstOutboundTarget(scenario: ScenarioConfig, id: string): LatLng | undefined {
+  const wp = scenario.perDroneWaypoints?.[id]?.[0]?.position ?? scenario.waypoints?.[0]?.position
+  if (wp) return wp
+  const area = scenario.searchArea
+  if (area && area.length > 0) {
+    return {
+      lat: area.reduce((s, p) => s + p.lat, 0) / area.length,
+      lng: area.reduce((s, p) => s + p.lng, 0) / area.length,
+    }
+  }
+  return undefined
+}
+
+/** Circular mean of every drone's outbound bearing from the staging point. */
+function meanOutboundBearing(scenario: ScenarioConfig): number {
+  let sx = 0
+  let sy = 0
+  let count = 0
+  for (let i = 0; i < scenario.droneCount; i++) {
+    const target = firstOutboundTarget(scenario, droneIdForIndex(i))
+    if (!target) continue
+    const b = (bearingDeg(scenario.startPosition, target) * Math.PI) / 180
+    sx += Math.cos(b)
+    sy += Math.sin(b)
+    count++
+  }
+  if (count === 0) return 0
+  return ((Math.atan2(sy, sx) * 180) / Math.PI + 360) % 360
+}
+
 function deriveLaunchSites(scenario: ScenarioConfig): Record<string, LaunchRecoverySite> {
   const sites: Record<string, LaunchRecoverySite> = {}
 
+  // Default launch bays fan out perpendicular to the mean outbound heading so no
+  // two drones share a pad (≥ BAY_SPACING_M apart). Scenarios that author explicit
+  // per-drone launch coords (rooftops, decks) keep them; the fan is only a fallback.
+  const fanAxis = (meanOutboundBearing(scenario) + 90) % 360
+  const n = scenario.droneCount
+
   for (let i = 0; i < scenario.droneCount; i++) {
     const id = droneIdForIndex(i)
-    const fallbackPosition = scenario.perDroneStartPositions?.[id] ?? {
-      lat: scenario.startPosition.lat + i * 0.00005,
-      lng: scenario.startPosition.lng + i * 0.00005,
+    let fallbackPosition = scenario.perDroneStartPositions?.[id]
+    if (!fallbackPosition) {
+      const offsetIndex = i - (n - 1) / 2
+      const dist = Math.abs(offsetIndex) * BAY_SPACING_M
+      const brg = offsetIndex >= 0 ? fanAxis : (fanAxis + 180) % 360
+      fallbackPosition = dist < 0.01 ? scenario.startPosition : offsetLatLng(scenario.startPosition, brg, dist)
     }
     const raw = scenario.launchSites?.[id] ?? defaultLaunchSiteFor(scenario, id, fallbackPosition)
     sites[id] = {
