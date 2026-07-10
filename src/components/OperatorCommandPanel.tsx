@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { RECOVERY_STATES } from '@/components/FleetPanel'
-import type { DispatchTimelineEntry, OperatorRouteCommand, WaypointSaveStatus } from '@/types'
+import { haversineDistanceM } from '@/utils/geometry'
+import type { DispatchTimelineEntry, OperatorRouteCommand, Waypoint, WaypointSaveStatus } from '@/types'
 
 const COMMANDS: Array<{ command: OperatorRouteCommand; label: string }> = [
   { command: 'deep_scan', label: 'Deep Scan' },
@@ -202,6 +203,16 @@ export function OperatorCommandPanel() {
             <div key={suggestion.id} className={`operator-suggestion suggestion-${suggestion.priority}`}>
               <div className="operator-suggestion-title">{suggestion.title}</div>
               <p>{suggestion.rationale}</p>
+              {/* M2: accepting a suggestion REPLACES the drone's current route — show
+                  what's being discarded vs. adopted, never a silent swap. */}
+              <div className="operator-suggestion-diff" data-testid="suggestion-route-diff">
+                <span className="suggestion-diff-old">
+                  − {route.length > 0 ? routeSummary(route) : 'no saved route'}
+                </span>
+                <span className="suggestion-diff-new">
+                  + {routeSummary(suggestion.route)}
+                </span>
+              </div>
               <div className="operator-suggestion-actions">
                 <button onClick={() => acceptRouteSuggestion(suggestion.id)}>ACCEPT</button>
                 <button onClick={() => rejectRouteSuggestion(suggestion.id)}>REJECT</button>
@@ -240,6 +251,20 @@ function formatTime(sec: number): string {
   const m = Math.floor(sec / 60)
   const s = Math.floor(sec % 60).toString().padStart(2, '0')
   return `T+${m}:${s}`
+}
+
+// One-line summary of a route for the suggestion diff: waypoint count, leg distance,
+// and the first/last waypoint labels so the operator can tell WHAT is being swapped.
+function routeSummary(route: Waypoint[]): string {
+  if (route.length === 0) return 'empty route'
+  let distM = 0
+  for (let i = 1; i < route.length; i++) {
+    distM += haversineDistanceM(route[i - 1].position, route[i].position)
+  }
+  const span = route.length === 1
+    ? route[0].label
+    : `${route[0].label} → ${route[route.length - 1].label}`
+  return `${route.length} wp · ${(distM / 1000).toFixed(1)} km · ${span}`
 }
 
 
