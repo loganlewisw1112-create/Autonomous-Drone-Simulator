@@ -4,6 +4,9 @@
   "description": "Local-first React and TypeScript simulator for multi-drone public-safety missions, tactical route control, replay, and evidence exports.",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/loganlewisw1112-create/Autonomous-Drone-Simulator.git"
@@ -14,6 +17,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepare": "husky",
     "lint": "eslint src",
     "deploy": "npm run build && gh-pages -d dist"
   },
@@ -39,6 +44,7 @@
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "gh-pages": "^6.3.0",
+    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
