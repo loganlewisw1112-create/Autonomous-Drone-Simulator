@@ -75,6 +75,19 @@ html, body, #root {
   overflow: hidden;
 }
 
+/* IR / thermal camera mode: desaturate + darken the map ("white-hot" look). We
+   filter the canvas CONTAINER (a DOM div), not the WebGL <canvas> itself —
+   hardware-accelerated canvases ignore CSS `filter`, but their containing div
+   composites correctly. Map controls and the React HUD sit outside this container
+   and stay full-color. Heat contacts / sensor cones are styled near-white so they
+   read as hot spots through the grayscale. */
+.map-area .maplibregl-canvas-container {
+  transition: filter 0.35s ease;
+}
+.map-area.ir-active .maplibregl-canvas-container {
+  filter: grayscale(1) brightness(0.62) contrast(1.35);
+}
+
 .mission-status-feed {
   position: absolute;
   top: 8px;

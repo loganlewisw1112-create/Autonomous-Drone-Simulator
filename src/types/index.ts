@@ -55,6 +55,7 @@ export interface DroneState {
   sortieCount: number
   rechargeStartSec?: number
   sortieResumeWpIdx?: number
+  scheduledLaunchSec?: number  // sim-seconds after the launch command this drone lifts off (staggered)
   launchTimeSec?: number  // elapsedSec when drone first transitions to 'launch'
   weatherDivertFlag?: boolean
   commsLostSec?: number   // elapsedSec when comms first dropped below -90 dBm
@@ -524,6 +525,11 @@ export interface ScenarioConfig {
 export type SensorMode = 'eo' | 'ir'
 export type SimSpeed = 1 | 5 | 10
 
+// Operator-toggleable map overlay categories (numbered waypoint nodes, drone
+// tracks, and safety geofences are always shown and are intentionally NOT here).
+export type MapLayerKey = 'relays' | 'gates' | 'recharge' | 'traffic' | 'thermal' | 'irFootprints'
+export type LayerVisibility = Record<MapLayerKey, boolean>
+
 export interface UIState {
   selectedDroneId: string | null
   sensorMode: SensorMode
@@ -533,6 +539,7 @@ export interface UIState {
   showPreflight: boolean
   showLaunchBay: boolean
   showEventLog: boolean
+  layerVisibility: LayerVisibility
 }
 
 // ─── Telemetry History ─────────────────────────────────────────────────────────
