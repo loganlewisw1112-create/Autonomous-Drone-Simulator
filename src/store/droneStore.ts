@@ -136,6 +136,10 @@ interface DroneStore {
   // Launch bay planning
   launchPlan: LaunchBayPlan | null
 
+  // Sim-time (elapsedSec) at which the launch command was issued. Combined with
+  // each drone's scheduledLaunchSec this drives the staggered "hive-mind" takeoff.
+  launchCommandedSec: number | null
+
   // UI
   ui: UIState
 
@@ -187,12 +191,14 @@ interface DroneStore {
   setRunning: (running: boolean) => void
   setSimSpeed: (speed: SimSpeed) => void
   setSensorMode: (mode: UIState['sensorMode']) => void
+  toggleLayer: (key: keyof UIState['layerVisibility']) => void
   setSelectedDrone: (id: string | null) => void
   setShowPreflight: (show: boolean) => void
   setShowLaunchBay: (show: boolean) => void
   setIsReplayMode: (replay: boolean) => void
   resetMission: () => void
   setMapReady: (ready: boolean) => void
+  beginLaunchSequence: () => void
 }
 
 // ─── Derived getter: thermalDetections for backward compat ────────────────────
@@ -298,6 +304,7 @@ export const useDroneStore = create<DroneStore>()(
         weatherState: getDefaultWeatherState(1337),
         scenarioVariant: DEFAULT_VARIANT,
         launchPlan: null,
+        launchCommandedSec: null,
         mapReady: false,
         ui: {
           selectedDroneId: null,
@@ -308,6 +315,10 @@ export const useDroneStore = create<DroneStore>()(
           showPreflight: false,
           showLaunchBay: false,
           showEventLog: true,
+          layerVisibility: {
+            relays: true, gates: true, recharge: true,
+            traffic: true, thermal: true, irFootprints: true,
+          },
         },
 
         setDrones: (drones) => set({ drones }),
@@ -712,11 +723,30 @@ export const useDroneStore = create<DroneStore>()(
         setRunning: (running) =>
           set((s) => ({ ui: { ...s.ui, isRunning: running } })),
 
+        // Issue the coordinated launch command: stamp the launch epoch (current
+        // sim time) and move parked drones into the 'preflight' hold. Each drone
+        // then lifts off when elapsedSec − launchCommandedSec ≥ scheduledLaunchSec
+        // (evaluated in MissionManager), producing the staggered takeoff.
+        beginLaunchSequence: () =>
+          set((s) => ({
+            launchCommandedSec: s.elapsedSec,
+            drones: s.drones.map((d) =>
+              d.missionState === 'idle' || d.missionState === 'landed'
+                ? { ...d, missionState: 'preflight', launchTimeSec: undefined }
+                : d,
+            ),
+          })),
+
         setSimSpeed: (speed) =>
           set((s) => ({ ui: { ...s.ui, simSpeed: speed } })),
 
         setSensorMode: (mode) =>
           set((s) => ({ ui: { ...s.ui, sensorMode: mode } })),
+
+        toggleLayer: (key) =>
+          set((s) => ({
+            ui: { ...s.ui, layerVisibility: { ...s.ui.layerVisibility, [key]: !s.ui.layerVisibility[key] } },
+          })),
 
         setSelectedDrone: (id) =>
           set((s) => ({ ui: { ...s.ui, selectedDroneId: id } })),
@@ -739,7 +769,7 @@ export const useDroneStore = create<DroneStore>()(
             selectedThermalId: null, groundUnits: [], recoveryTeams: [],
             routeSuggestions: [], routeCommandError: null, routeSaveStatuses: {},
             positionHistory: {}, replaySession: null, replayIndex: 0, replayFrames: [],
-            launchPlan: null,
+            launchPlan: null, launchCommandedSec: null,
             metrics: {
               totalFlightDistanceM: 0, waypointsReached: 0, conflictsDetected: 0,
               thermalContacts: 0, geofenceBreaches: 0, rtbTriggers: 0,

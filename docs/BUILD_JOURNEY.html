@@ -1,0 +1,462 @@
+<title>Autonomous Drone Mission Simulator — Build Journey</title>
+<style>
+  :root{
+    --bg:#f3f1ec;
+    --surface:#ffffff;
+    --surface-2:#eae6dc;
+    --line:#d9d3c4;
+    --ink:#1c1917;
+    --ink-dim:#6b6459;
+    --accent:#b4691e;
+    --accent-2:#2f7a82;
+    --crit:#a83e34;
+    --high:#b4691e;
+    --med:#8a7a2e;
+    --low:#5b7280;
+    --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", monospace;
+    --font-serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0d1113;
+      --surface:#171c1f;
+      --surface-2:#1f262a;
+      --line:#2c3439;
+      --ink:#eef1f0;
+      --ink-dim:#93a3a6;
+      --accent:#d98e3f;
+      --accent-2:#4fa3b0;
+      --crit:#c1584f;
+      --high:#d98e3f;
+      --med:#c2ad57;
+      --low:#7089a0;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1113; --surface:#171c1f; --surface-2:#1f262a; --line:#2c3439;
+    --ink:#eef1f0; --ink-dim:#93a3a6; --accent:#d98e3f; --accent-2:#4fa3b0;
+    --crit:#c1584f; --high:#d98e3f; --med:#c2ad57; --low:#7089a0;
+  }
+  :root[data-theme="light"]{
+    --bg:#f3f1ec; --surface:#ffffff; --surface-2:#eae6dc; --line:#d9d3c4;
+    --ink:#1c1917; --ink-dim:#6b6459; --accent:#b4691e; --accent-2:#2f7a82;
+    --crit:#a83e34; --high:#b4691e; --med:#8a7a2e; --low:#5b7280;
+  }
+
+  *{box-sizing:border-box;}
+  body{margin:0;}
+  .page{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-serif);
+    line-height:1.55;
+    padding:2.5rem 1.25rem 4rem;
+    min-height:100%;
+  }
+  .wrap{max-width:840px;margin:0 auto;}
+
+  /* ---------- header ---------- */
+  .eyebrow{
+    font-family:var(--font-mono);
+    font-size:0.72rem;
+    letter-spacing:0.16em;
+    text-transform:uppercase;
+    color:var(--accent);
+    margin:0 0 0.6rem;
+  }
+  h1{
+    font-family:var(--font-serif);
+    font-size:2.15rem;
+    font-weight:700;
+    margin:0 0 0.5rem;
+    text-wrap:balance;
+    letter-spacing:-0.01em;
+  }
+  .subhead{
+    color:var(--ink-dim);
+    font-size:1.05rem;
+    max-width:60ch;
+    margin:0 0 1.4rem;
+  }
+  .meta-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:0.5rem 1.4rem;
+    font-family:var(--font-mono);
+    font-size:0.76rem;
+    color:var(--ink-dim);
+    border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);
+    padding:0.7rem 0;
+    margin-bottom:2.2rem;
+  }
+  .meta-row b{color:var(--ink);font-weight:600;}
+
+  /* ---------- HUD stat strip ---------- */
+  .stats{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+    gap:1px;
+    background:var(--line);
+    border:1px solid var(--line);
+    margin-bottom:3rem;
+    font-family:var(--font-mono);
+  }
+  .stat{
+    background:var(--surface);
+    padding:0.85rem 0.9rem;
+  }
+  .stat .label{
+    font-size:0.62rem;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+    display:block;
+    margin-bottom:0.35rem;
+  }
+  .stat .value{
+    font-size:1.05rem;
+    font-variant-numeric:tabular-nums;
+    color:var(--ink);
+    white-space:nowrap;
+  }
+  .stat .value .arrow{color:var(--ink-dim);margin:0 0.2em;font-size:0.85em;}
+  .stat .value .good{color:var(--accent-2);font-weight:600;}
+
+  /* ---------- timeline ---------- */
+  .timeline{
+    position:relative;
+    padding-left:2.4rem;
+  }
+  .timeline::before{
+    content:"";
+    position:absolute;
+    left:0.56rem;
+    top:0.4rem;
+    bottom:0.4rem;
+    width:2px;
+    background:linear-gradient(var(--line), var(--line) 92%, transparent);
+  }
+  .node{
+    position:relative;
+    margin-bottom:2.6rem;
+  }
+  .node:last-child{margin-bottom:0;}
+  .node::before{
+    content:"";
+    position:absolute;
+    left:-2.4rem;
+    top:0.3rem;
+    width:0.9rem;
+    height:0.9rem;
+    border-radius:50%;
+    background:var(--surface);
+    border:2px solid var(--accent);
+  }
+  .node.pivotal::before{
+    border-color:var(--crit);
+    background:var(--crit);
+  }
+  .node.active::before{
+    border:2px dashed var(--accent-2);
+    background:transparent;
+    animation:pulse 2.4s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion:reduce){ .node.active::before{animation:none;} }
+  @keyframes pulse{
+    0%,100%{box-shadow:0 0 0 0 color-mix(in srgb, var(--accent-2) 35%, transparent);}
+    50%{box-shadow:0 0 0 5px color-mix(in srgb, var(--accent-2) 0%, transparent);}
+  }
+
+  .node-head{
+    display:flex;
+    align-items:baseline;
+    flex-wrap:wrap;
+    gap:0.15rem 0.75rem;
+    margin-bottom:0.3rem;
+  }
+  .stage-tag{
+    font-family:var(--font-mono);
+    font-size:0.72rem;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+  }
+  .node-date{
+    font-family:var(--font-mono);
+    font-size:0.78rem;
+    color:var(--accent);
+    font-variant-numeric:tabular-nums;
+  }
+  .node.pivotal .node-date{color:var(--crit);}
+  .node.active .node-date{color:var(--accent-2);}
+  .node h2{
+    font-size:1.3rem;
+    margin:0.1rem 0 0.5rem;
+    font-weight:700;
+    text-wrap:balance;
+  }
+  .node p{margin:0 0 0.7rem;color:var(--ink);}
+  .node p:last-of-type{margin-bottom:0;}
+
+  .card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:0.9rem 1.1rem;
+    margin-top:0.7rem;
+  }
+  .facts{
+    list-style:none;
+    margin:0.6rem 0 0;
+    padding:0;
+    display:grid;
+    gap:0.4rem;
+  }
+  .facts li{
+    padding-left:1.05rem;
+    position:relative;
+    font-size:0.95rem;
+  }
+  .facts li::before{
+    content:"–";
+    position:absolute;
+    left:0;
+    color:var(--ink-dim);
+  }
+  .commits{
+    display:flex;
+    flex-wrap:wrap;
+    gap:0.4rem;
+    margin-top:0.7rem;
+  }
+  .chip{
+    font-family:var(--font-mono);
+    font-size:0.7rem;
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    color:var(--ink-dim);
+    padding:0.18rem 0.5rem;
+    border-radius:2px;
+    white-space:nowrap;
+  }
+  .chip b{color:var(--ink);font-weight:600;}
+
+  .callout{
+    font-size:0.92rem;
+    color:var(--ink-dim);
+    border-left:2px solid var(--accent);
+    padding:0.15rem 0 0.15rem 0.8rem;
+    margin-top:0.8rem;
+    font-style:italic;
+  }
+  .node.pivotal .callout{border-left-color:var(--crit);}
+
+  /* ---------- phase grid (remediation) ---------- */
+  .phase-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+    gap:0.6rem;
+    margin-top:0.8rem;
+  }
+  .phase{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-left:3px solid var(--accent);
+    border-radius:2px;
+    padding:0.6rem 0.75rem;
+  }
+  .phase .p-num{
+    font-family:var(--font-mono);
+    font-size:0.68rem;
+    color:var(--ink-dim);
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    display:block;
+    margin-bottom:0.15rem;
+  }
+  .phase .p-title{font-weight:700;font-size:0.92rem;display:block;margin-bottom:0.25rem;}
+  .phase .p-result{font-size:0.85rem;color:var(--ink-dim);}
+
+  .sev-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:0.4rem;
+    margin-top:0.7rem;
+  }
+  .sev{
+    font-family:var(--font-mono);
+    font-size:0.68rem;
+    letter-spacing:0.04em;
+    padding:0.18rem 0.55rem;
+    border-radius:2px;
+    color:#fff;
+  }
+  .sev.crit{background:var(--crit);}
+  .sev.high{background:var(--high);}
+  .sev.med{background:var(--med);color:var(--ink);}
+  .sev.low{background:var(--low);color:#fff;}
+
+  .now-list{
+    list-style:none;
+    margin:0.6rem 0 0;
+    padding:0;
+    display:grid;
+    gap:0.35rem;
+    font-family:var(--font-mono);
+    font-size:0.85rem;
+  }
+  .now-list li::before{content:"▸ ";color:var(--accent-2);}
+
+  footer{
+    margin-top:3rem;
+    padding-top:1.2rem;
+    border-top:1px solid var(--line);
+    font-family:var(--font-mono);
+    font-size:0.72rem;
+    color:var(--ink-dim);
+    line-height:1.7;
+  }
+</style>
+
+<div class="page">
+  <div class="wrap">
+
+    <p class="eyebrow">Autonomous Drone Mission Simulator</p>
+    <h1>Build Journey</h1>
+    <p class="subhead">From a two-paragraph portfolio brief to a 223-test, 21-scenario tactical mission simulator — planned, scaffolded, shipped, audited, and rebuilt in the open.</p>
+    <div class="meta-row">
+      <span>Repo: <b>04-autonomous-drone-mission-simulator</b></span>
+      <span>Span: <b>2026-06-24 → 2026-07-08</b></span>
+      <span>Branch now: <b>feat/operational-realism-pass</b></span>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span class="label">Scenarios</span><span class="value">21</span></div>
+      <div class="stat"><span class="label">Tests</span><span class="value">178<span class="arrow">→</span><span class="good">223</span></span></div>
+      <div class="stat"><span class="label">Main JS chunk</span><span class="value">1613kB<span class="arrow">→</span><span class="good">268kB</span></span></div>
+      <div class="stat"><span class="label">npm audit</span><span class="value">5 vulns<span class="arrow">→</span><span class="good">0</span></span></div>
+      <div class="stat"><span class="label">Hash chain</span><span class="value">forked<span class="arrow">→</span><span class="good">verifies</span></span></div>
+      <div class="stat"><span class="label">ESLint</span><span class="value">6<span class="arrow">→</span><span class="good">0</span></span></div>
+    </div>
+
+    <div class="timeline">
+
+      <!-- Stage 0 -->
+      <div class="node">
+        <div class="node-head">
+          <span class="stage-tag">Stage 0</span>
+          <span class="node-date">2026-06-24 → 06-28</span>
+        </div>
+        <h2>Plan twice, at two altitudes</h2>
+        <p>Before any code: a concise portfolio plan, then an exhaustive AI-authored master plan — architecture, file tree, deterministic-design rules, code skeletons, scenario YAML, test strategy.</p>
+        <ul class="facts">
+          <li><code>PROJECT_PLAN.md</code> sets the lane (autonomy / robotics / defense-tech), MVP scope, and 5 phases: Map &amp; Movement → State Machine → Safety Logic → Dashboard → Replay</li>
+          <li>Hard constraint from day one: non-weaponized, no targeting, safe simulation only</li>
+          <li><code>Build Plan…txt</code> adds determinism as a design principle — seeded PRNG, fixed timestep, append-only event log, replay from logs — chosen to read credibly to a defense/robotics reviewer</li>
+          <li>A tool-agnostic handoff system is designed in: <code>START_HERE.md</code> is a reusable prompt so Cursor, Codex, or Claude Code can pick up the exact same state from the repo, never from chat memory</li>
+        </ul>
+        <p class="callout">The repo — not any single AI tool's memory — is the source of truth from the very first file.</p>
+      </div>
+
+      <!-- Stage 1 -->
+      <div class="node">
+        <div class="node-head">
+          <span class="stage-tag">Stage 1</span>
+          <span class="node-date">2026-06-29</span>
+        </div>
+        <h2>Scope upgrade, then scaffold in one session</h2>
+        <p>Building started with Claude Code Pro and immediately outgrew the MVP: a canvas-grid demo became an "agency-grade operational simulator" aimed at SFPD / OPD / DoD evaluators.</p>
+        <div class="card">
+          <ul class="facts">
+            <li>MapLibre GL real map tiles replace a canvas grid; ATAK-inspired dark tactical UI</li>
+            <li>3-drone fleet, chain-of-custody SHA-256 hash log, FAA Part 107 checker, KML export</li>
+            <li>Full scaffold in one pass: types, seeded RNG, geometry, <code>DroneEntity</code>, 8-state <code>MissionManager</code>, 50ms fixed-dt <code>SimulationLoop</code>, Zustand store, SF-coordinate demo scenarios, 4 test suites</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Stage 2 -->
+      <div class="node">
+        <div class="node-head">
+          <span class="stage-tag">Stage 2</span>
+          <span class="node-date">2026-07-01 → 07-02</span>
+        </div>
+        <h2>Ship v1.0.0</h2>
+        <p>Scenario catalog expanded to 21 (7 base + 14 extreme), README walkthrough media added, packaged for release.</p>
+        <div class="commits">
+          <span class="chip"><b>beb0eae</b> Package autonomous drone simulator</span>
+          <span class="chip"><b>f07b54f</b> Expand README scenario catalog</span>
+          <span class="chip"><b>68da937</b> Release v1.0.0</span>
+          <span class="chip"><b>b3bfe67</b> Add README walkthrough media</span>
+        </div>
+      </div>
+
+      <!-- Stage 3 — pivotal -->
+      <div class="node pivotal">
+        <div class="node-head">
+          <span class="stage-tag">Stage 3 — pivotal</span>
+          <span class="node-date">2026-07-02 → 07-03</span>
+        </div>
+        <h2>Commission a ruthless self-audit</h2>
+        <p>Instead of calling v1.0 done, a full adversarial audit was run against the live app — hiring-manager <em>and</em> seed-investor lens — and it found that the flagship feature didn't actually work.</p>
+        <div class="card">
+          <p style="margin-bottom:0.5rem;"><b>Two Critical findings:</b></p>
+          <ul class="facts">
+            <li>Chain-of-custody hash chain <b>failed its own verifier at runtime</b> — async event writes let the chain fork; the verifier existed but was never called anywhere</li>
+            <li>The in-app investor panel <b>fabricated an ROI metric</b> ("TIME SAVED") from bare arithmetic, violating the project's own banned-claims list</li>
+          </ul>
+          <div class="sev-row">
+            <span class="sev crit">2 Critical</span>
+            <span class="sev high">7 High</span>
+            <span class="sev med">10 Medium</span>
+            <span class="sev low">6 Low</span>
+          </div>
+        </div>
+        <p class="callout">The audit is the hinge of the whole project: it turned "impressive demo" into a punch list, on the record, before anyone external saw it.</p>
+      </div>
+
+      <!-- Stage 4 -->
+      <div class="node">
+        <div class="node-head">
+          <span class="stage-tag">Stage 4</span>
+          <span class="node-date">2026-07-03 → 07-04</span>
+        </div>
+        <h2>Remediate in eight numbered phases</h2>
+        <p>Same discipline as the build: one phase, one commit, one line in <code>REMEDIATION_LOG.md</code> per finding.</p>
+        <div class="phase-grid">
+          <div class="phase"><span class="p-num">Phase 0 · eb36fcf</span><span class="p-title">Toolchain &amp; hygiene</span><span class="p-result">LICENSE added, outputs/ gitignored, npm audit 5→0</span></div>
+          <div class="phase"><span class="p-num">Phase 1 · fd71ac2</span><span class="p-title">Evidence integrity</span><span class="p-result">Sync SHA-256, atomic emitEvent — chain now verifies</span></div>
+          <div class="phase"><span class="p-num">Phase 2 · eaa5117</span><span class="p-title">Claims honesty</span><span class="p-result">Fabricated KPIs deleted, Remote ID decoupled from C2</span></div>
+          <div class="phase"><span class="p-num">Phase 3 · faa9dac</span><span class="p-title">Sim correctness</span><span class="p-result">Drift-corrected clock, Launch Bay wiring fixed</span></div>
+          <div class="phase"><span class="p-num">Phase 4 · 75adce6</span><span class="p-title">Domain credibility</span><span class="p-result">Deconfliction now acts; thermal localization error added</span></div>
+          <div class="phase"><span class="p-num">Phase 5 · 816c47c</span><span class="p-title">Performance &amp; React</span><span class="p-result">useShallow everywhere; 1613kB → 268kB main chunk</span></div>
+          <div class="phase"><span class="p-num">Phase 6 · 8021e62</span><span class="p-title">Test coverage</span><span class="p-result">jsdom + integration tests, error boundary; 178 → 223 tests</span></div>
+          <div class="phase"><span class="p-num">Phase 7 · a0a19f5</span><span class="p-title">Presentation &amp; docs</span><span class="p-result">Architecture notes, README verification section</span></div>
+        </div>
+      </div>
+
+      <!-- Stage 5 — active -->
+      <div class="node active">
+        <div class="node-head">
+          <span class="stage-tag">Stage 5 — in progress</span>
+          <span class="node-date">2026-07-07 → now</span>
+        </div>
+        <h2>Operational realism pass</h2>
+        <p><code>7f6ca70</code> fixed two live bugs (conflict avoidance never engaging; loading screen could hang forever). Current branch <code>feat/operational-realism-pass</code> is uncommitted work in progress:</p>
+        <ul class="now-list">
+          <li>LaunchCoordinator.ts — deterministic fanned launch bays + staggered takeoff timing ("hive-mind" launch, no two drones lift from the same spot)</li>
+          <li>staggeredLaunch.spec.ts — end-to-end test through the real production tick</li>
+          <li>scenarioRouteSanity.spec.ts — new route-sanity regression coverage</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <footer>
+      Reconstructed from git history and project docs — PROJECT_PLAN.md, Build&nbsp;Plan…txt, HANDOFF.md,
+      AUDIT_PORTFOLIO_INVESTOR_READINESS.md, REMEDIATION_LOG.md — cross-checked against `git log` and the current working tree.
+    </footer>
+
+  </div>
+</div>

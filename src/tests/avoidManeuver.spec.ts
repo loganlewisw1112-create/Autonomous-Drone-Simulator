@@ -93,13 +93,16 @@ describe('avoid maneuver — production loop integration', () => {
   })
 
   it('a detected conflict sends the give-way drone through avoid and back, with chained events', () => {
-    // Force a conflict: two airborne drones converging at the same altitude within the
-    // 30 m horizontal / 15 ft vertical separation minima.
+    // Force a conflict: two airborne drones converging at nearly the same altitude
+    // within the 30 m horizontal / 15 ft vertical separation minima. Positions are
+    // set explicitly here — the coordinated launch now fans bays apart, so we can no
+    // longer rely on stacked spawn points to manufacture a climb-out conflict.
     const st = useDroneStore.getState()
     const [a, b] = st.drones
+    const p = scenario.startPosition
     st.setDrones(st.drones.map((d) => {
-      if (d.id === a.id) return { ...d, missionState: 'navigate' as const, altitudeFt: 120, speedMs: 8, headingDeg: 90 }
-      if (d.id === b.id) return { ...d, missionState: 'navigate' as const, altitudeFt: 121, speedMs: 8, headingDeg: 270 }
+      if (d.id === a.id) return { ...d, missionState: 'navigate' as const, position: { lat: p.lat, lng: p.lng }, altitudeFt: 120, speedMs: 8, headingDeg: 90 }
+      if (d.id === b.id) return { ...d, missionState: 'navigate' as const, position: { lat: p.lat, lng: p.lng + 0.0001 }, altitudeFt: 121, speedMs: 8, headingDeg: 270 }
       return d
     }))
     useDroneStore.getState().setRunning(true)

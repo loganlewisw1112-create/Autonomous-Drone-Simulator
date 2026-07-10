@@ -18,6 +18,7 @@ export interface MissionManagerState {
   batteryReservePct?: number
   weatherForceRtb?: boolean
   weatherHazard?: string
+  launchCommandedSec?: number   // sim-time the launch command was issued (staggered takeoff)
 }
 
 export interface CommandResult {
@@ -66,8 +67,19 @@ export function getNextCommand(drone: DroneState, mm: MissionManagerState): Comm
 
   switch (nextMissionState) {
     case 'idle':
-    case 'preflight':
       return { cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: 0 }, nextState: nextMissionState, nextWaypointIndex: nextWpIdx }
+
+    case 'preflight': {
+      // Staggered "hive-mind" launch: hold on the pad until this drone's scheduled
+      // slot arrives (measured from when the launch command was issued), then climb.
+      const dueAt = (mm.launchCommandedSec ?? 0) + (drone.scheduledLaunchSec ?? 0)
+      const cleared = mm.launchCommandedSec !== undefined && mm.elapsedSec >= dueAt
+      return {
+        cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: 0 },
+        nextState: cleared ? 'launch' : 'preflight',
+        nextWaypointIndex: nextWpIdx,
+      }
+    }
 
     case 'launch':
       targetAltFt = assignedAltitudeFt
