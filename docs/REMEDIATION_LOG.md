@@ -21,7 +21,7 @@ Phase 5 section for those; they require business work, not code.
 | H6.6 — Regex/template-generated ops text leaks into operator UI | High | **Fixed.** `routePatternFor` matches drone role before scenario text; "Explicit simulated…" filler rewritten; `deriveAgencies` uses a token scan instead of a fragile name-prefix split. | 4 |
 | H7 — `npm audit`: 5 vulnerabilities (1 critical, 1 high) in dev toolchain | High | **Fixed.** vitest 2→4 major upgrade; `npm audit` now reports 0 vulnerabilities. | 0 |
 | M1 — After-action export during replay scrub reflects stale frame state | Medium | **Fixed.** `MissionReplaySession` snapshots final fleet/thermal/weather state at stop time; exports prefer the snapshot over live (scrub-contaminated) store fields. | 3 |
-| M2 — Route suggestion fallback can silently replace a route with no diff shown | Medium | **Not addressed** — out of scope for this plan. Still open. |  |
+| M2 — Route suggestion fallback can silently replace a route with no diff shown | Medium | **Fixed** (build-update pass, July 2026). Every pending suggestion card shows a current-vs-suggested route diff (waypoints, distance, first→last labels); regression test in `operatorCommandPanel.spec.tsx`. |  |
 | M3 — All geofences render identical red regardless of type/authority | Medium | **Fixed.** Styled by authority (no-fly / restricted / authorized-bypass) with an on-map legend. | 4 |
 | M4 — Single unsplit ~1.6MB JS chunk | Medium | **Fixed.** `manualChunks` isolates maplibre-gl/recharts/react; 3 modal components lazy-loaded. Main app chunk: 1613kB → 268kB. | 5 |
 | M5 — Replay buffer comment wrong; no truncation warning | Medium | **Fixed.** Comment corrected (~10 min, not ~5); ReplayPanel shows a truncation note when early frames were dropped. | 3 |
@@ -34,8 +34,8 @@ Phase 5 section for those; they require business work, not code.
 | M12 — `nearestStation` uses exact-equality, not true nearest | Low | **Fixed.** Now a real nearest-by-distance search. | 4 |
 | M13 — "AI Detection Cue" label (no ML exists anywhere) | Low (Medium for investor read) | **Fixed.** Renamed to "Thermal Detection Cue"; regression test asserts no "AI" wording on the demo spine. | 2 |
 | M14 — Preflight checklist is pre-checked theater | Low | **Fixed.** Items are individually checkable; "Continue" gates on all confirmed. | 2 |
-| M15 — Map occlusion below ~1300px viewport width | Low | **Not addressed** — out of scope for this plan. Still open. |  |
-| M16 — Windows launcher echoes exceptions; stray runtime files in the release tree | Low | **Not addressed** — explicitly out of scope (`outputs/` content untouched per scope decision). |  |
+| M15 — Map occlusion below ~1300px viewport width | Low | **Fixed** (build-update pass, July 2026). 1300px breakpoint narrows shell columns and ops-hub/status-feed overlays; verified at 1280px. |  |
+| M16 — Windows launcher echoes exceptions; stray runtime files in the release tree | Low | **Fixed** (build-update pass, July 2026). Launcher promoted to tracked source (`scripts/windows/Start-DroneSimulator.ps1`) with a packaging script; 500s return a generic body, runtime markers write to a temp rundir cleaned on exit. Verified live: 200/404 correct, package tree stays pristine. |  |
 
 ## Net result
 
