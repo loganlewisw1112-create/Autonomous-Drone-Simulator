@@ -157,11 +157,12 @@ npm run build
 npm audit
 ```
 
-The production build splits MapLibre and Recharts into their own vendor chunks
-(`build.rollupOptions.output.manualChunks` in `vite.config.ts`), so the app's own code ships as
-a single chunk well under Vite's 500 kB warning threshold. MapLibre and Recharts themselves are
-still reported as large chunks — that's the libraries' own size, isolated into cacheable
-vendor bundles rather than inlined into app code.
+The production build isolates MapLibre into its own vendor chunk
+(`build.rollupOptions.output.manualChunks` in `vite.config.ts`) and defers Recharts entirely:
+the telemetry charts are a `React.lazy` component, so the ~530 kB charts bundle loads
+asynchronously and never blocks first paint. MapLibre is still reported as a large chunk —
+that's the library's own size, isolated into a cacheable vendor bundle rather than inlined
+into app code.
 
 ## Deployment
 
