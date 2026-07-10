@@ -15,5 +15,11 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     setupFiles: ['./src/tests/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov'],
+      include: ['src/**'],
+      exclude: ['src/tests/**', 'src/main.tsx'],
+    },
   },
 })

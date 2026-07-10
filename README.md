@@ -163,6 +163,16 @@ a single chunk well under Vite's 500 kB warning threshold. MapLibre and Recharts
 still reported as large chunks — that's the libraries' own size, isolated into cacheable
 vendor bundles rather than inlined into app code.
 
+## Deployment
+
+Every merge to `main` deploys automatically to GitHub Pages via
+`.github/workflows/deploy.yml` (official `actions/deploy-pages` flow, gated on
+typecheck + tests passing). The workflow sets `GITHUB_PAGES=true` so Vite builds
+with the `/Autonomous-Drone-Simulator/` base path; local builds keep `/`.
+
+Manual fallback (maintainer only): `npm run deploy` publishes `dist/` to the
+`gh-pages` branch with the `gh-pages` CLI.
+
 ## Architecture & Verification
 
 See [`docs/ARCHITECTURE_NOTES.md`](docs/ARCHITECTURE_NOTES.md) for the deterministic simulation
