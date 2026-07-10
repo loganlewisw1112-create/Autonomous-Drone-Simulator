@@ -79,4 +79,17 @@ describe('<OperatorCommandPanel />', () => {
     render(<OperatorCommandPanel />)
     expect(screen.getByText('UAV-01 route rejected: Test Zone')).toBeInTheDocument()
   })
+
+  it('shows a route diff on pending suggestions — never a silent swap (M2)', () => {
+    // Generate real suggestions through the store action so the card renders
+    // exactly what production produces.
+    useDroneStore.getState().generateRouteSuggestionsForDrone('uav-01')
+    expect(useDroneStore.getState().routeSuggestions.length).toBeGreaterThan(0)
+
+    render(<OperatorCommandPanel />)
+    const diff = screen.getAllByTestId('suggestion-route-diff')[0]
+    // Old side: no saved route in this fixture; new side: waypoint count + distance.
+    expect(diff.textContent).toContain('no saved route')
+    expect(diff.textContent).toMatch(/\+ \d+ wp · \d+(\.\d+)? km/)
+  })
 })
