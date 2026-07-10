@@ -314,38 +314,45 @@ export const usssPresidentialSF: ScenarioConfig = {
 export const femaFortMyers: ScenarioConfig = {
   id: 'extreme_fema_fort_myers',
   name: 'FEMA USAR — Hurricane Ian, Fort Myers Beach',
-  description: 'FEMA USAR Florida Task Force 4 deploys five DJI Matrice 300 RTK drones for systematic grid search of Estero Island after Hurricane Ian. Storm surge collapsed ~40% of structures. Primary survivor signature: 36–37°C trapped in void vs 88°F ambient debris. Two sorties cover the full island before inbound weather window closes. SIMULATION ONLY.',
+  description: 'FEMA USAR Florida Task Force 4 deploys five DJI Matrice 300 RTK drones from a north-end staging area to grid-search the north sector of Estero Island after Hurricane Ian. Storm surge collapsed ~40% of structures. Primary survivor signature: 36–37°C trapped in void vs 88°F ambient debris. Four parallel lanes sweep north→south while a fifth drone holds high as a comms relay. SIMULATION ONLY.',
   seed: 20006,
   droneCount: 5,
   missionType: 'waypoint',
-  startPosition: { lat: 26.4617, lng: -81.9554 },
+  // Staging area at the north tip (Bowditch Point vicinity) — on land and clear
+  // of both the over-water limit and the USAR helo LZ no-fly. Launch bays fan out
+  // automatically from here via the coordinated launch planner.
+  startPosition: { lat: 26.4650, lng: -81.9550 },
   waypoints: [],
+  // Four parallel search lanes (~155 m apart E–W) sweeping the ~1 km north sector
+  // N→S, plus a high relay. No shared points; the helo LZ is routed around, not
+  // flown through. Survivor-contact dwells sit on the actual heat signatures.
   perDroneWaypoints: {
     'uav-01': [
-      { id: 'fm-01-strip-n',    position: { lat: 26.4648, lng: -81.9560 }, altitudeFt: 80,  label: 'Strip1-North',   dwellTimeSec: 18 },
-      { id: 'fm-01-strip-m',    position: { lat: 26.4632, lng: -81.9560 }, altitudeFt: 80,  label: 'Strip1-Mid',     dwellTimeSec: 18 },
-      { id: 'fm-01-strip-s',    position: { lat: 26.4615, lng: -81.9560 }, altitudeFt: 80,  label: 'Strip1-South',   dwellTimeSec: 20 },
-      { id: 'fm-01-contact-a',  position: { lat: 26.4622, lng: -81.9565 }, altitudeFt: 60,  label: 'Contact-Alpha',  dwellTimeSec: 25 },
+      { id: 'fm-01-lane-n',   position: { lat: 26.4648, lng: -81.9562 }, altitudeFt: 80,  label: 'Lane1-North',   dwellTimeSec: 14 },
+      { id: 'fm-01-contact-a', position: { lat: 26.4622, lng: -81.9563 }, altitudeFt: 60,  label: 'Contact-Alpha', dwellTimeSec: 24 },
+      { id: 'fm-01-lane-m',   position: { lat: 26.4602, lng: -81.9562 }, altitudeFt: 80,  label: 'Lane1-Mid',     dwellTimeSec: 14 },
+      { id: 'fm-01-lane-s',   position: { lat: 26.4564, lng: -81.9562 }, altitudeFt: 80,  label: 'Lane1-South',   dwellTimeSec: 16 },
     ],
     'uav-02': [
-      { id: 'fm-02-strip-n',    position: { lat: 26.4648, lng: -81.9545 }, altitudeFt: 100, label: 'Strip2-North',   dwellTimeSec: 18 },
-      { id: 'fm-02-strip-m',    position: { lat: 26.4632, lng: -81.9545 }, altitudeFt: 100, label: 'Strip2-Mid',     dwellTimeSec: 18 },
-      { id: 'fm-02-strip-s',    position: { lat: 26.4615, lng: -81.9545 }, altitudeFt: 100, label: 'Strip2-South',   dwellTimeSec: 18 },
-      { id: 'fm-02-contact-b',  position: { lat: 26.4638, lng: -81.9542 }, altitudeFt: 60,  label: 'Contact-Bravo',  dwellTimeSec: 25 },
+      { id: 'fm-02-lane-n',   position: { lat: 26.4648, lng: -81.9546 }, altitudeFt: 100, label: 'Lane2-North',   dwellTimeSec: 14 },
+      { id: 'fm-02-contact-b', position: { lat: 26.4638, lng: -81.9544 }, altitudeFt: 60,  label: 'Contact-Bravo', dwellTimeSec: 24 },
+      { id: 'fm-02-lane-m',   position: { lat: 26.4602, lng: -81.9546 }, altitudeFt: 100, label: 'Lane2-Mid',     dwellTimeSec: 14 },
+      { id: 'fm-02-lane-s',   position: { lat: 26.4564, lng: -81.9546 }, altitudeFt: 100, label: 'Lane2-South',   dwellTimeSec: 16 },
     ],
     'uav-03': [
-      { id: 'fm-03-strip-n',    position: { lat: 26.4648, lng: -81.9530 }, altitudeFt: 120, label: 'Strip3-North',   dwellTimeSec: 18 },
-      { id: 'fm-03-strip-m',    position: { lat: 26.4632, lng: -81.9530 }, altitudeFt: 120, label: 'Strip3-Mid',     dwellTimeSec: 18 },
-      { id: 'fm-03-struct-c',   position: { lat: 26.4618, lng: -81.9528 }, altitudeFt: 80,  label: 'Structure-C',    dwellTimeSec: 25 },
+      { id: 'fm-03-lane-n',   position: { lat: 26.4648, lng: -81.9530 }, altitudeFt: 120, label: 'Lane3-North',   dwellTimeSec: 14 },
+      { id: 'fm-03-lane-m',   position: { lat: 26.4602, lng: -81.9530 }, altitudeFt: 120, label: 'Lane3-Mid',     dwellTimeSec: 14 },
+      { id: 'fm-03-struct-c', position: { lat: 26.4582, lng: -81.9530 }, altitudeFt: 90,  label: 'Structure-C',   dwellTimeSec: 22 },
+      { id: 'fm-03-lane-s',   position: { lat: 26.4564, lng: -81.9530 }, altitudeFt: 120, label: 'Lane3-South',   dwellTimeSec: 16 },
     ],
     'uav-04': [
-      { id: 'fm-04-strip-n',    position: { lat: 26.4648, lng: -81.9515 }, altitudeFt: 140, label: 'Strip4-North',   dwellTimeSec: 18 },
-      { id: 'fm-04-strip-m',    position: { lat: 26.4632, lng: -81.9515 }, altitudeFt: 140, label: 'Strip4-Mid',     dwellTimeSec: 18 },
-      { id: 'fm-04-beach',      position: { lat: 26.4615, lng: -81.9510 }, altitudeFt: 100, label: 'Beach-Edge',     dwellTimeSec: 15 },
+      { id: 'fm-04-lane-n',   position: { lat: 26.4648, lng: -81.9514 }, altitudeFt: 140, label: 'Lane4-North',   dwellTimeSec: 14 },
+      { id: 'fm-04-lane-m',   position: { lat: 26.4602, lng: -81.9514 }, altitudeFt: 140, label: 'Lane4-Mid',     dwellTimeSec: 14 },
+      { id: 'fm-04-beach',    position: { lat: 26.4564, lng: -81.9512 }, altitudeFt: 110, label: 'Beach-Edge',    dwellTimeSec: 15 },
     ],
     'uav-05': [
-      { id: 'fm-05-relay',      position: { lat: 26.4632, lng: -81.9535 }, altitudeFt: 220, label: 'USAR-Relay',     dwellTimeSec: 60 },
-      { id: 'fm-05-contact-d',  position: { lat: 26.4645, lng: -81.9545 }, altitudeFt: 160, label: 'Contact-Delta',  dwellTimeSec: 30 },
+      { id: 'fm-05-relay',    position: { lat: 26.4606, lng: -81.9538 }, altitudeFt: 220, label: 'USAR-Relay',    dwellTimeSec: 90 },
+      { id: 'fm-05-relay-s',  position: { lat: 26.4576, lng: -81.9538 }, altitudeFt: 200, label: 'Relay-South',   dwellTimeSec: 40 },
     ],
   },
   geofences: [
@@ -624,7 +631,8 @@ export const calFireDixieComplex: ScenarioConfig = {
   seed: 20011,
   droneCount: 5,
   missionType: 'waypoint',
-  startPosition: { lat: 40.0082, lng: -121.0085 },
+  // ICP staging south of the air-tanker drop corridor (never launch under retardant drops).
+  startPosition: { lat: 40.0072, lng: -121.0085 },
   waypoints: [],
   perDroneWaypoints: {
     'uav-01': [
@@ -693,7 +701,8 @@ export const cbpBigBendDesertSAR: ScenarioConfig = {
   seed: 20012,
   droneCount: 4,
   missionType: 'waypoint',
-  startPosition: { lat: 29.3742, lng: -103.7285 },
+  // Staging on the US side, north of the Mexican ADIZ boundary.
+  startPosition: { lat: 29.3770, lng: -103.7285 },
   waypoints: [],
   perDroneWaypoints: {
     'uav-01': [

@@ -1,36 +1,39 @@
 import type { ScenarioConfig } from '@/types'
 
-// Downtown San Francisco area — Golden Gate Park vicinity
+// Golden Gate Park, San Francisco — a simple, legible area-search demo.
+// Three drones each own a parallel lane (~120 m apart N–S) and sweep west→east
+// across the same ~350 m box. Lanes never overlap laterally, so the drones are
+// separated by real ground distance, not just altitude stacking. Good for
+// verifying movement, staggered launch, telemetry, and a clean thermal find.
 export const demoBasic: ScenarioConfig = {
   id: 'demo_basic',
   name: 'Demo — Basic Waypoint',
-  description: 'Three drones fly a square route. Good for verifying movement and telemetry.',
+  description: 'Three drones sweep parallel lanes across a search box. Good for verifying coordinated launch, movement, and telemetry.',
   seed: 42,
   droneCount: 3,
   missionType: 'waypoint',
-  startPosition: { lat: 37.7695, lng: -122.4862 },
+  startPosition: { lat: 37.7701, lng: -122.4862 },
+  // Faint backbone = the central lane, drawn for context only.
   waypoints: [
-    { id: 'wp1', position: { lat: 37.7700, lng: -122.4870 }, altitudeFt: 120, label: 'Alpha' },
-    { id: 'wp2', position: { lat: 37.7710, lng: -122.4855 }, altitudeFt: 120, label: 'Bravo' },
-    { id: 'wp3', position: { lat: 37.7705, lng: -122.4840 }, altitudeFt: 120, label: 'Charlie' },
-    { id: 'wp4', position: { lat: 37.7695, lng: -122.4850 }, altitudeFt: 120, label: 'Delta' },
+    { id: 'wp1', position: { lat: 37.7701, lng: -122.4882 }, altitudeFt: 120, label: 'Box-W' },
+    { id: 'wp2', position: { lat: 37.7701, lng: -122.4842 }, altitudeFt: 120, label: 'Box-E' },
   ],
-  // Each drone flies a distinct L-shaped leg of the square
+  // One lane per drone — parallel transects, no shared points, no crossings.
   perDroneWaypoints: {
     'uav-01': [
-      { id: 'd1-alpha',   position: { lat: 37.7700, lng: -122.4870 }, altitudeFt: 100, label: 'Alpha' },
-      { id: 'd1-bravo',   position: { lat: 37.7710, lng: -122.4855 }, altitudeFt: 100, label: 'Bravo' },
-      { id: 'd1-charlie', position: { lat: 37.7705, lng: -122.4840 }, altitudeFt: 100, label: 'Charlie' },
+      { id: 'd1-w', position: { lat: 37.7690, lng: -122.4882 }, altitudeFt: 100, label: 'Lane1-W' },
+      { id: 'd1-m', position: { lat: 37.7690, lng: -122.4862 }, altitudeFt: 100, label: 'Lane1-Mid', dwellTimeSec: 10 },
+      { id: 'd1-e', position: { lat: 37.7690, lng: -122.4842 }, altitudeFt: 100, label: 'Lane1-E' },
     ],
     'uav-02': [
-      { id: 'd2-bravo',   position: { lat: 37.7710, lng: -122.4855 }, altitudeFt: 120, label: 'Bravo' },
-      { id: 'd2-charlie', position: { lat: 37.7705, lng: -122.4840 }, altitudeFt: 120, label: 'Charlie' },
-      { id: 'd2-delta',   position: { lat: 37.7695, lng: -122.4850 }, altitudeFt: 120, label: 'Delta' },
+      { id: 'd2-w', position: { lat: 37.7701, lng: -122.4882 }, altitudeFt: 120, label: 'Lane2-W' },
+      { id: 'd2-m', position: { lat: 37.7701, lng: -122.4862 }, altitudeFt: 120, label: 'Lane2-Mid', dwellTimeSec: 10 },
+      { id: 'd2-e', position: { lat: 37.7701, lng: -122.4842 }, altitudeFt: 120, label: 'Lane2-E' },
     ],
     'uav-03': [
-      { id: 'd3-charlie', position: { lat: 37.7705, lng: -122.4840 }, altitudeFt: 140, label: 'Charlie' },
-      { id: 'd3-delta',   position: { lat: 37.7695, lng: -122.4850 }, altitudeFt: 140, label: 'Delta' },
-      { id: 'd3-alpha',   position: { lat: 37.7700, lng: -122.4870 }, altitudeFt: 140, label: 'Alpha' },
+      { id: 'd3-w', position: { lat: 37.7712, lng: -122.4882 }, altitudeFt: 140, label: 'Lane3-W' },
+      { id: 'd3-m', position: { lat: 37.7712, lng: -122.4862 }, altitudeFt: 140, label: 'Lane3-Mid', dwellTimeSec: 10 },
+      { id: 'd3-e', position: { lat: 37.7712, lng: -122.4842 }, altitudeFt: 140, label: 'Lane3-E' },
     ],
   },
   geofences: [
@@ -38,18 +41,18 @@ export const demoBasic: ScenarioConfig = {
       id: 'gf1',
       label: 'Restricted Airspace',
       polygon: [
-        { lat: 37.7720, lng: -122.4880 },
-        { lat: 37.7720, lng: -122.4820 },
-        { lat: 37.7730, lng: -122.4820 },
-        { lat: 37.7730, lng: -122.4880 },
+        { lat: 37.7722, lng: -122.4890 },
+        { lat: 37.7722, lng: -122.4834 },
+        { lat: 37.7732, lng: -122.4834 },
+        { lat: 37.7732, lng: -122.4890 },
       ],
       maxAltitudeFt: 0,
       type: 'no_fly',
     },
   ],
   heatSources: [
-    { id: 'hs1', class: 'generic-person', position: { lat: 37.7703, lng: -122.4860 }, tempC: 37, radiusM: 3 },
-    { id: 'hs2', class: 'vehicle', position: { lat: 37.7708, lng: -122.4848 }, tempC: 85, radiusM: 5 },
+    { id: 'hs1', class: 'generic-person', position: { lat: 37.7701, lng: -122.4858 }, tempC: 37, radiusM: 3 },
+    { id: 'hs2', class: 'vehicle', position: { lat: 37.7690, lng: -122.4850 }, tempC: 85, radiusM: 5 },
   ],
   batteryStartPct: 100,
   batteryDrainRatePerSec: 0.02,

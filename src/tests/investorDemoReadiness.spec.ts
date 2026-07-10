@@ -157,6 +157,7 @@ describe('investor demo store state', () => {
         showPreflight: true,
         showLaunchBay: true,
         showEventLog: true,
+        layerVisibility: { relays: true, gates: true, recharge: true, traffic: true, thermal: true, irFootprints: true },
       },
       investorDemo: {
         enabled: false,

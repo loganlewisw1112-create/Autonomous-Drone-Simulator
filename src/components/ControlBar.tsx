@@ -45,12 +45,10 @@ export function ControlBar() {
 
   function handleStart() {
     if (!scenario || !launchReady) return
-    const { updateDrone, drones: currentDrones } = useDroneStore.getState()
-    currentDrones.forEach((d) => {
-      if (d.missionState === 'idle' || d.missionState === 'landed') {
-        updateDrone(d.id, { missionState: 'launch' })
-      }
-    })
+    // Issue the coordinated launch command: parked drones enter the 'preflight'
+    // hold and lift off on their staggered schedule (see beginLaunchSequence +
+    // MissionManager). No more all-at-once takeoff from stacked spawn points.
+    useDroneStore.getState().beginLaunchSequence()
     setRunning(true)
     startSimLoop()
   }
