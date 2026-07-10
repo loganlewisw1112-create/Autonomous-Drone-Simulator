@@ -1,5 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
+import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { verifyChain } from '@/utils/chainOfCustody'
@@ -9,14 +8,16 @@ import { buildMissionOutcomeSummary } from '@/sim/demo/missionOutcome'
 import { buildUtmAirspaceState } from '@/sim/demo/utmEngine'
 import type { MissionEvent } from '@/types'
 
-// Tactical palette (hex — CSS vars don't work in recharts props)
+// Recharts is a ~530kB vendor chunk — keep it out of the first paint by lazy-loading
+// the chart block (same React.lazy pattern as the modals in App.tsx).
+const TelemetryCharts = lazy(() => import('@/components/TelemetryCharts').then((m) => ({ default: m.TelemetryCharts })))
+
+// Tactical palette (hex, shared with chart colors in TelemetryCharts)
 const C_BLUE = '#00d4ff'
 const C_GREEN = '#44ff88'
 const C_YELLOW = '#ffaa00'
 const C_RED = '#ff4444'
 const C_MAGENTA = '#ff88ff'
-const C_BG = '#0d1117'
-const C_GRID = '#1e2b3a'
 
 const EVENT_COLORS: Record<string, string> = {
   mission_start: C_BLUE,
@@ -168,67 +169,11 @@ export function TelemetryPanel() {
             )}
           </div>
 
-          {/* Altitude chart */}
+          {/* Altitude / battery / speed charts (lazy — recharts stays out of first paint) */}
           {history.length > 2 && (
-            <div className="panel-section">
-              <div className="panel-label" style={{ marginBottom: 4 }}>Altitude (ft AGL)</div>
-              <ResponsiveContainer width="100%" height={60}>
-                <AreaChart data={history} margin={{ top: 2, right: 4, bottom: 0, left: -20 }}>
-                  <defs>
-                    <linearGradient id="altGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={C_BLUE} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={C_BLUE} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="t" hide />
-                  <YAxis domain={[0, 420]} tick={{ fill: '#556677', fontSize: 9 }} tickCount={3} />
-                  <Tooltip contentStyle={{ background: C_BG, border: `1px solid ${C_GRID}`, fontSize: 10 }} labelStyle={{ color: '#8899aa' }} itemStyle={{ color: C_BLUE }} formatter={(v: number) => [`${v} ft`, 'ALT']} labelFormatter={(t: number) => `T+${t}s`} />
-                  <Area type="monotone" dataKey="alt" stroke={C_BLUE} strokeWidth={1.5} fill="url(#altGrad)" dot={false} isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Battery chart */}
-          {history.length > 2 && (
-            <div className="panel-section">
-              <div className="panel-label" style={{ marginBottom: 4 }}>Battery (%)</div>
-              <ResponsiveContainer width="100%" height={60}>
-                <AreaChart data={history} margin={{ top: 2, right: 4, bottom: 0, left: -20 }}>
-                  <defs>
-                    <linearGradient id="batGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={batColor} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={batColor} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="t" hide />
-                  <YAxis domain={[0, 100]} tick={{ fill: '#556677', fontSize: 9 }} tickCount={3} />
-                  <Tooltip contentStyle={{ background: C_BG, border: `1px solid ${C_GRID}`, fontSize: 10 }} labelStyle={{ color: '#8899aa' }} itemStyle={{ color: batColor }} formatter={(v: number) => [`${v}%`, 'BAT']} labelFormatter={(t: number) => `T+${t}s`} />
-                  <Area type="monotone" dataKey="bat" stroke={batColor} strokeWidth={1.5} fill="url(#batGrad)" dot={false} isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Speed chart */}
-          {history.length > 2 && (
-            <div className="panel-section">
-              <div className="panel-label" style={{ marginBottom: 4 }}>Speed (m/s)</div>
-              <ResponsiveContainer width="100%" height={60}>
-                <AreaChart data={history} margin={{ top: 2, right: 4, bottom: 0, left: -20 }}>
-                  <defs>
-                    <linearGradient id="spdGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={C_YELLOW} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={C_YELLOW} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="t" hide />
-                  <YAxis domain={[0, 15]} tick={{ fill: '#556677', fontSize: 9 }} tickCount={3} />
-                  <Tooltip contentStyle={{ background: C_BG, border: `1px solid ${C_GRID}`, fontSize: 10 }} labelStyle={{ color: '#8899aa' }} itemStyle={{ color: C_YELLOW }} formatter={(v: number) => [`${v} m/s`, 'SPD']} labelFormatter={(t: number) => `T+${t}s`} />
-                  <Area type="monotone" dataKey="spd" stroke={C_YELLOW} strokeWidth={1.5} fill="url(#spdGrad)" dot={false} isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            <Suspense fallback={null}>
+              <TelemetryCharts history={history} batColor={batColor} />
+            </Suspense>
           )}
 
           {/* Sensor mode */}
