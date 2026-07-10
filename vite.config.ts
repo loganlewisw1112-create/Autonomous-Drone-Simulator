@@ -16,9 +16,12 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        // maplibre is a static import (core map), so it stays a named vendor chunk.
+        // recharts is NOT listed here: it's only reached via the lazy TelemetryCharts
+        // component, so Rollup splits it into an async chunk automatically — listing it
+        // in manualChunks would pull it back into the entry's modulepreload graph.
         manualChunks: {
           maplibre: ['maplibre-gl'],
-          charts: ['recharts'],
         },
       },
     },
