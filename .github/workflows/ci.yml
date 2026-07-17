@@ -41,7 +41,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         # Non-fatal: account artifact-storage quota can reject uploads; coverage is
         # report-only and must never fail the verify gate.
