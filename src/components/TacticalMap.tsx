@@ -232,7 +232,9 @@ export function TacticalMap() {
       style: forceLocalMapStyle ? LOCAL_DEMO_MAP_STYLE : MAP_STYLE,
       center: [-122.4862, 37.7695],
       zoom: 15,
-      attributionControl: false,
+      // OSM/ODbL requires visible attribution on published maps; compact keeps it
+      // out of the way of the tactical HUD. OpenFreeMap credit added explicitly.
+      attributionControl: { compact: true, customAttribution: '© OpenFreeMap' },
     })
 
     // Idempotent: adds all permanent overlay sources/layers; safe to call after style switch

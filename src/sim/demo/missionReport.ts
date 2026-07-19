@@ -58,13 +58,13 @@ export function buildAfterActionPackage(input: BuildAfterActionPackageInput): Af
   const positionSampleCount = Object.values(input.positionHistory).reduce((sum, samples) => sum + samples.length, 0)
 
   return {
-    kind: 'investor_after_action_package',
+    kind: 'after_action_package',
     generatedAt: new Date().toISOString(),
     scenarioId,
     scenarioName,
     scenarioVariant: { ...input.scenarioVariant },
     missionReport: {
-      title: `${scenarioName} - Investor Demo After Action`,
+      title: `${scenarioName} - After Action Report`,
       summary: `${outcome.headline} ${input.events.length} chain-of-custody events captured for review.`,
       replayFrameCount: input.replayFrameCount,
       eventCount: input.events.length,

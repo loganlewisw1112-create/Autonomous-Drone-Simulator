@@ -160,7 +160,7 @@ export function ControlBar() {
   const allLanded = drones.length > 0 && drones.every((d) => ['idle', 'landed'].includes(d.missionState))
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <div className="control-dock" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {/* Weather variant strip — visible when scenario loaded, collapsed by default */}
       {scenario && !ui.isRunning && (
         <div style={{
@@ -281,14 +281,14 @@ export function ControlBar() {
           className={`btn${investorDemo.enabled ? ' active' : ''}`}
           onClick={() => setInvestorDemoEnabled(!investorDemo.enabled)}
           disabled={!scenario}
-          title="Show or hide the guided investor demo spine"
+          title="Show or hide the guided tour strip that tracks mission milestones (simulation only)"
         >
-          DEMO MODE
+          GUIDED TOUR
         </button>
         <button className="btn" onClick={handleDemoReset} disabled={!scenario} title="Reset transient state and saved waypoint drafts for a clean demo run">
           DEMO RESET
         </button>
-        <button className="btn" onClick={handleExportAfterAction} disabled={!scenario} title="Export investor after-action package as JSON">
+        <button className="btn" onClick={handleExportAfterAction} disabled={!scenario} title="Export after-action mission package as JSON">
           AFTER ACTION
         </button>
         {exportStatus && (

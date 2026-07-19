@@ -1018,3 +1018,91 @@ html, body, #root {
   border-radius: 3px;
   white-space: nowrap;
 }
+
+/* ── Mobile stacked layout (M-launch) ───────────────────────────────────────────
+   Below 700px the three-column grid can't fit. Stack: header → map → fleet →
+   telemetry → audit → control dock (sticky). Operator power tools (ops-hub,
+   UTM card, perf monitor) are desktop-only. */
+@media (max-width: 700px) {
+  html, body, #root {
+    overflow: auto;
+  }
+
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    min-height: 100dvh;
+  }
+
+  .header-bar {
+    order: 0;
+    flex-wrap: wrap;
+    min-height: 44px;
+    padding: 6px 10px;
+    gap: 8px;
+  }
+
+  .map-area {
+    order: 1;
+    height: 45dvh;
+    min-height: 300px;
+    flex: 0 0 auto;
+  }
+
+  .fleet-panel {
+    order: 2;
+    max-height: 34dvh;
+    border-right: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .telemetry-panel {
+    order: 3;
+    max-height: 45dvh;
+    overflow-y: auto;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .audit-bar {
+    order: 4;
+    position: static;
+    width: 100%;
+  }
+
+  .control-dock {
+    order: 5;
+    position: sticky;
+    bottom: 0;
+    z-index: 200;
+    background: var(--bg-panel);
+  }
+
+  .control-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 6px 10px;
+  }
+
+  .control-bar .btn,
+  .scenario-select {
+    flex: 0 0 auto;
+  }
+
+  .mission-status-feed {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    transform: none;
+    max-height: 112px;
+  }
+
+  .ops-hub,
+  .utm-status-card,
+  /* !important: PerfMonitor sets display:flex inline */
+  .perf-monitor {
+    display: none !important;
+  }
+}

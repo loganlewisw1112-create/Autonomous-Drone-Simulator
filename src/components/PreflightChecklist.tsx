@@ -1,23 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
+import { PREFLIGHT_CHECKLIST } from '@/sim/mission/preflightChecklist'
 
-const CHECKLIST = [
-  { id: 1, text: 'Remote pilot certificate verified', category: 'regulatory' },
-  { id: 2, text: 'Airspace authorization confirmed (LAANC/Part 107)', category: 'regulatory' },
-  { id: 3, text: 'Weather briefing reviewed — wind < 25 knots', category: 'weather' },
-  { id: 4, text: 'NOTAM check complete for operating area', category: 'regulatory' },
-  { id: 5, text: 'Battery fully charged (≥95%)', category: 'vehicle' },
-  { id: 6, text: 'Propellers inspected — no damage', category: 'vehicle' },
-  { id: 7, text: 'GPS satellite lock confirmed (≥8 sats)', category: 'vehicle' },
-  { id: 8, text: 'Compass calibration verified', category: 'vehicle' },
-  { id: 9, text: 'Geofences loaded and active', category: 'mission' },
-  { id: 10, text: 'Mission waypoints reviewed', category: 'mission' },
-  // Matches the simulated lost-link doctrine: drones continue their task through comms loss and
-  // reconnect on signal restore; RTB triggers on battery reserve, geofence, weather, or operator.
-  { id: 11, text: 'Lost-link procedure confirmed: continue task, reconnect on restore; RTB on reserve/geofence', category: 'mission' },
-  { id: 12, text: 'Observers briefed and in position', category: 'crew' },
-]
+const CHECKLIST = PREFLIGHT_CHECKLIST
 
 const CATEGORY_COLORS: Record<string, string> = {
   regulatory: 'var(--accent-yellow)',

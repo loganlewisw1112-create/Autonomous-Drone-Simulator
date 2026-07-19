@@ -41,7 +41,8 @@ Phase 5 section for those; they require business work, not code.
 
 - `npm audit`: 5 vulnerabilities → **0**
 - ESLint: 6 warnings → **0**
-- Tests: 178 → **223** (27 → 38 files), now spanning node unit tests, jsdom component tests, and
-  fake-timer production-loop integration tests (previously zero of the latter two)
+- Tests: 178 → **242** (27 → 42 files as of the public-launch pass), now spanning node unit
+  tests, jsdom component tests, and fake-timer production-loop integration tests (previously
+  zero of the latter two)
 - Main JS chunk: ~1,613 kB → **268 kB** (maplibre/recharts split into separate vendor chunks)
 - The chain-of-custody hash chain **verifies** on live missions (previously did not)
