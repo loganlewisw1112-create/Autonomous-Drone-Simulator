@@ -7,9 +7,11 @@ import { ControlBar } from '@/components/ControlBar'
 import { LoadingScreen } from '@/components/LoadingScreen'
 import { WelcomeOverlay } from '@/components/WelcomeOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { WindowsPlatformGate } from '@/components/PlatformGate'
 import { AccountChip } from '@/components/account/AccountChip'
 import { RotateGate } from '@/components/mobile/RotateGate'
 import { useDeviceMode } from '@/hooks/useDeviceMode'
+import { APP_TARGET, isWindowsClient } from '@/platform/appTarget'
 import { useDroneStore } from '@/store/droneStore'
 import '@/styles/tactical.css'
 
@@ -43,6 +45,12 @@ export default function App() {
   )
   const [loadingDone, setLoadingDone] = useState(false)
   const deviceMode = useDeviceMode()
+
+  // The public Windows deployment fails closed before any simulator UI loads.
+  // Its error screen offers the independent mobile deployment as the safe path.
+  if (APP_TARGET === 'windows' && !isWindowsClient()) {
+    return <WindowsPlatformGate />
+  }
 
   // Phones get a dedicated landscape-only shell; the desktop tree below is the
   // frozen launch layout and must stay byte-identical (LAW.1).

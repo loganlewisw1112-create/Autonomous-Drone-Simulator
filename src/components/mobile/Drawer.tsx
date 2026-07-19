@@ -23,6 +23,7 @@ export function Drawer({ side, open, title, onClose, children }: DrawerProps) {
       />
       <div
         className={`mobile-drawer ${side}${open ? ' open' : ''}`}
+        style={{ pointerEvents: open ? 'auto' : 'none' }}
         onTouchMove={stopTouch}
         role="dialog"
         aria-hidden={!open}
@@ -30,7 +31,15 @@ export function Drawer({ side, open, title, onClose, children }: DrawerProps) {
       >
         <div className="mobile-drawer-header">
           <span>{title}</span>
-          <button className="mobile-drawer-close" onClick={onClose} aria-label={`Close ${title}`}>✕</button>
+          <button
+            className="mobile-drawer-close"
+            onClick={onClose}
+            aria-label={`Close ${title}`}
+            disabled={!open}
+            tabIndex={open ? 0 : -1}
+          >
+            ✕
+          </button>
         </div>
         <div className="mobile-drawer-body">{open && children}</div>
       </div>
