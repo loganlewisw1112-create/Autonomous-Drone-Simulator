@@ -5,6 +5,7 @@ import { TacticalMap } from '@/components/TacticalMap'
 import { TelemetryPanel } from '@/components/TelemetryPanel'
 import { ControlBar } from '@/components/ControlBar'
 import { LoadingScreen } from '@/components/LoadingScreen'
+import { WelcomeOverlay } from '@/components/WelcomeOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useDroneStore } from '@/store/droneStore'
 import '@/styles/tactical.css'
@@ -69,6 +70,9 @@ export default function App() {
           <LaunchBayPlanner />
           <ReplayPanel />
         </Suspense>
+
+        {/* First-visit onboarding — after the loading screen clears, before any scenario */}
+        {loadingDone && <WelcomeOverlay />}
 
         {/* Audit footer */}
         <div className="audit-bar">

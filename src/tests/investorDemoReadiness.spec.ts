@@ -135,7 +135,7 @@ describe('investor demo readiness engines', () => {
 
     const serialized = serializeAfterActionPackage(packageData)
 
-    expect(packageData.kind).toBe('investor_after_action_package')
+    expect(packageData.kind).toBe('after_action_package')
     expect(packageData.compliance.disclaimer).toContain('simulation')
     expect(packageData.utm.externalTracks.length).toBeGreaterThan(0)
     expect(serialized).toContain('"missionReport"')
