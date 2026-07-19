@@ -34,10 +34,20 @@ describe('MobileShell', () => {
     render(<MobileShell />)
     const drawer = screen.getByTestId('drawer-left')
     expect(drawer.className).not.toContain('open')
+    expect(drawer).toHaveStyle({ pointerEvents: 'none' })
     fireEvent.click(screen.getByRole('button', { name: 'FLEET' }))
     expect(drawer.className).toContain('open')
+    expect(drawer).toHaveStyle({ pointerEvents: 'auto' })
     fireEvent.click(screen.getByLabelText('Close FLEET'))
     expect(drawer.className).not.toContain('open')
+    expect(drawer).toHaveStyle({ pointerEvents: 'none' })
+  })
+
+  it('keeps the closed bottom drawer from intercepting account taps', () => {
+    render(<MobileShell />)
+    const drawer = screen.getByTestId('drawer-bottom')
+    expect(drawer).toHaveStyle({ pointerEvents: 'none' })
+    expect(drawer.querySelector('.mobile-drawer-close')).toBeDisabled()
   })
 
   it('opens the scenario sheet from the dock with all variant controls', () => {

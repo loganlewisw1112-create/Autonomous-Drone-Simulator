@@ -181,6 +181,7 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 .mobile-drawer.open { transform: translate(0, 0); }
+.mobile-drawer:not(.open) { pointer-events: none; }
 
 .mobile-drawer-header {
   flex: 0 0 44px;
@@ -205,6 +206,7 @@
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+.mobile-drawer-close:disabled { pointer-events: none; }
 .mobile-drawer-body {
   flex: 1;
   min-height: 0;
