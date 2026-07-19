@@ -14,7 +14,7 @@ interface BuildComplianceStateInput {
   elapsedSec: number
 }
 
-const SIM_DISCLAIMER = 'simulation-only compliance readiness for investor demo use; no real FAA, LAANC, USS, or drone broadcast integration is performed.'
+const SIM_DISCLAIMER = 'simulation-only compliance readiness for demonstration use; no real FAA, LAANC, USS, or drone broadcast integration is performed.'
 
 // Remote ID is an independent onboard broadcast (ASTM F3411): it keeps transmitting even when
 // the C2 command link degrades or drops. Only a drone that is down/failed stops broadcasting —

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
+import { buildAutoAssignments, buildDroneIds, computeBayStatuses, computeBlockers } from '@/sim/mission/launchBayPlanning'
 import type { LaunchBayPlan, LaunchBayStatus, LaunchRecoverySite } from '@/types'
 
 export function LaunchBayPlanner() {
@@ -16,9 +17,7 @@ export function LaunchBayPlanner() {
   // Memoized so identity is stable across renders when scenario doesn't change — otherwise
   // this fresh array recreated every render defeats the bayStatuses/blockers memos below.
   const droneIds = useMemo(
-    () => scenario
-      ? Array.from({ length: scenario.droneCount }, (_, i) => `uav-${String(i + 1).padStart(2, '0')}`)
-      : [],
+    () => (scenario ? buildDroneIds(scenario) : []),
     [scenario],
   )
 
@@ -31,38 +30,15 @@ export function LaunchBayPlanner() {
     return rec
   })
 
-  const bayStatuses: LaunchBayStatus[] = useMemo(() => {
-    return siteEntries.map(([siteId, site], i) => {
-      const bayKey = `bay-${i}`
-      const weatherClosed = weatherState.launchBayAvailability[bayKey] === false
-      const assignedDroneIds = droneIds.filter((d) => assignments[d] === siteId)
-      return {
-        siteId,
-        capacityDrones: site.capacityDrones ?? 2,
-        assignedDroneIds,
-        weatherClosed,
-        closureReason: weatherClosed
-          ? `Bay closed — ${weatherState.activeHazards.slice(0, 2).join(', ') || 'severe weather'}`
-          : undefined,
-      }
-    })
-  }, [siteEntries, assignments, droneIds, weatherState])
+  const bayStatuses: LaunchBayStatus[] = useMemo(
+    () => (scenario ? computeBayStatuses(scenario, weatherState, assignments, droneIds) : []),
+    [scenario, assignments, droneIds, weatherState],
+  )
 
-  const blockers: string[] = useMemo(() => {
-    const b: string[] = []
-    droneIds.forEach((id) => {
-      if (!assignments[id]) b.push(`${id.toUpperCase()} — no launch bay assigned`)
-    })
-    bayStatuses.forEach((bay) => {
-      if (bay.weatherClosed && bay.assignedDroneIds.length > 0) {
-        b.push(`Bay ${bay.siteId} is weather-closed but has drones assigned`)
-      }
-      if (bay.assignedDroneIds.length > bay.capacityDrones) {
-        b.push(`Bay ${bay.siteId} over capacity (${bay.assignedDroneIds.length}/${bay.capacityDrones})`)
-      }
-    })
-    return b
-  }, [droneIds, assignments, bayStatuses])
+  const blockers: string[] = useMemo(
+    () => computeBlockers(droneIds, assignments, bayStatuses),
+    [droneIds, assignments, bayStatuses],
+  )
 
   const readyToLaunch = blockers.length === 0
 
@@ -73,12 +49,7 @@ export function LaunchBayPlanner() {
   }
 
   function handleAutoAssign() {
-    const auto: Record<string, string> = {}
-    droneIds.forEach((id, i) => {
-      const siteId = siteEntries[i % siteEntries.length]?.[0]
-      if (siteId) auto[id] = siteId
-    })
-    setAssignments(auto)
+    if (scenario) setAssignments(buildAutoAssignments(scenario))
   }
 
   function handleConfirm() {

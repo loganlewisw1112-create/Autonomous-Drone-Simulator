@@ -324,16 +324,16 @@
 
     <p class="eyebrow">Autonomous Drone Mission Simulator</p>
     <h1>Build Journey</h1>
-    <p class="subhead">From a two-paragraph portfolio brief to a 223-test, 21-scenario tactical mission simulator — planned, scaffolded, shipped, audited, and rebuilt in the open.</p>
+    <p class="subhead">From a two-paragraph portfolio brief to a 242-test, 21-scenario tactical mission simulator — planned, scaffolded, shipped, audited, rebuilt, and published in the open.</p>
     <div class="meta-row">
       <span>Repo: <b>04-autonomous-drone-mission-simulator</b></span>
-      <span>Span: <b>2026-06-24 → 2026-07-08</b></span>
-      <span>Branch now: <b>feat/operational-realism-pass</b></span>
+      <span>Span: <b>2026-06-24 → 2026-07-19</b></span>
+      <span>Status: <b>public launch — Vercel</b></span>
     </div>
 
     <div class="stats">
       <div class="stat"><span class="label">Scenarios</span><span class="value">21</span></div>
-      <div class="stat"><span class="label">Tests</span><span class="value">178<span class="arrow">→</span><span class="good">223</span></span></div>
+      <div class="stat"><span class="label">Tests</span><span class="value">178<span class="arrow">→</span><span class="good">242</span></span></div>
       <div class="stat"><span class="label">Main JS chunk</span><span class="value">1613kB<span class="arrow">→</span><span class="good">268kB</span></span></div>
       <div class="stat"><span class="label">npm audit</span><span class="value">5 vulns<span class="arrow">→</span><span class="good">0</span></span></div>
       <div class="stat"><span class="label">Hash chain</span><span class="value">forked<span class="arrow">→</span><span class="good">verifies</span></span></div>
@@ -436,18 +436,50 @@
         </div>
       </div>
 
-      <!-- Stage 5 — active -->
-      <div class="node active">
+      <!-- Stage 5 -->
+      <div class="node">
         <div class="node-head">
-          <span class="stage-tag">Stage 5 — in progress</span>
-          <span class="node-date">2026-07-07 → now</span>
+          <span class="stage-tag">Stage 5</span>
+          <span class="node-date">2026-07-07 → 07-10</span>
         </div>
         <h2>Operational realism pass</h2>
-        <p><code>7f6ca70</code> fixed two live bugs (conflict avoidance never engaging; loading screen could hang forever). Current branch <code>feat/operational-realism-pass</code> is uncommitted work in progress:</p>
-        <ul class="now-list">
+        <p><code>7f6ca70</code> fixed two live bugs (conflict avoidance never engaging; loading screen could hang forever), then the coordinated-launch work merged as PR #1:</p>
+        <ul class="facts">
           <li>LaunchCoordinator.ts — deterministic fanned launch bays + staggered takeoff timing ("hive-mind" launch, no two drones lift from the same spot)</li>
           <li>staggeredLaunch.spec.ts — end-to-end test through the real production tick</li>
           <li>scenarioRouteSanity.spec.ts — new route-sanity regression coverage</li>
+        </ul>
+      </div>
+
+      <!-- Stage 6 -->
+      <div class="node">
+        <div class="node-head">
+          <span class="stage-tag">Stage 6</span>
+          <span class="node-date">2026-07-10</span>
+        </div>
+        <h2>Delivery pipeline hardening</h2>
+        <p>The repo itself got production treatment — then three major dependency bumps were absorbed by fixing their real breaking changes instead of pinning them away.</p>
+        <ul class="facts">
+          <li>CI on every branch push; Dependabot (grouped minor/patch); coverage reporting; husky pre-commit; Node pinned to CI's version</li>
+          <li>MapLibre GL 4→5, Recharts 2→3 (Tooltip formatter API), @types/node 22→26 (lib target) — each verified live in-browser, not just by types</li>
+          <li>Recharts lazy-loaded out of first paint: initial JS (excl. map vendor) 803kB → 416kB</li>
+          <li>Remediation leftovers closed: route-suggestion diff (M2), sub-1300px layout (M15), Windows launcher hardening (M16)</li>
+        </ul>
+      </div>
+
+      <!-- Stage 7 — launch -->
+      <div class="node active">
+        <div class="node-head">
+          <span class="stage-tag">Stage 7 — public launch</span>
+          <span class="node-date">2026-07-19</span>
+        </div>
+        <h2>Ship it to the public</h2>
+        <p>The user-ready pass: a cold visitor now gets a welcome overlay with a one-click <b>LAUNCH DEMO</b> that drives the exact production launch pipeline — same store actions as the manual operator flow, no parallel demo code to rot.</p>
+        <ul class="facts">
+          <li>quickDemo.ts — scenario load → fleet init → preflight evidence → auto bay plan → coordinated staggered launch, end-to-end tested</li>
+          <li>Mobile stacked layout ≤700px; social/OG metadata + favicons; OSM/OpenFreeMap map attribution (ODbL compliance)</li>
+          <li>Public-facing copy sweep; GitHub Pages retired to manual fallback; Vercel hosting with immutable asset caching</li>
+          <li>Tests 234 → 242 across 42 files, all green through every step</li>
         </ul>
       </div>
 

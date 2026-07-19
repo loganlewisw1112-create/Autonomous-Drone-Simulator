@@ -166,13 +166,15 @@ into app code.
 
 ## Deployment
 
-Every merge to `main` deploys automatically to GitHub Pages via
-`.github/workflows/deploy.yml` (official `actions/deploy-pages` flow, gated on
-typecheck + tests passing). The workflow sets `GITHUB_PAGES=true` so Vite builds
-with the `/Autonomous-Drone-Simulator/` base path; local builds keep `/`.
+The app deploys to **Vercel** via its Git integration: every merge to `main`
+triggers a production build (`npm run build`, output `dist/`, Node 20 from
+`engines`/`.nvmrc`, no environment variables required). `vercel.json` adds
+immutable caching for hashed assets plus basic security headers.
 
-Manual fallback (maintainer only): `npm run deploy` publishes `dist/` to the
-`gh-pages` branch with the `gh-pages` CLI.
+Fallbacks (maintainer only): `.github/workflows/deploy.yml` can publish a
+GitHub Pages copy on manual dispatch (it sets `GITHUB_PAGES=true` so Vite
+builds with the `/Autonomous-Drone-Simulator/` base path), and `npm run deploy`
+pushes `dist/` to the `gh-pages` branch with the `gh-pages` CLI.
 
 ## Architecture & Verification
 

@@ -1,8 +1,9 @@
 name: Deploy to GitHub Pages
 
+# Retained as a manual fallback only — Vercel is the canonical host (auto-deploys
+# from main via its Git integration). Trigger by hand from the Actions tab if a
+# Pages copy is ever needed.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

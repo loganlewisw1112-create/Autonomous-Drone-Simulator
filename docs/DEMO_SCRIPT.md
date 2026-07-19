@@ -44,11 +44,23 @@
 
 **PROOF:** `docs/REMEDIATION_LOG.md` — every finding has a disposition (fixed / not addressed, with reason).
 
-## 6 · Keep going — *07-07 → now*
+## 6 · Operational realism — *07-07 → 07-10*
 
-**SAY:** "Right now I'm on an operational-realism pass — drones were all launching from the same spot at the same instant, which no real fleet does. I'm building a deterministic launch coordinator that fans them to separate bays and staggers takeoff timing, with an end-to-end test through the real simulation loop, not a mock."
+**SAY:** "Then an operational-realism pass — drones were all launching from the same spot at the same instant, which no real fleet does. I built a deterministic launch coordinator that fans them to separate bays and staggers takeoff timing, verified end-to-end through the real simulation loop, not a mock."
 
-**PROOF:** branch `feat/operational-realism-pass` — `LaunchCoordinator.ts`, `staggeredLaunch.spec.ts`.
+**PROOF:** `LaunchCoordinator.ts`, `staggeredLaunch.spec.ts` — merged as PR #1.
+
+## 7 · Harden the delivery pipeline — *07-10*
+
+**SAY:** "Same week, I hardened the repo like a production service: CI on every branch, Dependabot with grouped updates, coverage reporting, a pre-commit hook, and then absorbed three major dependency bumps — MapLibre 5, Recharts 3 — fixing the real breaking changes each one surfaced instead of pinning them away."
+
+**PROOF:** `.github/workflows/ci.yml`, merged Dependabot PRs #3–#14, `git log` for the compat-fix commits.
+
+## 8 · Ship it to the public — *07-19*
+
+**SAY:** "Finally, the public launch pass: a first-run welcome with a one-click demo that drives the exact production launch pipeline, a mobile stacked layout, social-share metadata, proper OSM map attribution, and Vercel hosting. The one-click demo calls the same store actions the manual operator flow does — no parallel demo code to rot."
+
+**PROOF:** `src/sim/demo/quickDemo.ts`, `src/components/WelcomeOverlay.tsx`, `vercel.json`, the live URL itself.
 
 ---
 
