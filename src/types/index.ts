@@ -519,6 +519,61 @@ export interface ScenarioConfig {
   droneRouteBriefs?: Record<string, DroneRouteBrief>
   operationalFeatures?: OperationalFeature[]
   weatherProfile?: ScenarioWeatherProfile
+  // ── Custom-mission authoring (designer) ──
+  // When true, enhanceScenarioForOperations preserves `authoredRoutes` as the
+  // per-drone waypoints instead of overwriting them with derived safe routes.
+  isCustom?: boolean
+  authoredRoutes?: Record<string, Waypoint[]>       // droneId → operator-authored waypoints
+  defaultLaunchAssignments?: Record<string, string> // droneId → siteId, seeds the launch plan
+}
+
+// ─── Mission lifecycle ───────────────────────────────────────────────────────────
+// Explicit finite-state machine gating the sim loop and the run recorder.
+// Only `completed` (via End Mission or a genuine terminal auto-complete) persists
+// an immutable run record — pause/RTB/reset/scenario-browse never do.
+export type MissionLifecycleState = 'idle' | 'preflight' | 'running' | 'paused' | 'completed'
+
+// ─── Mobile shell surfaces ─────────────────────────────────────────────────────
+// One mutually-exclusive surface is open at a time (opening one closes the prior).
+// `null` (no surface) is represented at the store field, not in this union.
+export type ActiveMobileSurface =
+  | 'fleet'
+  | 'ops'
+  | 'telemetry'
+  | 'evidence'
+  | 'scenario'
+  | 'mission'
+  | 'more'
+  | 'dispatch'
+  | 'replay'
+  | 'exports'
+  | 'account'
+  | 'analytics'
+  | 'settings'
+
+// ─── Custom mission definition (designer output, pre-compile) ───────────────────
+export interface CustomMissionSite {
+  id: string
+  kind: LaunchRecoverySiteKind
+  label: string
+  position: LatLng
+  capacityDrones?: number
+}
+
+export interface CustomMissionDefinition {
+  id: string
+  name: string
+  locationLabel: string
+  purpose: string
+  endGoal: string
+  center: LatLng
+  droneCount: number                            // 1–8
+  sites: CustomMissionSite[]
+  launchAssignments: Record<string, string>     // droneId → siteId
+  recoveryAssignments: Record<string, string>   // droneId → siteId
+  routes: Record<string, Waypoint[]>            // droneId → authored waypoints (≤24 each)
+  createdAt: number
+  updatedAt: number
 }
 
 // ─── UI State ──────────────────────────────────────────────────────────────────
