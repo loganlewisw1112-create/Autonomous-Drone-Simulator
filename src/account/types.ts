@@ -1,4 +1,17 @@
-import type { MissionMetrics, ScenarioVariantConfig } from '@/types'
+import type {
+  AfterActionPackage,
+  CustomMissionDefinition,
+  DroneState,
+  FullMissionFrame,
+  LatLng,
+  LaunchBayPlan,
+  MissionEvent,
+  MissionMetrics,
+  ScenarioConfig,
+  ScenarioVariantConfig,
+  TelemetryPoint,
+  Waypoint,
+} from '@/types'
 
 // ─── On-device account records (IndexedDB `drone-sim-accounts`) ───────────────
 // Nothing password-derived is ever stored in plaintext. The check blob is a
@@ -70,6 +83,73 @@ export interface BackupEnvelope {
   account: AccountRecord
   runs: RunRecord[]
 }
+
+// ─── v2: immutable run detail (drill-down), custom missions, backup ─────────────
+// The full, immutable snapshot behind a saved run — everything the drill-down
+// detail tabs and rebuilt exports need, isolated from the live simulator. Stored
+// in the `runDetails` object store, encrypted per-account, keyed by the same id
+// as its `runs` summary. A run with no detail row renders as "Legacy summary only".
+export interface StoredRunDetailEvidence {
+  eventCount: number
+  firstHash: string | null
+  lastHash: string | null
+  verified: boolean          // recomputed at record time; the detail view re-verifies live
+}
+
+export interface StoredRunDetailReplayCoverage {
+  startSec: number
+  endSec: number
+  truncated: boolean         // true when early frames were dropped by the bounded window
+}
+
+export interface StoredRunDetailV2 {
+  scenario: ScenarioConfig
+  scenarioVariant: ScenarioVariantConfig
+  launchPlan: LaunchBayPlan | null
+  routes: Record<string, Waypoint[]>
+  finalDrones: DroneState[]
+  events: MissionEvent[]
+  evidence: StoredRunDetailEvidence
+  report: AfterActionPackage
+  replayFrames: FullMissionFrame[]
+  replayCoverage: StoredRunDetailReplayCoverage
+  positionHistory: Record<string, LatLng[]>
+  telemetryHistory: Record<string, TelemetryPoint[]>
+  quotaLimited?: boolean     // true when the detail was dropped/trimmed to fit storage quota
+}
+
+export interface RunRecordV2 {
+  schemaVersion: 2
+  id: string                 // matches the RunRecord (summary) id
+  accountId: string
+  completedAt: number
+  blob: CipherBlob           // encrypted StoredRunDetailV2
+}
+
+export interface CustomMissionRecord {
+  schemaVersion: 2
+  id: string
+  accountId: string
+  updatedAt: number
+  blob: CipherBlob           // encrypted CustomMissionDefinition
+}
+
+export type { CustomMissionDefinition }
+
+// Backup v2: everything account-owned. v1 envelopes still import (runs only).
+export interface BackupEnvelopeV2 {
+  kind: 'drone-sim-backup'
+  schemaVersion: 2
+  exportedAt: number
+  account: AccountRecord
+  runs: RunRecord[]
+  runDetails: RunRecordV2[]
+  missions: CustomMissionRecord[]
+}
+
+export type AnyBackupEnvelope = BackupEnvelope | BackupEnvelopeV2
+
+export const MAX_CUSTOM_MISSIONS = 5
 
 export const CHECK_MARKER = 'drone-sim-check-v1'
 export const PBKDF2_ITERATIONS = 310_000
