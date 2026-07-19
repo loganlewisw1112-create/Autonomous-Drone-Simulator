@@ -468,7 +468,7 @@
       </div>
 
       <!-- Stage 7 — launch -->
-      <div class="node active">
+      <div class="node">
         <div class="node-head">
           <span class="stage-tag">Stage 7 — public launch</span>
           <span class="node-date">2026-07-19</span>
@@ -480,6 +480,25 @@
           <li>Mobile stacked layout ≤700px; social/OG metadata + favicons; OSM/OpenFreeMap map attribution (ODbL compliance)</li>
           <li>Public-facing copy sweep; GitHub Pages retired to manual fallback; Vercel hosting with immutable asset caching</li>
           <li>Tests 234 → 242 across 42 files, all green through every step</li>
+          <li>Deployed live at autonomous-drone-simulator.vercel.app; the desktop layout was then declared <b>frozen</b> as the launch baseline</li>
+        </ul>
+      </div>
+
+      <!-- Stage 8 — mobile + accounts -->
+      <div class="node active">
+        <div class="node-head">
+          <span class="stage-tag">Stage 8 — mobile console + operator profiles</span>
+          <span class="node-date">2026-07-19</span>
+        </div>
+        <h2>A real mobile console, and accounts that never leave the device</h2>
+        <p>With the desktop version frozen for launch, phones got a purpose-built landscape-only shell instead of a squeezed grid: portrait shows a rotate gate, landscape gets a full-screen tactical map with fleet/telemetry edge drawers and a bottom dock — every desktop control reachable at 44px+ touch size, driven by the exact same handlers via a shared <b>useMissionControls</b> hook.</p>
+        <ul class="facts">
+          <li>Device split is structural: phones (coarse pointer, short side &lt;700px) render a lazy MobileShell chunk; the frozen desktop tree ships byte-identical, guarded by the existing ControlBar spec</li>
+          <li>PWA manifest (standalone landscape), screen wake lock during missions, safe-area/dvh handling, ResizeObserver-driven map.resize() on rotation</li>
+          <li>Local-only operator profiles: PBKDF2-SHA-256 (310k iterations) → AES-256-GCM via @noble/ciphers; wrong password = GCM auth-tag failure; IndexedDB only, zero backend</li>
+          <li>Every finalized mission auto-records as an encrypted ~2–4&nbsp;KB summary; chain-of-custody events now carry <code>operator:&lt;username&gt;</code></li>
+          <li>New full-screen Analytics (stat tiles, distance/scenario charts, verified mission log) and Settings (encrypted backup export/import, password change with full re-encrypt, clear/delete) on both shells</li>
+          <li>Tests 242 → 275 across 48 files; end-to-end verified live: sign-up → LAUNCH DEMO → stop → encrypted run decrypts into Analytics</li>
         </ul>
       </div>
 

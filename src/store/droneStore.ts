@@ -3,6 +3,7 @@ import { devtools, subscribeWithSelector } from 'zustand/middleware'
 import { buildOperatorCommandRoute, buildRouteSuggestions, validateOperatorRoute } from '@/sim/mission/operatorRoutes'
 import { clearAllSavedWaypointPlans, clearSavedDroneWaypointRoute, saveDroneWaypointRoute } from '@/sim/mission/waypointPersistence'
 import { hashEvent } from '@/utils/chainOfCustody'
+import { getActiveOperator } from '@/store/authStore'
 import { getDefaultWeatherState } from '@/sim/weather/weatherEngine'
 import type {
   DroneState,
@@ -337,7 +338,7 @@ export const useDroneStore = create<DroneStore>()(
               tick: input.tick ?? s.tick,
               timestamp: Date.now(),
               droneId: input.droneId,
-              operatorId: input.operatorId ?? 'operator-1',
+              operatorId: input.operatorId ?? getActiveOperator().operatorId,
               role: input.role ?? ('pic' as OperatorRole),
               eventType: input.eventType,
               payload: input.payload,
