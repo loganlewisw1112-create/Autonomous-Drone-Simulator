@@ -679,7 +679,7 @@ export interface MissionOutcomeSummary {
 }
 
 export interface AfterActionPackage {
-  kind: 'investor_after_action_package'
+  kind: 'after_action_package'
   generatedAt: string
   scenarioId: string
   scenarioName: string

@@ -36,7 +36,7 @@ export function PerfMonitor() {
   }, [])
 
   return (
-    <div style={{
+    <div className="perf-monitor" style={{
       position: 'absolute',
       bottom: 30,
       right: 10,
