@@ -23,6 +23,7 @@
     "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
+    "@noble/ciphers": "^2.2.0",
     "@noble/hashes": "^1.8.0",
     "maplibre-gl": "^5.24.0",
     "react": "^18.3.1",
@@ -43,6 +44,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "fake-indexeddb": "^6.2.5",
     "gh-pages": "^6.3.0",
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",

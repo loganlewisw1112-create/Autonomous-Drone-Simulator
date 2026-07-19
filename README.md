@@ -1,6 +1,19 @@
 # Autonomous Drone Simulator
 
-**Live demo: [autonomous-drone-simulator.vercel.app](https://autonomous-drone-simulator.vercel.app/)** — click **▶ LAUNCH DEMO** on the welcome screen for a one-click guided mission.
+## Launch The Simulator
+
+Choose the deployment made for your device. These are independent Vercel apps with separate platform-specific builds.
+
+| Version | Open | Requirements |
+|---|---|---|
+| **Mobile** | **[Launch Mobile Simulator](https://autonomous-drone-simulator-mobile.vercel.app/)** | iPhone or Android phone; rotate to landscape after opening |
+| **Windows** | **[Launch Windows Simulator](https://autonomous-drone-simulator.vercel.app/)** | Windows PC only |
+
+The Windows link is platform-locked. Opening it on iPhone, Android, macOS, or another non-Windows platform displays an **ERROR — WINDOWS VERSION ONLY** screen with a button to open the mobile version.
+
+Both versions let an operator create an encrypted local account or sign back in. Account data stays in that version's browser storage on that device; it is not uploaded or shared between the mobile and Windows deployments.
+
+Click **▶ LAUNCH DEMO** on the welcome screen for a one-click guided mission.
 
 Local-first React + TypeScript simulator for operator-supervised multi-drone public-safety missions. It demonstrates mission planning, launch readiness, live route control, thermal detections, UTM/compliance readiness, replay, and after-action export without connecting to real drones or live aviation systems.
 

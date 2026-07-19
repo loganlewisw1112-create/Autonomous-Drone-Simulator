@@ -1,0 +1,23 @@
+{
+  "name": "Drone Ops Center — Autonomous Mission Simulator",
+  "short_name": "Drone Ops",
+  "description": "Multi-drone public-safety mission simulator. Simulation only — runs entirely in your browser.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/drone-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

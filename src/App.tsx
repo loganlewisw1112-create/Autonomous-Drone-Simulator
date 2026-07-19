@@ -7,6 +7,11 @@ import { ControlBar } from '@/components/ControlBar'
 import { LoadingScreen } from '@/components/LoadingScreen'
 import { WelcomeOverlay } from '@/components/WelcomeOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { WindowsPlatformGate } from '@/components/PlatformGate'
+import { AccountChip } from '@/components/account/AccountChip'
+import { RotateGate } from '@/components/mobile/RotateGate'
+import { useDeviceMode } from '@/hooks/useDeviceMode'
+import { APP_TARGET, isWindowsClient } from '@/platform/appTarget'
 import { useDroneStore } from '@/store/droneStore'
 import '@/styles/tactical.css'
 
@@ -15,6 +20,11 @@ import '@/styles/tactical.css'
 const PreflightChecklist = lazy(() => import('@/components/PreflightChecklist').then((m) => ({ default: m.PreflightChecklist })))
 const LaunchBayPlanner = lazy(() => import('@/components/LaunchBayPlanner').then((m) => ({ default: m.LaunchBayPlanner })))
 const ReplayPanel = lazy(() => import('@/components/ReplayPanel').then((m) => ({ default: m.ReplayPanel })))
+// Mobile shell is its own lazy chunk — desktop visitors never download it.
+const MobileShell = lazy(() => import('@/components/mobile/MobileShell').then((m) => ({ default: m.MobileShell })))
+// Account panels are lazy for the same reason: gated on auth-store flags, null until opened.
+const SignInModal = lazy(() => import('@/components/account/SignInModal').then((m) => ({ default: m.SignInModal })))
+const AccountPanels = lazy(() => import('@/components/account/AccountPanels').then((m) => ({ default: m.AccountPanels })))
 
 const GIT_HASH = import.meta.env.VITE_GIT_HASH ?? 'dev'
 
@@ -34,6 +44,32 @@ export default function App() {
     useShallow((s) => ({ scenario: s.scenario, isRunning: s.ui.isRunning, mapReady: s.mapReady })),
   )
   const [loadingDone, setLoadingDone] = useState(false)
+  const deviceMode = useDeviceMode()
+
+  // The public Windows deployment fails closed before any simulator UI loads.
+  // Its error screen offers the independent mobile deployment as the safe path.
+  if (APP_TARGET === 'windows' && !isWindowsClient()) {
+    return <WindowsPlatformGate />
+  }
+
+  // Phones get a dedicated landscape-only shell; the desktop tree below is the
+  // frozen launch layout and must stay byte-identical (LAW.1).
+  if (deviceMode === 'phone-portrait') {
+    return (
+      <ErrorBoundary>
+        <RotateGate />
+      </ErrorBoundary>
+    )
+  }
+  if (deviceMode === 'phone-landscape') {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<div style={{ height: '100dvh', background: 'var(--bg-primary)' }} />}>
+          <MobileShell />
+        </Suspense>
+      </ErrorBoundary>
+    )
+  }
 
   return (
     <ErrorBoundary>
@@ -48,6 +84,7 @@ export default function App() {
           <span className="sim-label">SIMULATION</span>
           {isRunning && <div className="rec-dot" title="Recording" />}
           <MissionClock />
+          <AccountChip />
         </header>
 
         {/* Left: Fleet panel */}
@@ -69,6 +106,8 @@ export default function App() {
           <PreflightChecklist />
           <LaunchBayPlanner />
           <ReplayPanel />
+          <SignInModal />
+          <AccountPanels />
         </Suspense>
 
         {/* First-visit onboarding — after the loading screen clears, before any scenario */}

@@ -429,7 +429,27 @@ export function TacticalMap() {
     })
 
     mapRef.current = map
+
+    // Container-size tracking: the mobile shell mounts the map in a flex slot
+    // whose size changes on device rotation / browser-chrome collapse. MapLibre
+    // only auto-resizes on window resize, so observe the container directly.
+    // Debounced so a rotation animation settles into a single canvas resize.
+    // Desktop grid cells never change size after layout, so this is inert there.
+    let resizeTimer = 0
+    const scheduleResize = () => {
+      window.clearTimeout(resizeTimer)
+      resizeTimer = window.setTimeout(() => map.resize(), 150)
+    }
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(scheduleResize)
+      : null
+    if (resizeObserver && containerRef.current) resizeObserver.observe(containerRef.current)
+    window.visualViewport?.addEventListener('resize', scheduleResize)
+
     return () => {
+      resizeObserver?.disconnect()
+      window.visualViewport?.removeEventListener('resize', scheduleResize)
+      window.clearTimeout(resizeTimer)
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       hudDivsAtSetup.forEach((d) => d.remove())
       hudDivsAtSetup.clear()
