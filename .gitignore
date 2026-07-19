@@ -22,3 +22,7 @@ Build Plan for Autonomous Drone Mission Simulator.txt
 
 # Launch/GTM kit + packaged distributables — built locally, not part of the source repo
 outputs/
+.vercel
+.env*
+# Vercel CLI appends .env* above — keep the example tracked (rule order matters)
+!.env.example
