@@ -1,5 +1,7 @@
 # Autonomous Drone Simulator
 
+**Live demo: [autonomous-drone-simulator.vercel.app](https://autonomous-drone-simulator.vercel.app/)** — click **▶ LAUNCH DEMO** on the welcome screen for a one-click guided mission.
+
 Local-first React + TypeScript simulator for operator-supervised multi-drone public-safety missions. It demonstrates mission planning, launch readiness, live route control, thermal detections, UTM/compliance readiness, replay, and after-action export without connecting to real drones or live aviation systems.
 
 ![Animated capture of the simulator running a coastal SAR mission with active drones, the OPS HUB, route suggestions, telemetry, and tactical map overlays.](docs/media/readme/hero-live-workflow.gif)
