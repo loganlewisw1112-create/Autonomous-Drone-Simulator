@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
+import { useAuthStore } from '@/store/authStore'
 import { TacticalMap } from '@/components/TacticalMap'
 import { FleetPanel } from '@/components/FleetPanel'
 import { TelemetryPanel } from '@/components/TelemetryPanel'
@@ -14,6 +15,8 @@ import '@/styles/mobile.css'
 const PreflightChecklist = lazy(() => import('@/components/PreflightChecklist').then((m) => ({ default: m.PreflightChecklist })))
 const LaunchBayPlanner = lazy(() => import('@/components/LaunchBayPlanner').then((m) => ({ default: m.LaunchBayPlanner })))
 const ReplayPanel = lazy(() => import('@/components/ReplayPanel').then((m) => ({ default: m.ReplayPanel })))
+const SignInModal = lazy(() => import('@/components/account/SignInModal').then((m) => ({ default: m.SignInModal })))
+const AccountPanels = lazy(() => import('@/components/account/AccountPanels').then((m) => ({ default: m.AccountPanels })))
 
 function MobileClock() {
   const { elapsedSec } = useDroneStore(useShallow((s) => ({ elapsedSec: s.elapsedSec })))
@@ -36,6 +39,9 @@ const SHEET_TITLES: Record<Exclude<MobileSheet, null>, string> = {
 export function MobileShell() {
   const { scenario, isRunning, mapReady } = useDroneStore(
     useShallow((s) => ({ scenario: s.scenario, isRunning: s.ui.isRunning, mapReady: s.mapReady })),
+  )
+  const { activeAccount, setShowSignIn, setShowSettings } = useAuthStore(
+    useShallow((s) => ({ activeAccount: s.activeAccount, setShowSignIn: s.setShowSignIn, setShowSettings: s.setShowSettings })),
   )
   const [loadingDone, setLoadingDone] = useState(false)
   const [sideDrawer, setSideDrawer] = useState<'fleet' | 'telemetry' | null>(null)
@@ -80,14 +86,16 @@ export function MobileShell() {
       <BottomDock
         openSheet={sheet}
         onToggleSheet={setSheet}
-        onOpenAccount={() => {}}
-        accountLabel="ACCOUNT"
+        onOpenAccount={() => (activeAccount ? setShowSettings(true) : setShowSignIn(true))}
+        accountLabel={activeAccount ? activeAccount.displayName.slice(0, 8).toUpperCase() : 'SIGN IN'}
       />
 
       <Suspense fallback={null}>
         <PreflightChecklist />
         <LaunchBayPlanner />
         <ReplayPanel />
+        <SignInModal />
+        <AccountPanels />
       </Suspense>
 
       {loadingDone && <WelcomeOverlay />}

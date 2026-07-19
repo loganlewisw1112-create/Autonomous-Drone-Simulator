@@ -7,6 +7,7 @@ import { ControlBar } from '@/components/ControlBar'
 import { LoadingScreen } from '@/components/LoadingScreen'
 import { WelcomeOverlay } from '@/components/WelcomeOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { AccountChip } from '@/components/account/AccountChip'
 import { RotateGate } from '@/components/mobile/RotateGate'
 import { useDeviceMode } from '@/hooks/useDeviceMode'
 import { useDroneStore } from '@/store/droneStore'
@@ -19,6 +20,9 @@ const LaunchBayPlanner = lazy(() => import('@/components/LaunchBayPlanner').then
 const ReplayPanel = lazy(() => import('@/components/ReplayPanel').then((m) => ({ default: m.ReplayPanel })))
 // Mobile shell is its own lazy chunk — desktop visitors never download it.
 const MobileShell = lazy(() => import('@/components/mobile/MobileShell').then((m) => ({ default: m.MobileShell })))
+// Account panels are lazy for the same reason: gated on auth-store flags, null until opened.
+const SignInModal = lazy(() => import('@/components/account/SignInModal').then((m) => ({ default: m.SignInModal })))
+const AccountPanels = lazy(() => import('@/components/account/AccountPanels').then((m) => ({ default: m.AccountPanels })))
 
 const GIT_HASH = import.meta.env.VITE_GIT_HASH ?? 'dev'
 
@@ -72,6 +76,7 @@ export default function App() {
           <span className="sim-label">SIMULATION</span>
           {isRunning && <div className="rec-dot" title="Recording" />}
           <MissionClock />
+          <AccountChip />
         </header>
 
         {/* Left: Fleet panel */}
@@ -93,6 +98,8 @@ export default function App() {
           <PreflightChecklist />
           <LaunchBayPlanner />
           <ReplayPanel />
+          <SignInModal />
+          <AccountPanels />
         </Suspense>
 
         {/* First-visit onboarding — after the loading screen clears, before any scenario */}
