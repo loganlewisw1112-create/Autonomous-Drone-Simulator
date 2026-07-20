@@ -9,6 +9,15 @@ import { inspectEvidence } from './evidenceStatus'
 const TABS = ['Overview', 'Report', 'Event Log', 'Evidence Chain', 'Replay'] as const
 type RunDetailTab = typeof TABS[number]
 
+const COMPLETION_LABELS: Record<NonNullable<StoredRunSummary['completionReason']>, string> = {
+  all_drones_complete: 'All drones reached idle/landed — mission completed automatically',
+  operator_ended: 'Ended by operator (End Mission)',
+}
+
+function completionLabel(summary: StoredRunSummary): string {
+  return summary.completionReason ? COMPLETION_LABELS[summary.completionReason] : 'Unknown (recorded before this was tracked)'
+}
+
 function download(filename: string, text: string, type: string) {
   const url = URL.createObjectURL(new Blob([text], { type }))
   const anchor = document.createElement('a')
@@ -22,6 +31,7 @@ function Overview({ summary, detail }: { summary: StoredRunSummary; detail: Stor
   const status = inspectEvidence(summary, detail)
   return (
     <div className="rundetail-overview">
+      <p className="rundetail-completion-reason">{completionLabel(summary)}</p>
       <div className="rundetail-stat-grid">
         <div><strong>{Math.round(summary.durationSec)}s</strong><span>Duration</span></div>
         <div><strong>{(summary.metrics.totalFlightDistanceM / 1000).toFixed(2)} km</strong><span>Distance</span></div>

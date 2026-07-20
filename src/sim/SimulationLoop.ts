@@ -19,7 +19,7 @@ import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import { tickGroundUnit, computeGroundUnitEta } from '@/sim/mission/groundUnits'
 import { tickRecoveryTeam, tickRecoveryExtraction, needsRecovery, recoveryTransitionState, createRecoveryTeam } from '@/sim/mission/recoveryManager'
 import { bearingDeg, haversineDistanceM } from '@/utils/geometry'
-import type { DroneState, EventType, FullMissionFrame, LatLng, LaunchBayPlan, Waypoint } from '@/types'
+import type { DroneState, EventType, FullMissionFrame, LatLng, LaunchBayPlan, MissionCompletionReason, Waypoint } from '@/types'
 
 const THERMAL_CHECK_INTERVAL = 50
 const SNAPSHOT_INTERVAL = 40
@@ -567,7 +567,7 @@ export function tick() {
     // genuinely over. Finalize exactly once (endMission is idempotent) and stop stepping —
     // this is the ONLY tick-driven finalize path.
     if (isMissionComplete(finalDrones)) {
-      endMission()
+      endMission('all_drones_complete')
       break
     }
   }
@@ -675,13 +675,13 @@ export function stopTicking() {
  * 'completed' is a no-op, so a genuine terminal auto-complete followed by an explicit
  * End Mission (or repeated End Mission taps) writes nothing further.
  */
-export function endMission() {
+export function endMission(reason: MissionCompletionReason = 'operator_ended') {
   stopTicking()
   const store = useDroneStore.getState()
   if (store.lifecycle !== 'running' && store.lifecycle !== 'paused') return
   store.setRunning(false)
   store.setLifecycle('completed')
-  store.finalizeReplaySession()
+  store.finalizeReplaySession(reason)
 }
 
 /**

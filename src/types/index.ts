@@ -421,6 +421,11 @@ export interface FullMissionFrame {
   activeEventIds: string[]
 }
 
+// Why a run ended: the whole fleet reached idle/landed on its own (tick-driven,
+// SimulationLoop's terminal auto-complete), or the operator tapped End Mission
+// while the fleet was still active (including after an RTB-ALL abort).
+export type MissionCompletionReason = 'all_drones_complete' | 'operator_ended'
+
 export interface MissionReplaySession {
   scenarioId: string
   scenarioVariant: ScenarioVariantConfig
@@ -429,6 +434,7 @@ export interface MissionReplaySession {
   events: MissionEvent[]
   metrics: MissionMetrics
   completedAt: number
+  completionReason: MissionCompletionReason
   // Final mission state, snapshotted at stop time. Replay scrubbing overwrites the live store's
   // drones/thermalContacts/etc., so exports MUST read these instead of live fields — otherwise an
   // after-action generated mid-scrub mixes an old frame's fleet state with final metrics.

@@ -91,6 +91,7 @@ describe('replaySession', () => {
       events: [],
       metrics: DEFAULT_METRICS,
       completedAt: Date.now(),
+      completionReason: 'all_drones_complete',
       finalDrones,
       finalThermalContacts: [],
       finalGroundUnits: [],

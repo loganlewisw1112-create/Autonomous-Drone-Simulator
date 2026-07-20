@@ -5,6 +5,7 @@ import type {
   FullMissionFrame,
   LatLng,
   LaunchBayPlan,
+  MissionCompletionReason,
   MissionEvent,
   MissionMetrics,
   ScenarioConfig,
@@ -53,6 +54,8 @@ export interface StoredRunSummary {
   scenarioId: string
   scenarioVariant: ScenarioVariantConfig
   completedAt: number
+  // Absent on runs recorded before this field existed — treat as unknown, not an error.
+  completionReason?: MissionCompletionReason
   durationSec: number
   metrics: MissionMetrics
   eventCount: number

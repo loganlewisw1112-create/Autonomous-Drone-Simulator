@@ -194,6 +194,7 @@ describe('mission lifecycle — run-record invariants', () => {
     expect(finalizeCount).toBe(1)
     expect(useDroneStore.getState().lifecycle).toBe('completed')
     expect(useDroneStore.getState().ui.isRunning).toBe(false)
+    expect(useDroneStore.getState().replaySession?.completionReason).toBe('all_drones_complete')
 
     // Ticks after completion are inert — no further records.
     tick()
@@ -210,6 +211,7 @@ describe('mission lifecycle — run-record invariants', () => {
     expect(finalizeCount).toBe(1)
     expect(useDroneStore.getState().lifecycle).toBe('completed')
     expect(useDroneStore.getState().replaySession).not.toBeNull()
+    expect(useDroneStore.getState().replaySession?.completionReason).toBe('operator_ended')
 
     endMission()
     expect(finalizeCount).toBe(1)

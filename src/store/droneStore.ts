@@ -10,6 +10,7 @@ import type {
   EventType,
   FullMissionFrame,
   MissionEvent,
+  MissionCompletionReason,
   MissionReplaySession,
   ScenarioConfig,
   UIState,
@@ -160,7 +161,7 @@ interface DroneStore {
   addPositionSample: (droneId: string, pos: LatLng) => void
   addReplayFrame: (frame: FullMissionFrame) => void
   setReplayIndex: (index: number) => void
-  finalizeReplaySession: () => void
+  finalizeReplaySession: (reason: MissionCompletionReason) => void
   setDroneWaypoints: (droneWaypoints: Record<string, Waypoint[]>) => void
   setRouteSaveStatuses: (statuses: Record<string, WaypointSaveStatus>) => void
   saveDroneRouteDraft: (droneId: string, source?: WaypointSaveSource) => boolean
@@ -398,7 +399,7 @@ export const useDroneStore = create<DroneStore>()(
             }
           }),
 
-        finalizeReplaySession: () =>
+        finalizeReplaySession: (reason) =>
           set((s) => {
             if (!s.scenario) return {}
             const session: MissionReplaySession = {
@@ -409,6 +410,7 @@ export const useDroneStore = create<DroneStore>()(
               events: s.events,
               metrics: s.metrics,
               completedAt: Date.now(),
+              completionReason: reason,
               // Snapshot the true end-of-mission state. Replay scrubbing overwrites the live
               // drones/thermalContacts/etc., so exports read these finals instead.
               finalDrones: s.drones.map((d) => ({ ...d })),
