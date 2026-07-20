@@ -82,7 +82,10 @@ export function LaunchBayPlanner() {
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && handleCancel()}>
-      <div className="modal" style={{ maxWidth: 640, minWidth: 480 }}>
+      {/* Inline min/max width is the desktop sizing (frozen). On mobile the
+          launch-bay-modal class neutralizes the 480px floor so the modal fits a
+          phone viewport instead of overflowing off-screen. */}
+      <div className="modal launch-bay-modal" style={{ maxWidth: 640, minWidth: 480 }}>
         <div className="modal-title">⬡ Launch Bay Planning</div>
 
         {/* Weather summary */}
@@ -210,7 +213,7 @@ export function LaunchBayPlanner() {
           ⚠ SIMULATION ONLY — Not for operational deployment. Bay assignments are simulated.
         </div>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div className="launch-bay-actions" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn" onClick={handleAutoAssign} style={{ marginRight: 'auto' }}>
             ⚡ Auto-Assign
           </button>

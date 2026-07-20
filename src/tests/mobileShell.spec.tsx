@@ -2,9 +2,9 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const device = vi.hoisted(() => ({ mode: 'phone-landscape' as 'phone-landscape' | 'phone-portrait' }))
+const device = vi.hoisted(() => ({ mode: 'phone-landscape' as 'phone-landscape' | 'phone-portrait', tablet: false }))
 
-vi.mock('@/hooks/useDeviceMode', () => ({ useDeviceMode: () => device.mode }))
+vi.mock('@/hooks/useDeviceMode', () => ({ useDeviceMode: () => device.mode, useIsTablet: () => device.tablet }))
 vi.mock('@/components/TacticalMap', () => ({
   TacticalMap: ({ chromeSlots }: { chromeSlots?: string }) => <div data-testid="map-stub" data-chrome={chromeSlots} />,
 }))
@@ -15,6 +15,7 @@ vi.mock('@/components/FleetPanel', () => ({ FleetPanel: () => <div data-testid="
 vi.mock('@/components/TelemetryPanel', () => ({ TelemetryPanel: () => <div data-testid="telemetry-panel">TELEMETRY PANEL</div> }))
 vi.mock('@/components/OperatorCommandPanel', () => ({ OperatorCommandPanel: () => <div data-testid="ops-panel">OPS PANEL</div> }))
 vi.mock('@/components/MissionStatusFeed', () => ({ MissionStatusFeed: () => <div data-testid="dispatch-panel">DISPATCH PANEL</div> }))
+vi.mock('@/components/mobile/DroneQuickCommands', () => ({ DroneQuickCommands: () => <div data-testid="drone-quick-commands" /> }))
 vi.mock('@/components/PreflightChecklist', () => ({ PreflightChecklist: () => null }))
 vi.mock('@/components/LaunchBayPlanner', () => ({ LaunchBayPlanner: () => null }))
 vi.mock('@/components/ReplayPanel', () => ({ ReplayPanel: () => <div data-testid="replay-panel">REPLAY</div> }))
@@ -28,6 +29,7 @@ import { useDroneStore } from '@/store/droneStore'
 
 beforeEach(() => {
   device.mode = 'phone-landscape'
+  device.tablet = false
   window.localStorage?.setItem('drone-sim:welcome-seen:v1', '1')
   useMobileStore.setState({
     activeSurface: null,

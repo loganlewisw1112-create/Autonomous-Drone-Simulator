@@ -533,3 +533,74 @@
 .mobile-shell .operator-command-grid button {
   min-height: 44px;
 }
+
+/* ── Launch Bay Planner: fit the phone viewport ───────────────────────────────
+   The modal carries an inline `min-width: 480px` that is the DESKTOP sizing
+   (frozen). Inline styles beat the generic `.modal-overlay > *` width rule, so on
+   a <480px phone the modal overflowed off-screen. Under .mobile-shell we drop the
+   floor and let it fit, and let the footer buttons wrap instead of overflow. */
+.mobile-shell .launch-bay-modal {
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 640px !important;
+  padding: 16px !important;
+}
+.mobile-shell .launch-bay-actions { flex-wrap: wrap; }
+.mobile-shell .launch-bay-actions .btn { flex: 1 1 auto; min-height: 44px; }
+/* Auto-Assign (first child, inline margin-right:auto) takes its own full row so
+   Cancel / Confirm sit together beneath it rather than getting squeezed. */
+.mobile-shell .launch-bay-actions .btn:first-child {
+  flex-basis: 100%;
+  margin-right: 0 !important;
+}
+
+/* ── Mission-tab drone quick commands ─────────────────────────────────────────
+   Compact "suggested next move" controls surfaced in the MISSION sheet. */
+.mobile-drone-commands { border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.mobile-drone-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.mobile-drone-chip {
+  /* 44px matches the touch-target floor used by the OPS grid and map markers. */
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font: 700 11px var(--font-mono);
+  letter-spacing: .5px;
+  cursor: pointer;
+}
+.mobile-drone-chip.active { border-color: var(--accent-blue); color: var(--accent-blue); background: rgba(0, 212, 255, 0.08); }
+.mobile-command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.mobile-command-grid .mobile-btn { min-width: 0; width: 100%; padding: 0 8px; }
+
+/* ── Tablet sizing tier (auto-detected on the mobile deployment) ──────────────
+   Same map-first shell as phones, just roomier: bigger type, wider drawers, and
+   three-up command/dock grids so a tablet doesn't render a stretched phone UI.
+   Purely additive CSS — the phone layout and all DeviceMode logic are untouched. */
+.mobile-shell--tablet .mobile-topbar { padding-top: max(env(safe-area-inset-top), 6px); }
+.mobile-shell--tablet .mobile-topbar .header-logo { font-size: 15px; }
+.mobile-shell--tablet .mobile-topbar .header-mission-id { font-size: 12px; }
+.mobile-shell--tablet .mobile-clock { font-size: 12px; }
+
+.mobile-shell--tablet .mobile-dock { gap: 8px; padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
+.mobile-shell--tablet .mobile-dock-btn { min-height: 58px; font-size: 12px; gap: 3px; }
+.mobile-shell--tablet .mobile-dock-btn .dock-ico { font-size: 19px; }
+
+.mobile-shell--tablet .mobile-edge-tab { font-size: 12px; }
+
+.mobile-shell--tablet .mobile-drawer.left { width: min(420px, 56vw); }
+.mobile-shell--tablet .mobile-drawer.right { width: min(520px, 62vw); }
+.mobile-shell--tablet .mobile-drawer.bottom { height: min(66%, 760px); }
+.mobile-shell--tablet .mobile-drawer-header { flex-basis: 54px; font-size: 14px; }
+
+.mobile-shell--tablet .mobile-sheet-section { padding: 16px 20px; gap: 12px; }
+.mobile-shell--tablet .mobile-sheet-label { font-size: 11px; }
+.mobile-shell--tablet .mobile-btn { min-height: 48px; font-size: 13px; }
+.mobile-shell--tablet .mobile-status-line { font-size: 13px; }
+
+/* Roomier multi-column grids on the wider canvas. */
+.mobile-shell--tablet .mobile-command-grid,
+.mobile-shell--tablet .mobile-more-grid,
+.mobile-shell--tablet .mobile-layer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mobile-shell--tablet .mobile-data-tabs button { min-height: 46px; font-size: 12px; }
