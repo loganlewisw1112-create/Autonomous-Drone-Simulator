@@ -201,6 +201,7 @@ interface DroneStore {
   setSensorMode: (mode: UIState['sensorMode']) => void
   toggleLayer: (key: keyof UIState['layerVisibility']) => void
   setSelectedDrone: (id: string | null) => void
+  setRouteEditMode: (editing: boolean) => void
   setShowPreflight: (show: boolean) => void
   setShowLaunchBay: (show: boolean) => void
   setIsReplayMode: (replay: boolean) => void
@@ -324,6 +325,7 @@ export const useDroneStore = create<DroneStore>()(
           showPreflight: false,
           showLaunchBay: false,
           showEventLog: true,
+          routeEditMode: false,
           layerVisibility: {
             relays: true, gates: true, recharge: true,
             traffic: true, thermal: true, irFootprints: true,
@@ -588,6 +590,7 @@ export const useDroneStore = create<DroneStore>()(
               isReplayMode: false,
               showPreflight: false,
               showLaunchBay: false,
+              routeEditMode: false,
             },
             investorDemo: {
               enabled: true,
@@ -762,8 +765,16 @@ export const useDroneStore = create<DroneStore>()(
             ui: { ...s.ui, layerVisibility: { ...s.ui.layerVisibility, [key]: !s.ui.layerVisibility[key] } },
           })),
 
+        // Deselecting (or switching to another drone) always exits route edit mode —
+        // edit mode is meaningless without a subject, and leaving it latched would
+        // let a later selection start in an unexpected state.
         setSelectedDrone: (id) =>
-          set((s) => ({ ui: { ...s.ui, selectedDroneId: id } })),
+          set((s) => ({
+            ui: { ...s.ui, selectedDroneId: id, routeEditMode: id === null ? false : s.ui.routeEditMode },
+          })),
+
+        setRouteEditMode: (editing) =>
+          set((s) => ({ ui: { ...s.ui, routeEditMode: editing && s.ui.selectedDroneId !== null } })),
 
         setShowPreflight: (show) =>
           set((s) => ({ ui: { ...s.ui, showPreflight: show } })),
@@ -777,7 +788,9 @@ export const useDroneStore = create<DroneStore>()(
         setMapReady: (ready) => set({ mapReady: ready }),
 
         resetMission: () =>
-          set({
+          set((s) => ({
+            // Route editing is a live-map mode; a reset must not leave it latched.
+            ui: { ...s.ui, routeEditMode: false },
             tick: 0, elapsedSec: 0, events: [], lastHash: '0'.repeat(64),
             telemetryHistory: {}, droneWaypoints: {}, thermalContacts: [],
             selectedThermalId: null, groundUnits: [], recoveryTeams: [],
@@ -789,7 +802,7 @@ export const useDroneStore = create<DroneStore>()(
               thermalContacts: 0, geofenceBreaches: 0, rtbTriggers: 0,
               recoveryDispatches: 0, groundUnitDispatch: 0,
             },
-          }),
+          })),
       })
     }),
     { name: 'DroneOpsStore' },

@@ -1,8 +1,7 @@
 import type { DroneState, DroneCmd, LatLng } from '@/types'
+import { LEGACY_PLATFORM, type DronePlatformSpec } from './platformCatalog'
 import { offsetLatLng, angleDiffDeg, clamp, haversineDistanceM } from '@/utils/geometry'
 
-const MAX_TURN_RATE_DEG_S = 90
-const MAX_SPEED_MS = 12        // ~27 mph — within FAA Part 107 limit of 57 mph
 const BASE_BATTERY_DRAIN = 0.02 // % per second at hover
 const SPEED_BATTERY_COEFF = 0.008 // additional % per second per m/s
 const ARRIVAL_RADIUS_M = 8
@@ -34,27 +33,27 @@ export function createDroneState(
   }
 }
 
-export function stepDrone(state: DroneState, cmd: DroneCmd, dt: number): DroneState {
+export function stepDrone(state: DroneState, cmd: DroneCmd, dt: number, platform: DronePlatformSpec = LEGACY_PLATFORM): DroneState {
   let { headingDeg, speedMs, batteryPct, altitudeFt, position } = state
 
   // ── Heading update ──────────────────────────────────────────────────────────
   if (cmd.targetHeadingDeg !== undefined) {
     const diff = angleDiffDeg(headingDeg, cmd.targetHeadingDeg)
-    const maxTurn = MAX_TURN_RATE_DEG_S * dt
+    const maxTurn = platform.turnRateDegS * dt
     headingDeg = (headingDeg + Math.sign(diff) * Math.min(Math.abs(diff), maxTurn) + 360) % 360
   }
 
   // ── Speed update ────────────────────────────────────────────────────────────
-  const targetSpeed = clamp((cmd.throttle ?? 0) * MAX_SPEED_MS, 0, MAX_SPEED_MS)
-  // Simple slew: 3 m/s² acceleration
-  const accel = 3
+  const targetSpeed = clamp((cmd.throttle ?? 0) * platform.maxSpeedMs, 0, platform.maxSpeedMs)
+  // Simple slew: per-platform acceleration
+  const accel = platform.accelMs2
   if (speedMs < targetSpeed) speedMs = Math.min(speedMs + accel * dt, targetSpeed)
   else speedMs = Math.max(speedMs - accel * dt, targetSpeed)
 
   // ── Altitude update ─────────────────────────────────────────────────────────
   if (cmd.targetAltitudeFt !== undefined) {
     const diff = cmd.targetAltitudeFt - altitudeFt
-    const climbRateFtS = 300 / 60  // 300 ft/min
+    const climbRateFtS = platform.climbRateFtS
     const step = clamp(diff, -climbRateFtS * dt, climbRateFtS * dt)
     altitudeFt = clamp(altitudeFt + step, 0, 400)
   }

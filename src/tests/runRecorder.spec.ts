@@ -53,6 +53,39 @@ describe('runRecorder', () => {
     ])
   })
 
+  it('carries each drone\'s platform onto its outcome for airframe analytics', () => {
+    const session = makeSession()
+    session.finalDrones[0].platformId = 'skydio_x10'
+    session.finalDrones[1].platformId = 'teal_2'
+
+    const summary = buildRunSummary(session)
+    expect(summary.droneOutcomes.map((o) => o.platformId)).toEqual(['skydio_x10', 'teal_2'])
+  })
+
+  it('leaves platformId absent for unassigned drones rather than inventing one', () => {
+    const summary = buildRunSummary(makeSession())
+    expect(summary.droneOutcomes[0].platformId).toBeUndefined()
+  })
+
+  it('reduces events to per-type counts at record time', () => {
+    const session = makeSession()
+    ;(session as unknown as { events: Array<Record<string, unknown>> }).events = [
+      { eventType: 'mission_start' }, { eventType: 'waypoint_reached' },
+      { eventType: 'waypoint_reached' }, { eventType: 'geofence_breach' },
+    ]
+
+    const summary = buildRunSummary(session)
+    expect(summary.eventTypeCounts).toEqual({
+      mission_start: 1,
+      waypoint_reached: 2,
+      geofence_breach: 1,
+    })
+  })
+
+  it('emits an empty count map for an eventless session', () => {
+    expect(buildRunSummary(makeSession()).eventTypeCounts).toEqual({})
+  })
+
   it('does not record when signed out', async () => {
     expect(await recordRun(makeSession())).toBe(false)
   })

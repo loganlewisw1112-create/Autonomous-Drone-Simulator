@@ -67,6 +67,12 @@ const CAPABILITY_MATRIX: Record<string, string> = {
   'account analytics/settings/history': 'components/account/AccountPanels',
   'saved-run drill-down': 'components/rundetail/RunDetailView',
   'custom mission designer': 'components/designer/CustomMissionHub',
+  // Both shells reach these through shared components: the analytics panel pulls
+  // aggregation from analyticsData, and both map/fleet/OPS surfaces resolve
+  // airframes through the platform catalog. (Tap-to-place is deliberately a
+  // mobile-only UX over the shared setDroneRoute path, so it is NOT a parity row.)
+  'analytics aggregation': 'components/account/analyticsData',
+  'drone platform catalog': 'sim/drone/platformCatalog',
 }
 
 // Every mission/export action exposed by the shared hook, asserted by name in each

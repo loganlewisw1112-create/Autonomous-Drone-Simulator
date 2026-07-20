@@ -489,6 +489,21 @@ html, body, #root {
   flex: 1;
 }
 
+/* Airframe tag in the fleet row. Sits between the (flex:1) label and the state
+   badge, so it consumes slack rather than changing the row's layout. */
+.drone-platform-tag {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
 .state-badge {
   font-size: 9px;
   font-weight: 700;
@@ -1226,6 +1241,15 @@ html, body, #root {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 12px;
+}
+/* Footnote for charts whose source field post-dates some stored runs. */
+.account-chart-note {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.4;
+  color: var(--text-dim);
 }
 .account-run-list { display: flex; flex-direction: column; gap: 6px; }
 .account-run-row {

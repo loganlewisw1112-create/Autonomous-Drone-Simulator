@@ -4,7 +4,7 @@ import { encryptJson, makeId } from '@/account/crypto'
 import { putRunBundle } from '@/account/accountDb'
 import { buildAfterActionPackage } from '@/sim/demo/missionReport'
 import { verifyChain } from '@/utils/chainOfCustody'
-import type { FullMissionFrame, LatLng, MissionReplaySession, ScenarioConfig, TelemetryPoint, Waypoint } from '@/types'
+import type { EventType, FullMissionFrame, LatLng, MissionEvent, MissionReplaySession, ScenarioConfig, TelemetryPoint, Waypoint } from '@/types'
 import type {
   RunRecord,
   RunRecordV2,
@@ -43,8 +43,23 @@ export function buildRunSummary(session: MissionReplaySession): StoredRunSummary
       id: d.id,
       missionState: d.missionState,
       batteryPct: Math.round(d.batteryPct),
+      platformId: d.platformId,
     })),
+    eventTypeCounts: countEventTypes(session.events),
   }
+}
+
+/**
+ * Reduces a session's events to per-type totals. Done once at record time so the
+ * analytics panel can chart event mix from summaries alone, without decrypting
+ * every run's detail blob.
+ */
+function countEventTypes(events: MissionEvent[]): Partial<Record<EventType, number>> {
+  const counts: Partial<Record<EventType, number>> = {}
+  for (const event of events) {
+    counts[event.eventType] = (counts[event.eventType] ?? 0) + 1
+  }
+  return counts
 }
 
 // Live-store fields the detail needs that the session doesn't carry: the full

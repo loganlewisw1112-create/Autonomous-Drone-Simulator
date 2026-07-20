@@ -1,4 +1,5 @@
 import { haversineDistanceM } from '@/utils/geometry'
+import { platformForDrone } from '@/sim/drone/platformCatalog'
 import type { BatteryProfile, LatLng, RechargeStation, ScenarioConfig } from '@/types'
 
 export interface RechargeStationSelectionInput {
@@ -24,9 +25,15 @@ export function batteryReservePctForDrone(scenario: ScenarioConfig, droneId: str
 
 export function effectiveBatteryDrainRateForDrone(scenario: ScenarioConfig, droneId: string): number {
   const profile = batteryProfileForDrone(scenario, droneId)
-  const enduranceMultiplier = profile?.enduranceMultiplier && profile.enduranceMultiplier > 0
-    ? profile.enduranceMultiplier
-    : 1
+  // Precedence: explicit BatteryProfile endurance multiplier (per-drone then fleet)
+  // wins → else the assigned platform's endurance multiplier → else neutral (1).
+  let enduranceMultiplier = 1
+  if (profile?.enduranceMultiplier && profile.enduranceMultiplier > 0) {
+    enduranceMultiplier = profile.enduranceMultiplier
+  } else {
+    const platform = platformForDrone(scenario, droneId)
+    if (platform.enduranceMultiplier > 0) enduranceMultiplier = platform.enduranceMultiplier
+  }
   return scenario.batteryDrainRatePerSec / enduranceMultiplier
 }
 

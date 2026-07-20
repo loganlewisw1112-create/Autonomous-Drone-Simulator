@@ -1,5 +1,6 @@
 import { useDroneStore } from '@/store/droneStore'
 import { stepDrone } from '@/sim/drone/DroneEntity'
+import { platformForDrone } from '@/sim/drone/platformCatalog'
 import { getNextCommand, type MissionManagerState } from '@/sim/mission/MissionManager'
 import { detectConflicts, applyConflictFlags, getAssignedAltitude } from '@/sim/safety/DeconflictEngine'
 import { applyGeofenceFlags, applyCommsModel } from '@/sim/safety/SafetyManager'
@@ -170,6 +171,7 @@ export function tick() {
             { ...drone, missionState: nextState, currentWaypointIndex: wpIdxForDrone, ...hoverPatch, ...rechargePatch, ...launchPatch, ...emergencyPatch, ...thermalHoldPatch, ...avoidPatch },
             { ...cmd, batteryDrainRatePerSec },
             FIXED_DT,
+            platformForDrone(scenario, drone.id),
           )
 
       // Emit chain-of-custody events for significant transitions
@@ -771,6 +773,7 @@ export function initFleet() {
     geofenceBreach: undefined,
     bvlosFlag: false,
     sortieCount: 0,
+    platformId: scenario.dronePlatforms?.[id],
     weatherDivertFlag: false,
     commsLostSec: 0,
     scheduledLaunchSec: launchSlots[id]?.scheduledLaunchSec ?? 0,

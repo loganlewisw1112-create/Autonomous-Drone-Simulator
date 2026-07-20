@@ -9,6 +9,8 @@ import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
 import { buildConflictFeatures, buildIrFootprintFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
 import { buildAirspaceReservationFeatures, buildExternalTrafficFeatures, buildUtmAirspaceState } from '@/sim/demo/utmEngine'
 import { useDeviceMode, type DeviceMode } from '@/hooks/useDeviceMode'
+import { buildAppendedWaypoint, canAppend, routeWithoutWaypoint } from '@/components/mapRouteEditing'
+import { MAX_WAYPOINTS_PER_DRONE } from '@/components/designer/designerValidation'
 import type { LatLng, ScenarioConfig } from '@/types'
 
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
@@ -115,8 +117,26 @@ export function computeScenarioBounds(scenario: ScenarioConfig): ScenarioBounds 
 // 16-level mission-start zoom ceiling.
 function scenarioFitOptions(deviceMode: DeviceMode): { padding: number | { top: number; bottom: number; left: number; right: number }; maxZoom?: number } {
   if (deviceMode === 'desktop') return { padding: 80, maxZoom: 16 }
-  if (deviceMode === 'phone-portrait') return { padding: { top: 38, bottom: 54, left: 28, right: 28 }, maxZoom: 14 }
-  return { padding: { top: 36, bottom: 42, left: 44, right: 44 }, maxZoom: 14 }
+  if (deviceMode === 'phone-portrait') return { padding: { top: 96, bottom: 124, left: 28, right: 28 }, maxZoom: 14 }
+  return { padding: { top: 60, bottom: 100, left: 72, right: 72 }, maxZoom: 14 }
+}
+
+// Insets for the badges rendered inside .map-area. On desktop these are the
+// historical literals (8 / 36 / 28) — the map has reserved chrome around it, so
+// nothing overlaps. On mobile the map is full-bleed under a floating translucent
+// topbar (~36px) and dock (~60px), so badges are pushed clear of both, of the
+// device safe areas, and of the centered priority chip (top+44, 44px tall).
+export function mapBadgeInsets(deviceMode: DeviceMode) {
+  if (deviceMode === 'desktop') {
+    return { top: 8, topStacked: 36, topFollow: 80, bottom: 8, bottomRaised: 28 }
+  }
+  return {
+    top: 'calc(env(safe-area-inset-top) + 96px)',          // below topbar + priority chip
+    topStacked: 'calc(env(safe-area-inset-top) + 124px)',  // second badge in the left column
+    topFollow: 'calc(env(safe-area-inset-top) + 168px)',   // keeps the desktop 72px gap below `top`
+    bottom: 'calc(env(safe-area-inset-bottom) + 74px)',    // just above the dock
+    bottomRaised: 'calc(env(safe-area-inset-bottom) + 96px)',
+  }
 }
 
 interface TacticalMapProps {
@@ -162,6 +182,11 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   // effects so it never forces the heavy scenario-rebuild effect to re-run on its own.
   const deviceMode = useDeviceMode()
 
+  // On mobile the topbar and dock float *over* a full-bleed map, so in-map badges
+  // must clear them (and the notch) rather than sitting at the old 8px insets that
+  // assumed reserved chrome bands. Desktop keeps its historical values — LAW.1.
+  const badgeInset = mapBadgeInsets(deviceMode)
+
   const { drones, scenario, thermalContacts, positionHistory, ui, droneWaypoints, routeSuggestions, selectedThermalId, selectThermal, groundUnits, recoveryTeams, toggleLayer } = useDroneStore(
     useShallow((s) => ({
       drones: s.drones, scenario: s.scenario, thermalContacts: s.thermalContacts, positionHistory: s.positionHistory,
@@ -170,6 +195,11 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       groundUnits: s.groundUnits, recoveryTeams: s.recoveryTeams, toggleLayer: s.toggleLayer,
     })),
   )
+
+  // Tap-to-place is a mobile-only affordance layered over the shared setDroneRoute
+  // path; desktop route editing keeps its existing drag-only behavior (LAW.1).
+  const touchEditing = deviceMode !== 'desktop' && ui.routeEditMode
+  const [pendingRemoval, setPendingRemoval] = useState<{ waypointId: string; index: number } | null>(null)
 
   // Latest-data refs — written by sync effects below, read by the GeoJSON interval
   // so the interval never needs to depend on React state and never re-registers
@@ -1046,6 +1076,40 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     }
   }, [groundUnits, recoveryTeams])
 
+  // A pending "remove waypoint?" prompt must never outlive the edit session or the
+  // selection it refers to.
+  useEffect(() => {
+    if (!touchEditing) setPendingRemoval(null)
+  }, [touchEditing, ui.selectedDroneId])
+
+  // ── Effect 8b: Tap empty map to append a waypoint (touch edit mode) ───────
+  // MapLibre only fires `click` for taps that aren't drags, so panning and
+  // pinch-zoom keep working untouched. Double-click zoom is suspended while
+  // editing so a quick double tap appends two waypoints instead of zooming.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapStyleLoadedRef.current) return
+    const selectedId = ui.selectedDroneId
+    if (!touchEditing || !selectedId) return
+
+    const handleMapClick = (event: maplibregl.MapMouseEvent) => {
+      const store = useDroneStore.getState()
+      const route = store.droneWaypoints[selectedId] ?? []
+      if (!canAppend(route)) return
+      const waypoint = buildAppendedWaypoint(route, { lat: event.lngLat.lat, lng: event.lngLat.lng })
+      // setDroneRoute runs validateOperatorRoute internally: a rejected append
+      // surfaces through ui.routeCommandError and the route is left unchanged.
+      store.setDroneRoute(selectedId, [...route, waypoint], 'append_waypoint')
+    }
+
+    map.on('click', handleMapClick)
+    map.doubleClickZoom.disable()
+    return () => {
+      map.off('click', handleMapClick)
+      map.doubleClickZoom.enable()
+    }
+  }, [touchEditing, ui.selectedDroneId, mapReady])
+
   // ── Effect 8: Draggable route-edit markers for selected drone ─────────────
   useEffect(() => {
     const map = mapRef.current
@@ -1057,10 +1121,15 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     const selectedId = ui.selectedDroneId
     if (!selectedId) return
     const route = droneWaypoints[selectedId] ?? []
-    route.slice(0, 24).forEach((wp, index) => {
+    route.slice(0, MAX_WAYPOINTS_PER_DRONE).forEach((wp, index) => {
       const el = document.createElement('div')
-      el.className = 'route-edit-marker'
+      // In touch edit mode the marker grows to a 44px hit target (the visual dot
+      // stays small, drawn via ::after) — desktop keeps the original 18px marker.
+      el.className = `route-edit-marker${touchEditing ? ' route-edit-marker--touch' : ''}`
       el.textContent = String(index + 1)
+      // The touch variant hides the element's own text and re-draws the number in
+      // a ::after dot, which needs the value as an attribute.
+      el.dataset.label = String(index + 1)
       const marker = new maplibregl.Marker({ element: el, draggable: true })
         .setLngLat([wp.position.lng, wp.position.lat])
         .addTo(map)
@@ -1070,9 +1139,18 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         useDroneStore.getState().moveDroneWaypoint(selectedId, wp.id, { lat: pos.lat, lng: pos.lng })
       })
 
+      if (touchEditing) {
+        // Tapping a marker asks to remove it. stopPropagation keeps the tap from
+        // reaching the map-click handler, which would append a new waypoint on top.
+        el.addEventListener('click', (event) => {
+          event.stopPropagation()
+          setPendingRemoval({ waypointId: wp.id, index })
+        })
+      }
+
       routeEditMarkersRef.current.set(wp.id, marker)
     })
-  }, [ui.selectedDroneId, droneWaypoints, mapReady])
+  }, [ui.selectedDroneId, droneWaypoints, mapReady, touchEditing])
 
   return (
     <div className={`map-area${ui.sensorMode === 'ir' ? ' ir-active' : ''}`}>
@@ -1106,6 +1184,32 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       {chromeSlots === 'inline' && <MissionStatusFeed />}
       {chromeSlots === 'inline' && <OperatorCommandPanel />}
 
+      {/* Remove-waypoint confirmation. Lives here rather than in MobileShell so the
+          pending selection stays local to the map that raised it. */}
+      {touchEditing && pendingRemoval && (
+        <div className="route-edit-confirm" data-testid="route-edit-confirm">
+          <span>Remove WP {pendingRemoval.index + 1}?</span>
+          <button
+            type="button"
+            onClick={() => {
+              const selectedId = ui.selectedDroneId
+              if (selectedId) {
+                const route = useDroneStore.getState().droneWaypoints[selectedId] ?? []
+                useDroneStore.getState().setDroneRoute(
+                  selectedId,
+                  routeWithoutWaypoint(route, pendingRemoval.waypointId),
+                  'set_route',
+                )
+              }
+              setPendingRemoval(null)
+            }}
+          >
+            REMOVE
+          </button>
+          <button type="button" onClick={() => setPendingRemoval(null)}>CANCEL</button>
+        </div>
+      )}
+
       {/* Camera follow button — shows when manually panned or locked to specific drone */}
       {(cameraLocked || lockedDroneId) && ui.isRunning && (
         <button
@@ -1115,7 +1219,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
             useDroneStore.getState().setSelectedDrone(null)
           }}
           style={{
-            position: 'absolute', top: 80, right: 10, zIndex: 100,
+            position: 'absolute', top: badgeInset.topFollow, right: 10, zIndex: 100,
             fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
             background: '#00d4ff22', border: '1px solid #00d4ff44', color: '#00d4ff',
             borderRadius: 4, padding: '4px 8px', cursor: 'pointer',
@@ -1132,7 +1236,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         <div
           data-testid="ir-hud"
           style={{
-            position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)',
+            position: 'absolute', top: badgeInset.top, left: '50%', transform: 'translateX(-50%)',
             pointerEvents: 'none', zIndex: 40,
             fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: 2,
             color: '#eaf6ff', background: '#00000099',
@@ -1152,7 +1256,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         <div
           data-testid="layers-control"
           style={{
-            position: 'absolute', bottom: 28, right: 8, zIndex: 60,
+            position: 'absolute', bottom: badgeInset.bottomRaised, right: 8, zIndex: 60,
             fontFamily: 'var(--font-mono)', fontSize: 8.5, letterSpacing: '0.04em',
             color: 'var(--text-dim)', background: 'var(--bg-panel)',
             padding: '5px 8px', borderRadius: 'var(--radius-sm)',
@@ -1198,7 +1302,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         <div
           data-testid="zone-legend"
           style={{
-            position: 'absolute', bottom: 28, left: 8,
+            position: 'absolute', bottom: badgeInset.bottomRaised, left: 8,
             display: 'flex', gap: 10, alignItems: 'center',
             fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.05em',
             color: 'var(--text-dim)', background: 'var(--bg-panel)',
@@ -1214,7 +1318,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       {/* SAR mode indicator */}
       {scenario?.missionType === 'sar_parallel' && (
         <div style={{
-          position: 'absolute', top: 8, left: 8,
+          position: 'absolute', top: badgeInset.top, left: 8,
           fontFamily: 'var(--font-mono)', fontSize: 10,
           color: '#ffaa00', background: 'var(--bg-panel)',
           padding: '3px 8px', borderRadius: 4, border: '1px solid #ffaa0044',
@@ -1226,7 +1330,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       {/* Thermal contact count */}
       {thermalContacts.length > 0 && (
         <div style={{
-          position: 'absolute', top: scenario?.missionType === 'sar_parallel' ? 36 : 8, left: 8,
+          position: 'absolute', top: scenario?.missionType === 'sar_parallel' ? badgeInset.topStacked : badgeInset.top, left: 8,
           fontFamily: 'var(--font-mono)', fontSize: 10,
           color: '#ff6600', background: 'var(--bg-panel)',
           padding: '3px 8px', borderRadius: 4, border: '1px solid #ff660044',
@@ -1255,7 +1359,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         const confPct = Math.round((contact.weatherAdjustedConfidence ?? contact.confidence) * 100)
         return (
           <div style={{
-            position: 'absolute', top: 8, right: 56, zIndex: 120,
+            position: 'absolute', top: badgeInset.top, right: 56, zIndex: 120,
             background: 'var(--bg-panel)', border: '1px solid #ff660088',
             borderRadius: 6, padding: '8px 12px', minWidth: 210,
             fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)',
@@ -1308,7 +1412,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       })()}
 
       <div style={{
-        position: 'absolute', bottom: 8, left: 8,
+        position: 'absolute', bottom: badgeInset.bottom, left: 8,
         fontFamily: 'var(--font-mono)', fontSize: 9,
         color: 'var(--text-dim)', background: 'var(--bg-panel)',
         padding: '2px 6px', borderRadius: 'var(--radius-sm)',
