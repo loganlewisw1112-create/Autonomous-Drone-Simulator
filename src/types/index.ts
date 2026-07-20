@@ -108,7 +108,16 @@ export interface GeofenceBreachInfo {
 export type DispatchPriority = 'routine' | 'advisory' | 'urgent' | 'critical'
 export type DispatchTimelineCategory = 'dispatch' | 'field_unit' | 'operator_task' | 'agency_update' | 'safety'
 
-export type LaunchRecoverySiteKind = 'rooftop' | 'police_rooftop' | 'mobile_command' | 'field_icp' | 'vessel' | 'helipad'
+export type LaunchRecoverySiteKind =
+  | 'building_rooftop'
+  | 'rooftop'
+  | 'police_rooftop'
+  | 'police_station'
+  | 'fire_station'
+  | 'mobile_command'
+  | 'field_icp'
+  | 'vessel'
+  | 'helipad'
 
 export interface LaunchRecoverySite {
   kind: LaunchRecoverySiteKind
@@ -412,6 +421,11 @@ export interface FullMissionFrame {
   activeEventIds: string[]
 }
 
+// Why a run ended: the whole fleet reached idle/landed on its own (tick-driven,
+// SimulationLoop's terminal auto-complete), or the operator tapped End Mission
+// while the fleet was still active (including after an RTB-ALL abort).
+export type MissionCompletionReason = 'all_drones_complete' | 'operator_ended'
+
 export interface MissionReplaySession {
   scenarioId: string
   scenarioVariant: ScenarioVariantConfig
@@ -420,6 +434,7 @@ export interface MissionReplaySession {
   events: MissionEvent[]
   metrics: MissionMetrics
   completedAt: number
+  completionReason: MissionCompletionReason
   // Final mission state, snapshotted at stop time. Replay scrubbing overwrites the live store's
   // drones/thermalContacts/etc., so exports MUST read these instead of live fields — otherwise an
   // after-action generated mid-scrub mixes an old frame's fleet state with final metrics.
@@ -519,6 +534,61 @@ export interface ScenarioConfig {
   droneRouteBriefs?: Record<string, DroneRouteBrief>
   operationalFeatures?: OperationalFeature[]
   weatherProfile?: ScenarioWeatherProfile
+  // ── Custom-mission authoring (designer) ──
+  // When true, enhanceScenarioForOperations preserves `authoredRoutes` as the
+  // per-drone waypoints instead of overwriting them with derived safe routes.
+  isCustom?: boolean
+  authoredRoutes?: Record<string, Waypoint[]>       // droneId → operator-authored waypoints
+  defaultLaunchAssignments?: Record<string, string> // droneId → siteId, seeds the launch plan
+}
+
+// ─── Mission lifecycle ───────────────────────────────────────────────────────────
+// Explicit finite-state machine gating the sim loop and the run recorder.
+// Only `completed` (via End Mission or a genuine terminal auto-complete) persists
+// an immutable run record — pause/RTB/reset/scenario-browse never do.
+export type MissionLifecycleState = 'idle' | 'preflight' | 'running' | 'paused' | 'completed'
+
+// ─── Mobile shell surfaces ─────────────────────────────────────────────────────
+// One mutually-exclusive surface is open at a time (opening one closes the prior).
+// `null` (no surface) is represented at the store field, not in this union.
+export type ActiveMobileSurface =
+  | 'fleet'
+  | 'ops'
+  | 'telemetry'
+  | 'evidence'
+  | 'scenario'
+  | 'mission'
+  | 'more'
+  | 'dispatch'
+  | 'replay'
+  | 'exports'
+  | 'account'
+  | 'analytics'
+  | 'settings'
+
+// ─── Custom mission definition (designer output, pre-compile) ───────────────────
+export interface CustomMissionSite {
+  id: string
+  kind: LaunchRecoverySiteKind
+  label: string
+  position: LatLng
+  capacityDrones?: number
+}
+
+export interface CustomMissionDefinition {
+  id: string
+  name: string
+  locationLabel: string
+  purpose: string
+  endGoal: string
+  center: LatLng
+  droneCount: number                            // 1–8
+  sites: CustomMissionSite[]
+  launchAssignments: Record<string, string>     // droneId → siteId
+  recoveryAssignments: Record<string, string>   // droneId → siteId
+  routes: Record<string, Waypoint[]>            // droneId → authored waypoints (≤24 each)
+  createdAt: number
+  updatedAt: number
 }
 
 // ─── UI State ──────────────────────────────────────────────────────────────────

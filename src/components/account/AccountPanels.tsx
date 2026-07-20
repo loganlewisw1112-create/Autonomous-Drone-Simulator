@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -6,20 +6,26 @@ import {
 import { useAuthStore } from '@/store/authStore'
 import { decryptJson, deriveKey, encryptJson, makeCheckBlob, makeKdfParams, toBase64 } from '@/account/crypto'
 import {
-  clearRuns, deleteAccount, exportBackup, getAccountByUsername, importBackup, listRuns, putAccount, putRun,
+  clearRunDetails, clearRuns, deleteAccount, exportBackup, getAccountByUsername, getRunDetail, importBackup, listRuns, rekeyAllRecords,
 } from '@/account/accountDb'
-import { SCENARIO_OPTIONS } from '@/scenarios/catalog'
-import type { StoredRunSummary } from '@/account/types'
+import { getScenarioOptions } from '@/scenarios/registry'
+import { useDeviceMode } from '@/hooks/useDeviceMode'
+import type { AccountRecord, StoredRunDetailV2, StoredRunSummary } from '@/account/types'
+
+const RunDetailView = lazy(() => import('@/components/rundetail/RunDetailView').then((module) => ({ default: module.RunDetailView })))
 
 // Full-screen Analytics + Settings panels, shared by both shells. Gated on
 // auth-store flags so this whole chunk stays lazy until first opened.
 
-function useDecryptedRuns(open: boolean): { runs: StoredRunSummary[]; loading: boolean } {
+interface DecryptedRunEntry { id: string; summary: StoredRunSummary }
+
+function useDecryptedRuns(open: boolean): { runs: DecryptedRunEntry[]; loading: boolean; corruptCount: number } {
   const { activeAccount, sessionKey } = useAuthStore(
     useShallow((s) => ({ activeAccount: s.activeAccount, sessionKey: s.sessionKey })),
   )
-  const [runs, setRuns] = useState<StoredRunSummary[]>([])
+  const [runs, setRuns] = useState<DecryptedRunEntry[]>([])
   const [loading, setLoading] = useState(false)
+  const [corruptCount, setCorruptCount] = useState(0)
 
   useEffect(() => {
     if (!open || !activeAccount || !sessionKey) return
@@ -27,19 +33,21 @@ function useDecryptedRuns(open: boolean): { runs: StoredRunSummary[]; loading: b
     setLoading(true)
     void listRuns(activeAccount.id).then((records) => {
       if (cancelled) return
-      const decrypted: StoredRunSummary[] = []
+      const decrypted: DecryptedRunEntry[] = []
+      let corrupt = 0
       for (const record of records) {
         try {
-          decrypted.push(decryptJson<StoredRunSummary>(sessionKey, record.blob))
-        } catch { /* skip corrupt/foreign records */ }
+          decrypted.push({ id: record.id, summary: decryptJson<StoredRunSummary>(sessionKey, record.blob) })
+        } catch { corrupt++ }
       }
       setRuns(decrypted)
+      setCorruptCount(corrupt)
       setLoading(false)
     })
     return () => { cancelled = true }
   }, [open, activeAccount, sessionKey])
 
-  return { runs, loading }
+  return { runs, loading, corruptCount }
 }
 
 function StatTile({ label, value }: { label: string; value: string | number }) {
@@ -52,23 +60,44 @@ function StatTile({ label, value }: { label: string; value: string | number }) {
 }
 
 function AnalyticsPanel() {
-  const { showAnalytics, setShowAnalytics, activeAccount } = useAuthStore(
-    useShallow((s) => ({ showAnalytics: s.showAnalytics, setShowAnalytics: s.setShowAnalytics, activeAccount: s.activeAccount })),
+  const deviceMode = useDeviceMode()
+  const mobile = deviceMode === 'phone-landscape' || deviceMode === 'phone-portrait'
+  const { showAnalytics, setShowAnalytics, activeAccount, sessionKey } = useAuthStore(
+    useShallow((s) => ({ showAnalytics: s.showAnalytics, setShowAnalytics: s.setShowAnalytics, activeAccount: s.activeAccount, sessionKey: s.sessionKey })),
   )
-  const { runs, loading } = useDecryptedRuns(showAnalytics)
+  const { runs, loading, corruptCount } = useDecryptedRuns(showAnalytics)
+  const [selected, setSelected] = useState<DecryptedRunEntry | null>(null)
+  const [detail, setDetail] = useState<StoredRunDetailV2 | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+
+  useEffect(() => {
+    if (!showAnalytics) { setSelected(null); setDetail(null) }
+  }, [showAnalytics])
+
+  async function openRun(entry: DecryptedRunEntry) {
+    setSelected(entry)
+    setDetail(null)
+    if (!sessionKey) return
+    setDetailLoading(true)
+    const record = await getRunDetail(entry.id)
+    if (record) {
+      try { setDetail(decryptJson<StoredRunDetailV2>(sessionKey, record.blob)) } catch { setDetail(null) }
+    }
+    setDetailLoading(false)
+  }
 
   const aggregates = useMemo(() => {
     const total = runs.length
-    const distanceKm = runs.reduce((sum, r) => sum + r.metrics.totalFlightDistanceM, 0) / 1000
-    const contacts = runs.reduce((sum, r) => sum + r.metrics.thermalContacts, 0)
-    const waypoints = runs.reduce((sum, r) => sum + r.metrics.waypointsReached, 0)
-    const avgDuration = total ? runs.reduce((sum, r) => sum + r.durationSec, 0) / total : 0
-    const verified = runs.filter((r) => r.chainVerified).length
+    const distanceKm = runs.reduce((sum, r) => sum + r.summary.metrics.totalFlightDistanceM, 0) / 1000
+    const contacts = runs.reduce((sum, r) => sum + r.summary.metrics.thermalContacts, 0)
+    const waypoints = runs.reduce((sum, r) => sum + r.summary.metrics.waypointsReached, 0)
+    const avgDuration = total ? runs.reduce((sum, r) => sum + r.summary.durationSec, 0) / total : 0
+    const verified = runs.filter((r) => r.summary.eventCount > 0 && r.summary.chainVerified).length
     return { total, distanceKm, contacts, waypoints, avgDuration, verified }
   }, [runs])
 
   const timeline = useMemo(() =>
-    runs.map((r, i) => ({
+    runs.map(({ summary: r }, i) => ({
       name: new Date(r.completedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
       run: i + 1,
       distanceKm: Number((r.metrics.totalFlightDistanceM / 1000).toFixed(2)),
@@ -77,7 +106,7 @@ function AnalyticsPanel() {
 
   const byScenario = useMemo(() => {
     const counts = new Map<string, number>()
-    runs.forEach((r) => counts.set(r.scenarioId, (counts.get(r.scenarioId) ?? 0) + 1))
+    runs.forEach(({ summary: r }) => counts.set(r.scenarioId, (counts.get(r.scenarioId) ?? 0) + 1))
     return [...counts.entries()].map(([scenarioId, count]) => ({ scenarioId, count }))
   }, [runs])
 
@@ -93,8 +122,10 @@ function AnalyticsPanel() {
       {!activeAccount && <p className="account-empty">Sign in to see your mission analytics.</p>}
       {activeAccount && loading && <p className="account-empty">Decrypting mission history…</p>}
       {activeAccount && !loading && runs.length === 0 && (
-        <p className="account-empty">No saved missions yet. Complete a mission (▶ START → ■ STOP) and it will be recorded to this profile automatically.</p>
+        <p className="account-empty">No saved missions yet. Complete a mission (▶ START → ■ END MISSION) and it will be recorded to this profile automatically.</p>
       )}
+
+      {corruptCount > 0 && <p className="account-status warning">{corruptCount} saved run{corruptCount === 1 ? '' : 's'} could not be decrypted. The records were left unchanged.</p>}
 
       {runs.length > 0 && (
         <div className="account-panel-body">
@@ -134,19 +165,25 @@ function AnalyticsPanel() {
             </div>
           </div>
 
-          <div className="account-run-list">
-            <span className="account-label">MISSION LOG (NEWEST LAST)</span>
-            {runs.map((r, i) => (
-              <div key={`${r.completedAt}-${i}`} className="account-run-row">
-                <span>{new Date(r.completedAt).toLocaleString()}</span>
-                <span className="account-run-scenario">{r.scenarioId.toUpperCase()}</span>
-                <span>{(r.metrics.totalFlightDistanceM / 1000).toFixed(2)} km</span>
-                <span>{r.metrics.thermalContacts} contacts</span>
-                <span style={{ color: r.chainVerified ? 'var(--accent-green)' : 'var(--accent-yellow)' }}>
-                  {r.chainVerified ? '✓ chain verified' : '⚠ unverified'}
-                </span>
-              </div>
-            ))}
+          <div className={`account-analytics-master${selected ? ' account-analytics-master--selected' : ''}`}>
+            <div className="account-run-list">
+              <span className="account-label">MISSION LOG (NEWEST LAST)</span>
+              {runs.map((entry, i) => {
+                const r = entry.summary
+                const evidenceLabel = r.eventCount === 0 ? '○ no evidence' : r.chainVerified ? '✓ chain verified' : '⚠ unverified'
+                return (
+                  <button key={entry.id || `${r.completedAt}-${i}`} className={`account-run-row${selected?.id === entry.id ? ' active' : ''}`} onClick={() => void openRun(entry)} aria-label={`Open ${r.scenarioId} run from ${new Date(r.completedAt).toLocaleString()}`}>
+                    <span>{new Date(r.completedAt).toLocaleString()}</span>
+                    <span className="account-run-scenario">{r.scenarioId.toUpperCase()}</span>
+                    <span>{(r.metrics.totalFlightDistanceM / 1000).toFixed(2)} km</span>
+                    <span>{r.metrics.thermalContacts} contacts</span>
+                    <span className={`account-run-evidence account-run-evidence--${r.eventCount === 0 ? 'none' : r.chainVerified ? 'verified' : 'failed'}`}>{evidenceLabel}</span>
+                    <span aria-hidden="true">›</span>
+                  </button>
+                )
+              })}
+            </div>
+            {selected && <div className="account-run-detail-pane">{detailLoading ? <p className="account-empty">Decrypting full run…</p> : <Suspense fallback={<p className="account-empty">Opening run…</p>}><RunDetailView summary={selected.summary} detail={detail} mobile={mobile} onBack={() => { setSelected(null); setDetail(null) }} /></Suspense>}</div>}
           </div>
         </div>
       )}
@@ -215,18 +252,20 @@ function SettingsPanel() {
     if (newPassword.length < 8) { flash('New password must be at least 8 characters'); return }
     const record = await getAccountByUsername(activeAccount!.username)
     if (!record) { flash('Profile record not found'); return }
-    // Re-key everything: new salt + key, re-encrypt check blob, prefs, and all runs.
+    // Re-key everything atomically: new salt + key, re-encrypted check blob and
+    // prefs, plus every run / run-detail / mission blob — all in ONE transaction.
+    // If any row fails to re-encrypt the whole change aborts and the old password
+    // still decrypts the untouched data.
     const kdfParams = makeKdfParams()
     const newKey = deriveKey(newPassword, kdfParams)
-    const runs = await listRuns(activeAccount!.id)
-    for (const run of runs) {
-      const summary = decryptJson<StoredRunSummary>(sessionKey!, run.blob)
-      await putRun({ ...run, blob: encryptJson(newKey, summary) })
+    const newAccountRecord: AccountRecord = {
+      ...record,
+      kdfParams,
+      checkBlob: makeCheckBlob(newKey),
+      prefsBlob: encryptJson(newKey, prefs),
     }
-    record.kdfParams = kdfParams
-    record.checkBlob = makeCheckBlob(newKey)
-    record.prefsBlob = encryptJson(newKey, prefs)
-    await putAccount(record)
+    const ok = await rekeyAllRecords(activeAccount!.id, sessionKey!, newKey, newAccountRecord)
+    if (!ok) { flash('Password change failed — nothing was modified; your old password still works'); return }
     useAuthStore.setState({ sessionKey: newKey })
     try {
       const raw = localStorage.getItem('drone-sim:session:v1')
@@ -238,6 +277,7 @@ function SettingsPanel() {
 
   async function handleClearRuns() {
     await clearRuns(activeAccount!.id)
+    await clearRunDetails(activeAccount!.id)
     setConfirmClear(false)
     flash('Mission history cleared')
   }
@@ -269,7 +309,7 @@ function SettingsPanel() {
                 onChange={(e) => void savePrefs({ ...prefs, defaultScenarioId: e.target.value || undefined })}
               >
                 <option value="">— none —</option>
-                {SCENARIO_OPTIONS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                {getScenarioOptions().map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
             </label>
             <label>Default sim speed

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useMissionControls } from '@/hooks/useMissionControls'
-import { SCENARIO_OPTIONS } from '@/scenarios/catalog'
+import { useScenarioOptions } from '@/scenarios/registry'
 import type { OperatorRole, SimSpeed, ScenarioVariantConfig } from '@/types'
 
 const ROLE_LABELS: Record<OperatorRole, string> = {
@@ -9,17 +9,21 @@ const ROLE_LABELS: Record<OperatorRole, string> = {
   observer: 'OBS',
 }
 
+const CustomMissionHub = lazy(() => import('@/components/designer/CustomMissionHub').then((module) => ({ default: module.CustomMissionHub })))
+
 export function ControlBar() {
   const {
-    ui, scenario, events, drones, operatorRole, weatherState, scenarioVariant, investorDemo,
+    ui, scenario, events, drones, lifecycle, operatorRole, weatherState, scenarioVariant, investorDemo,
     setSimSpeed, setOperatorRole, setInvestorDemoEnabled,
     exportStatus, canStart, canAbort, canStop, launchReady, allLanded,
-    handleStart, handleAbort, handleStop,
+    handleStart, handleAbort, handlePause, handleResume, handleEndMission,
     handleScenarioChange, handleVariantChange, handleRandomizeSeed, handleDemoReset,
     handleExportLog, handleExportKML, handleExportGeoJSON, handleExportAfterAction,
   } = useMissionControls()
 
+  const scenarioOptions = useScenarioOptions()
   const [showVariant, setShowVariant] = useState(false)
+  const [showDesigner, setShowDesigner] = useState(false)
 
   return (
     <div className="control-dock" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -113,10 +117,13 @@ export function ControlBar() {
           onChange={(e) => handleScenarioChange(e.target.value)}
         >
           <option value="" disabled>— Load Scenario —</option>
-          {SCENARIO_OPTIONS.map((s) => (
+          {scenarioOptions.map((s) => (
             <option key={s.id} value={s.id}>{s.label}</option>
           ))}
         </select>
+        <button className="btn" onClick={() => setShowDesigner(true)} title="Create or load a saved custom mission">
+          ＋ CUSTOM MISSION
+        </button>
 
         <div className="control-divider" />
 
@@ -170,8 +177,21 @@ export function ControlBar() {
         <button className="btn warning" onClick={handleAbort} disabled={!ui.isRunning || !canAbort}>
           ⬆ RTB ALL
         </button>
-        <button className="btn danger" onClick={handleStop} disabled={!ui.isRunning || !canStop}>
-          ■ STOP
+        {lifecycle === 'paused' ? (
+          <button className="btn primary" onClick={handleResume} disabled={!canStop}>
+            ▶ RESUME
+          </button>
+        ) : (
+          <button className="btn" onClick={handlePause} disabled={!ui.isRunning || !canStop}>
+            ⏸ PAUSE
+          </button>
+        )}
+        <button
+          className="btn danger"
+          onClick={handleEndMission}
+          disabled={!canStop || !(ui.isRunning || lifecycle === 'paused')}
+        >
+          ■ END MISSION
         </button>
 
         <div className="control-divider" />
@@ -218,6 +238,7 @@ export function ControlBar() {
           {ui.isRunning ? '● MISSION ACTIVE' : allLanded ? '● ALL LANDED' : '○ STANDBY'}
         </span>
       </div>
+      {showDesigner && <Suspense fallback={null}><CustomMissionHub onClose={() => setShowDesigner(false)} /></Suspense>}
     </div>
   )
 }

@@ -74,7 +74,7 @@ export function buildAfterActionPackage(input: BuildAfterActionPackageInput): Af
     utm,
     evidence: {
       chainHash,
-      chainVerified: verifyChain(input.events),
+      chainVerified: input.events.length > 0 && verifyChain(input.events),
       kpiCount: 8,
       droneCount: drones.length,
       positionSampleCount,
