@@ -209,6 +209,7 @@ export function MobileShell() {
           title={activeSurface ? SURFACE_TITLES[activeSurface] : ''}
           open={drawerOpen}
           onClose={closeSurface}
+          dataSurface={activeSurface}
           testId="mobile-surface-drawer"
         >
           <SurfacePane active={activeSurface === 'fleet'} className="mobile-fleet-pane"><FleetPanel /></SurfacePane>

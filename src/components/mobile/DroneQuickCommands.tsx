@@ -13,23 +13,34 @@ const THERMAL_HOLD_MIN_SEC = 10
 // a partial-height drawer, so the map stays visible above it.
 export function DroneQuickCommands() {
   const {
-    scenario, drones, elapsedSec, selectedDroneId, routeCommandError,
+    scenario, drones, elapsedSec, selectedDroneId, routeCommandError, routeSuggestions,
     setSelectedDrone, hoverDrone, resumeDrone, returnDroneToBase,
     commandDroneRoute, generateRouteSuggestionsForDrone,
+    acceptRouteSuggestion, rejectRouteSuggestion,
   } = useDroneStore(
     useShallow((s) => ({
       scenario: s.scenario, drones: s.drones, elapsedSec: s.elapsedSec,
       selectedDroneId: s.ui.selectedDroneId, routeCommandError: s.routeCommandError,
+      routeSuggestions: s.routeSuggestions,
       setSelectedDrone: s.setSelectedDrone, hoverDrone: s.hoverDrone,
       resumeDrone: s.resumeDrone, returnDroneToBase: s.returnDroneToBase,
       commandDroneRoute: s.commandDroneRoute,
       generateRouteSuggestionsForDrone: s.generateRouteSuggestionsForDrone,
+      acceptRouteSuggestion: s.acceptRouteSuggestion, rejectRouteSuggestion: s.rejectRouteSuggestion,
     })),
   )
 
   const selected = useMemo(
     () => drones.find((d) => d.id === selectedDroneId) ?? drones[0],
     [drones, selectedDroneId],
+  )
+
+  // Pending AI route suggestions for the selected drone. SUGGEST generates these
+  // into the shared store; the OPS hub renders them, so the Mission tab must too —
+  // otherwise the button appears to do nothing.
+  const suggestions = useMemo(
+    () => (selected ? routeSuggestions.filter((s) => s.droneId === selected.id) : []),
+    [routeSuggestions, selected],
   )
 
   if (!scenario || !selected) {
@@ -96,6 +107,31 @@ export function DroneQuickCommands() {
       {routeCommandError && (
         <span className="mobile-status-line" style={{ color: 'var(--accent-red)' }}>{routeCommandError}</span>
       )}
+
+      {/* SUGGEST output. Without this the button silently mutated state and the
+          operator saw nothing — now each proposed move is shown with its rationale
+          and an ACCEPT (adopts the route) / DISMISS (drops it) choice. */}
+      <div className="mobile-suggestions">
+        <span className="mobile-sheet-label">
+          SUGGESTED MOVES{suggestions.length > 0 ? ` (${suggestions.length})` : ''}
+        </span>
+        {suggestions.length === 0 ? (
+          <span className="mobile-status-line">
+            Tap SUGGEST for AI-proposed next moves for {selected.id.toUpperCase()} (hold pattern, expanding search, route to last-known-location).
+          </span>
+        ) : (
+          suggestions.map((s) => (
+            <div key={s.id} className={`mobile-suggestion suggestion-${s.priority}`}>
+              <div className="mobile-suggestion-title">{s.title}</div>
+              <p className="mobile-suggestion-rationale">{s.rationale}</p>
+              <div className="mobile-suggestion-actions">
+                <button className="mobile-btn primary" onClick={() => acceptRouteSuggestion(s.id)}>ACCEPT</button>
+                <button className="mobile-btn" onClick={() => rejectRouteSuggestion(s.id)}>DISMISS</button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }
