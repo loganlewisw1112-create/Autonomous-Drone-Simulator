@@ -1242,6 +1242,15 @@ html, body, #root {
   border-radius: var(--radius-md);
   padding: 12px;
 }
+/* Footnote for charts whose source field post-dates some stored runs. */
+.account-chart-note {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
 .account-run-list { display: flex; flex-direction: column; gap: 6px; }
 .account-run-row {
   display: flex;
