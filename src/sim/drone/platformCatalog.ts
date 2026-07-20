@@ -17,6 +17,8 @@ export type PlatformId =
 export interface DronePlatformSpec {
   id: PlatformId | 'legacy'
   displayName: string
+  /** 4-6 char tag for dense UI (fleet rows). */
+  shortName: string
   vendor: string
   role: string
   massKg: number
@@ -38,6 +40,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
   skydio_x10: {
     id: 'skydio_x10',
     displayName: 'Skydio X10',
+    shortName: 'X10',
     vendor: 'Skydio',
     role: 'Primary patrol / ISR',
     massKg: 2.11,
@@ -54,6 +57,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
   skydio_x10d: {
     id: 'skydio_x10d',
     displayName: 'Skydio X10D',
+    shortName: 'X10D',
     vendor: 'Skydio',
     role: 'Weatherproof patrol / ISR',
     massKg: 2.11,
@@ -70,6 +74,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
   parrot_anafi_usa: {
     id: 'parrot_anafi_usa',
     displayName: 'Parrot Anafi USA',
+    shortName: 'ANAFI',
     vendor: 'Parrot',
     role: 'Fast-deploy compact',
     massKg: 0.485,
@@ -86,6 +91,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
   teal_2: {
     id: 'teal_2',
     displayName: 'Teal 2',
+    shortName: 'TEAL2',
     vendor: 'Teal (Red Cat)',
     role: 'Night ops / thermal',
     massKg: 1.25,
@@ -102,6 +108,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
   freefly_astro_max: {
     id: 'freefly_astro_max',
     displayName: 'Freefly Astro Max',
+    shortName: 'ASTRO',
     vendor: 'Freefly',
     role: 'Mapping / heavy payload',
     massKg: 3.52,
@@ -118,6 +125,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
   brinc_lemur_2: {
     id: 'brinc_lemur_2',
     displayName: 'BRINC Lemur 2',
+    shortName: 'LEMUR2',
     vendor: 'BRINC',
     role: 'Tactical entry / interior',
     massKg: 1.5,
@@ -139,6 +147,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
 export const LEGACY_PLATFORM: DronePlatformSpec = {
   id: 'legacy',
   displayName: 'Standard UAS',
+    shortName: 'STD',
   vendor: '—',
   role: 'Generic airframe',
   massKg: 2,

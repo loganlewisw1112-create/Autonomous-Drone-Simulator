@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { RECOVERY_STATES } from '@/components/FleetPanel'
 import { haversineDistanceM } from '@/utils/geometry'
+import { platformForDrone } from '@/sim/drone/platformCatalog'
 import type { DispatchTimelineEntry, OperatorRouteCommand, Waypoint, WaypointSaveStatus } from '@/types'
 
 const COMMANDS: Array<{ command: OperatorRouteCommand; label: string }> = [
@@ -65,6 +66,7 @@ export function OperatorCommandPanel() {
   const suggestions = routeSuggestions.filter((suggestion) => suggestion.droneId === selectedDrone.id)
   const routeBrief = scenario.droneRouteBriefs?.[selectedDrone.id]
   const batteryProfile = scenario.droneBatteryProfiles?.[selectedDrone.id] ?? scenario.batteryProfile
+  const platform = platformForDrone(scenario, selectedDrone.id)
   const launchSite = scenario.launchSites?.[selectedDrone.id]
   const recoverySite = scenario.recoverySites?.[selectedDrone.id]
   const dispatchTasks = (scenario.dispatchTimeline ?? [])
@@ -113,6 +115,10 @@ export function OperatorCommandPanel() {
       {routeBrief && (
         <div className="operator-brief">
           <strong>{routeBrief.role}</strong>
+          {/* Platform doctrine is fixed per scenario — informational text only, no picker. */}
+          <span data-testid="operator-platform">
+            {platform.displayName} | {platform.role} | max {platform.maxSpeedMs} m/s | {platform.enduranceMin} min
+          </span>
           <span>{routeBrief.launchRationale}</span>
           <span>{routeBrief.routePattern}</span>
           <span>{routeBrief.recoveryPlan}</span>
