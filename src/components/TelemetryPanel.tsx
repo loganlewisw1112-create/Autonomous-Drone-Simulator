@@ -6,7 +6,8 @@ import { encodeDroneTelemetry, formatMAVLinkLine } from '@/utils/mavlink'
 import { buildComplianceState } from '@/sim/demo/complianceEngine'
 import { buildMissionOutcomeSummary } from '@/sim/demo/missionOutcome'
 import { buildUtmAirspaceState } from '@/sim/demo/utmEngine'
-import type { MissionEvent } from '@/types'
+import { platformForDrone, LEGACY_FAA_SPEED_LIMIT_MS } from '@/sim/drone/platformCatalog'
+import type { MissionEvent, ScenarioConfig } from '@/types'
 
 // Recharts is a ~530kB vendor chunk — keep it out of the first paint by lazy-loading
 // the chart block (same React.lazy pattern as the modals in App.tsx).
@@ -44,6 +45,12 @@ const EVENT_COLORS: Record<string, string> = {
 type Tab = 'telem' | 'mavlink' | 'metrics' | 'readiness'
 
 const MAX_MAVLINK_LINES = 80
+
+// Per-drone certified max groundspeed. Falls back to the FAA Part 107 cap when no
+// scenario (and therefore no platform assignment) is loaded.
+function certifiedSpeedLimitMs(scenario: ScenarioConfig | null, droneId: string): number {
+  return scenario ? platformForDrone(scenario, droneId).maxSpeedMs : LEGACY_FAA_SPEED_LIMIT_MS
+}
 
 export function TelemetryPanel() {
   const [activeTab, setActiveTab] = useState<Tab>('telem')
@@ -157,7 +164,7 @@ export function TelemetryPanel() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <TRow label="POSITION" value={`${selected.position.lat.toFixed(5)}, ${selected.position.lng.toFixed(5)}`} />
                 <TRow label="ALTITUDE" value={`${Math.round(selected.altitudeFt)} ft AGL`} warn={selected.altitudeFt > 390} />
-                <TRow label="SPEED" value={`${selected.speedMs.toFixed(1)} m/s`} warn={selected.speedMs > 25} />
+                <TRow label="SPEED" value={`${selected.speedMs.toFixed(1)} m/s`} warn={selected.speedMs > certifiedSpeedLimitMs(scenario, selected.id) + 0.5} />
                 <TRow label="HEADING" value={`${Math.round(selected.headingDeg)}° (${compassDir(selected.headingDeg)})`} />
                 <TRow label="BATTERY" value={`${Math.round(selected.batteryPct)}%`} warn={selected.batteryPct < 25} crit={selected.batteryPct < 10} />
                 <TRow label="SIGNAL" value={`${selected.signalDbm} dBm`} warn={selected.signalDbm < -80} crit={selected.signalDbm < -90} />
@@ -214,7 +221,7 @@ export function TelemetryPanel() {
               <div className="panel-label">FAA Part 107</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <CompCheck ok={selected.altitudeFt <= 400} label={`ALT ≤ 400ft (${Math.round(selected.altitudeFt)}ft)`} />
-                <CompCheck ok={selected.speedMs <= 25.4} label={`SPD ≤ 57mph (${(selected.speedMs * 2.237).toFixed(1)}mph)`} />
+                <CompCheck ok={selected.speedMs <= certifiedSpeedLimitMs(scenario, selected.id) + 0.5} label={`SPD ≤ 57mph (${(selected.speedMs * 2.237).toFixed(1)}mph)`} />
                 <CompCheck ok={selected.signalDbm > -90} label={`COMMS LINK (${selected.signalDbm}dBm)`} />
               </div>
             </div>
@@ -359,7 +366,7 @@ export function TelemetryPanel() {
               <div key={d.id} style={{ display: 'flex', gap: 8, marginBottom: 3, fontSize: 9, fontFamily: 'var(--font-mono)' }}>
                 <span style={{ color: d.color, minWidth: 56 }}>{d.label}</span>
                 <CompCheck ok={d.altitudeFt <= 400} label={`${Math.round(d.altitudeFt)}ft`} />
-                <CompCheck ok={d.speedMs <= 25.4} label={`${(d.speedMs * 2.237).toFixed(0)}mph`} />
+                <CompCheck ok={d.speedMs <= certifiedSpeedLimitMs(scenario, d.id) + 0.5} label={`${(d.speedMs * 2.237).toFixed(0)}mph`} />
                 <CompCheck ok={d.signalDbm > -90} label={`${d.signalDbm}dBm`} />
               </div>
             ))}
