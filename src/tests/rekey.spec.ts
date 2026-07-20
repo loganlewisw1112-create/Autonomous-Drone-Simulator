@@ -39,6 +39,9 @@ beforeEach(() => {
   globalThis.indexedDB = new IDBFactory()
 })
 
+// Every test below runs 2-3 real PBKDF2-310k derivations synchronously — genuinely
+// CPU-bound crypto work, not a hang. A shared/slow CI runner can exceed vitest's 5s
+// default; a wider ceiling gives headroom without changing how fast the crypto runs.
 describe('rekeyAllRecords', () => {
   it('re-encrypts the account and all three record stores under the new key', async () => {
     const oldKdf = makeKdfParams()
@@ -70,7 +73,7 @@ describe('rekeyAllRecords', () => {
     const mission = (await listMissions(ACCOUNT_ID))[0]
     expect(decryptJson(newKey, mission.blob)).toEqual({ name: 'custom-mission' })
     expect(() => decryptJson(oldKey, mission.blob)).toThrow()
-  })
+  }, 20000)
 
   it('aborts atomically when a row cannot be decrypted — nothing changes', async () => {
     const oldKdf = makeKdfParams()
@@ -98,5 +101,5 @@ describe('rekeyAllRecords', () => {
     expect(decryptJson(oldKey, run.blob)).toEqual({ scenarioId: 'wildfire' })
     const detail = (await listRunDetails(ACCOUNT_ID))[0]
     expect(decryptJson(oldKey, detail.blob)).toEqual({ detail: 'full-snapshot' })
-  })
+  }, 20000)
 })
