@@ -1,3 +1,5 @@
+import type { PlatformId } from '@/sim/drone/platformCatalog'
+
 // ─── Geographic ────────────────────────────────────────────────────────────────
 export interface LatLng {
   lat: number
@@ -53,6 +55,7 @@ export interface DroneState {
   bvlosFlag: boolean
   hoverStartSec?: number
   sortieCount: number
+  platformId?: PlatformId
   rechargeStartSec?: number
   sortieResumeWpIdx?: number
   scheduledLaunchSec?: number  // sim-seconds after the launch command this drone lifts off (staggered)
@@ -522,6 +525,7 @@ export interface ScenarioConfig {
   maxSorties?: number
   batteryProfile?: BatteryProfile
   droneBatteryProfiles?: Record<string, BatteryProfile>
+  dronePlatforms?: Record<string, PlatformId>
   rechargeStations?: RechargeStation[]
   perDroneMissionRoles?: Record<string, string>
   perDroneRechargeStations?: Record<string, LatLng[]>
