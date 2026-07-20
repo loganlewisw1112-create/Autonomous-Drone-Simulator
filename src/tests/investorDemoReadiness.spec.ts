@@ -150,6 +150,7 @@ describe('investor demo store state', () => {
       scenarioVariant: VARIANT,
       ui: {
         selectedDroneId: null,
+        routeEditMode: false,
         sensorMode: 'eo',
         simSpeed: 1,
         isRunning: true,
