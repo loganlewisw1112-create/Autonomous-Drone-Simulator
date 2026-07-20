@@ -9,7 +9,6 @@ import { WelcomeOverlay } from '@/components/WelcomeOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { WindowsPlatformGate } from '@/components/PlatformGate'
 import { AccountChip } from '@/components/account/AccountChip'
-import { RotateGate } from '@/components/mobile/RotateGate'
 import { useDeviceMode } from '@/hooks/useDeviceMode'
 import { APP_TARGET, isWindowsClient } from '@/platform/appTarget'
 import { useDroneStore } from '@/store/droneStore'
@@ -52,16 +51,9 @@ export default function App() {
     return <WindowsPlatformGate />
   }
 
-  // Phones get a dedicated landscape-only shell; the desktop tree below is the
-  // frozen launch layout and must stay byte-identical (LAW.1).
-  if (deviceMode === 'phone-portrait') {
-    return (
-      <ErrorBoundary>
-        <RotateGate />
-      </ErrorBoundary>
-    )
-  }
-  if (deviceMode === 'phone-landscape') {
+  // Both phone orientations use one persistent shell so rotation never resets
+  // onboarding, open surfaces, scroll position, or an active mission.
+  if (deviceMode === 'phone-portrait' || deviceMode === 'phone-landscape') {
     return (
       <ErrorBoundary>
         <Suspense fallback={<div style={{ height: '100dvh', background: 'var(--bg-primary)' }} />}>

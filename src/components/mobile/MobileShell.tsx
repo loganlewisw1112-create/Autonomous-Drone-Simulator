@@ -1,15 +1,27 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { useAuthStore } from '@/store/authStore'
+import { isRightSurface, useMobileStore } from '@/store/mobileStore'
 import { TacticalMap } from '@/components/TacticalMap'
 import { FleetPanel } from '@/components/FleetPanel'
 import { TelemetryPanel } from '@/components/TelemetryPanel'
+import { MissionStatusFeed } from '@/components/MissionStatusFeed'
+import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
 import { LoadingScreen } from '@/components/LoadingScreen'
 import { WelcomeOverlay } from '@/components/WelcomeOverlay'
 import { Drawer } from '@/components/mobile/Drawer'
-import { BottomDock, ScenarioSheet, MissionSheet, ExportsSheet, type MobileSheet } from '@/components/mobile/BottomDock'
+import {
+  BottomDock,
+  EvidenceSheet,
+  ExportsSheet,
+  MapToolsSheet,
+  MissionSheet,
+  ScenarioSheet,
+} from '@/components/mobile/BottomDock'
 import { useWakeLock } from '@/hooks/useWakeLock'
+import { useDeviceMode } from '@/hooks/useDeviceMode'
+import type { ActiveMobileSurface } from '@/types'
 import '@/styles/mobile.css'
 
 const PreflightChecklist = lazy(() => import('@/components/PreflightChecklist').then((m) => ({ default: m.PreflightChecklist })))
@@ -17,91 +29,211 @@ const LaunchBayPlanner = lazy(() => import('@/components/LaunchBayPlanner').then
 const ReplayPanel = lazy(() => import('@/components/ReplayPanel').then((m) => ({ default: m.ReplayPanel })))
 const SignInModal = lazy(() => import('@/components/account/SignInModal').then((m) => ({ default: m.SignInModal })))
 const AccountPanels = lazy(() => import('@/components/account/AccountPanels').then((m) => ({ default: m.AccountPanels })))
+const CustomMissionHub = lazy(() => import('@/components/designer/CustomMissionHub').then((m) => ({ default: m.CustomMissionHub })))
 
 function MobileClock() {
   const { elapsedSec } = useDroneStore(useShallow((s) => ({ elapsedSec: s.elapsedSec })))
   return (
-    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
+    <span className="mobile-clock">
       T+{Math.floor(elapsedSec / 60)}:{Math.floor(elapsedSec % 60).toString().padStart(2, '0')}
     </span>
   )
 }
 
-const SHEET_TITLES: Record<Exclude<MobileSheet, null>, string> = {
-  mission: 'MISSION CONTROL',
+const SURFACE_TITLES: Record<ActiveMobileSurface, string> = {
+  fleet: 'FLEET',
+  ops: 'MISSION DATA',
+  telemetry: 'MISSION DATA',
+  evidence: 'MISSION DATA',
   scenario: 'SCENARIO & WEATHER',
+  mission: 'MISSION CONTROL',
+  more: 'MORE TOOLS',
+  dispatch: 'DISPATCH',
+  replay: 'MISSION REPLAY',
   exports: 'EVIDENCE EXPORTS',
+  account: 'ACCOUNT',
+  analytics: 'ACCOUNT ANALYTICS',
+  settings: 'SETTINGS',
 }
 
-// Landscape-only mobile console: full-screen tactical map with fleet/telemetry
-// edge drawers and a bottom dock of sheets. Reuses the exact desktop components
-// and sim pipeline — only the chrome around them is mobile-specific.
+function SurfacePane({ active, className = '', children }: { active: boolean; className?: string; children: ReactNode }) {
+  return (
+    <div className={`mobile-surface-pane${active ? ' active' : ''}${className ? ` ${className}` : ''}`} aria-hidden={!active}>
+      {children}
+    </div>
+  )
+}
+
+// One responsive shell is kept mounted through orientation changes. All console
+// functions use the same stores/components as desktop; only their placement changes.
 export function MobileShell() {
-  const { scenario, isRunning, mapReady } = useDroneStore(
-    useShallow((s) => ({ scenario: s.scenario, isRunning: s.ui.isRunning, mapReady: s.mapReady })),
+  const { scenario, isRunning, lifecycle, mapReady, replaySession } = useDroneStore(
+    useShallow((s) => ({
+      scenario: s.scenario,
+      isRunning: s.ui.isRunning,
+      lifecycle: s.lifecycle,
+      mapReady: s.mapReady,
+      replaySession: s.replaySession,
+    })),
   )
-  const { activeAccount, setShowSignIn, setShowSettings } = useAuthStore(
-    useShallow((s) => ({ activeAccount: s.activeAccount, setShowSignIn: s.setShowSignIn, setShowSettings: s.setShowSettings })),
+  const { activeAccount, setShowSignIn, setShowSettings, setShowAnalytics } = useAuthStore(
+    useShallow((s) => ({
+      activeAccount: s.activeAccount,
+      setShowSignIn: s.setShowSignIn,
+      setShowSettings: s.setShowSettings,
+      setShowAnalytics: s.setShowAnalytics,
+    })),
   )
-  const [loadingDone, setLoadingDone] = useState(false)
-  const [sideDrawer, setSideDrawer] = useState<'fleet' | 'telemetry' | null>(null)
-  const [sheet, setSheet] = useState<MobileSheet>(null)
+  const {
+    activeSurface,
+    rightTab,
+    loadingDone,
+    orientation,
+    openSurface,
+    toggleSurface,
+    closeSurface,
+    setRightTab,
+    setLoadingDone,
+    setOrientation,
+  } = useMobileStore()
+  const deviceMode = useDeviceMode()
+  const [recenterRequest, setRecenterRequest] = useState(0)
+  const [showDesigner, setShowDesigner] = useState(false)
+
+  useEffect(() => {
+    setOrientation(deviceMode === 'phone-portrait' ? 'portrait' : 'landscape')
+  }, [deviceMode, setOrientation])
 
   useWakeLock(isRunning)
 
+  const rightSurfaceOpen = isRightSurface(activeSurface)
+  const drawerSide = orientation === 'portrait'
+    ? 'bottom'
+    : activeSurface === 'fleet'
+      ? 'left'
+      : rightSurfaceOpen
+        ? 'right'
+        : 'bottom'
+  const drawerOpen = activeSurface !== null && !['account', 'analytics', 'settings'].includes(activeSurface)
+
+  function openAccount(kind: 'account' | 'analytics' | 'settings') {
+    closeSurface()
+    if (!activeAccount) {
+      setShowSignIn(true)
+      return
+    }
+    if (kind === 'analytics') setShowAnalytics(true)
+    else setShowSettings(true)
+  }
+
+  function requestRecenter() {
+    setRecenterRequest((request) => request + 1)
+    closeSurface()
+  }
+
   return (
-    <div className="mobile-shell" data-testid="mobile-shell">
+    <div className={`mobile-shell mobile-shell--${orientation}`} data-testid="mobile-shell" data-orientation={orientation}>
       <header className="mobile-topbar">
         <span className="header-logo">⬡ DRONE OPS</span>
         <span className="header-mission-id">
-          {scenario ? `${scenario.id.toUpperCase()} · SEED ${scenario.seed}` : 'NO MISSION LOADED'}
+          {scenario ? `${scenario.name} · ${scenario.seed}` : 'NO MISSION LOADED'}
         </span>
         {isRunning && <div className="rec-dot" title="Recording" />}
+        {lifecycle === 'paused' && <span className="mobile-paused">PAUSED</span>}
         <MobileClock />
       </header>
 
       <div className="mobile-map">
-        <TacticalMap />
+        <TacticalMap chromeSlots="external" recenterRequest={recenterRequest} />
 
-        <button className="mobile-edge-tab left" onClick={() => setSideDrawer('fleet')}>
+        {scenario?.missionBrief && (
+          <button className="mobile-priority-chip" onClick={() => openSurface('dispatch')}>
+            <span>{scenario.missionBrief.agencies.join(' / ')}</span>
+            <strong>{scenario.missionBrief.primaryObjective}</strong>
+          </button>
+        )}
+
+        <button className="mobile-edge-tab left" onClick={() => toggleSurface('fleet')} aria-pressed={activeSurface === 'fleet'}>
           FLEET
         </button>
-        <button className="mobile-edge-tab right" onClick={() => setSideDrawer('telemetry')}>
-          TELEMETRY
+        <button className="mobile-edge-tab right" onClick={() => openSurface(rightTab)} aria-pressed={rightSurfaceOpen}>
+          DATA
         </button>
 
-        <Drawer side="left" title="FLEET" open={sideDrawer === 'fleet'} onClose={() => setSideDrawer(null)}>
-          <FleetPanel />
-        </Drawer>
-        <Drawer side="right" title="TELEMETRY" open={sideDrawer === 'telemetry'} onClose={() => setSideDrawer(null)}>
-          <TelemetryPanel />
-        </Drawer>
-        <Drawer side="bottom" title={sheet ? SHEET_TITLES[sheet] : ''} open={sheet !== null} onClose={() => setSheet(null)}>
-          {sheet === 'scenario' && <ScenarioSheet />}
-          {sheet === 'mission' && <MissionSheet />}
-          {sheet === 'exports' && <ExportsSheet />}
+        <Drawer
+          side={drawerSide}
+          title={activeSurface ? SURFACE_TITLES[activeSurface] : ''}
+          open={drawerOpen}
+          onClose={closeSurface}
+          testId="mobile-surface-drawer"
+        >
+          <SurfacePane active={activeSurface === 'fleet'} className="mobile-fleet-pane"><FleetPanel /></SurfacePane>
+
+          <SurfacePane active={rightSurfaceOpen} className="mobile-data-pane">
+            <div className="mobile-data-tabs" role="tablist" aria-label="Mission data">
+              {(['ops', 'telemetry', 'evidence'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  role="tab"
+                  aria-selected={rightTab === tab}
+                  className={rightTab === tab ? 'active' : ''}
+                  onClick={() => setRightTab(tab)}
+                >
+                  {tab.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <div className="mobile-data-content">
+              <SurfacePane active={rightTab === 'ops'}><OperatorCommandPanel /></SurfacePane>
+              <SurfacePane active={rightTab === 'telemetry'}><TelemetryPanel /></SurfacePane>
+              <SurfacePane active={rightTab === 'evidence'}><EvidenceSheet /></SurfacePane>
+            </div>
+          </SurfacePane>
+
+          <SurfacePane active={activeSurface === 'scenario'}>
+            <ScenarioSheet
+              onScenarioSelected={closeSurface}
+              onOpenCustomMissions={() => { closeSurface(); setShowDesigner(true) }}
+            />
+          </SurfacePane>
+          <SurfacePane active={activeSurface === 'mission'}><MissionSheet /></SurfacePane>
+          <SurfacePane active={activeSurface === 'dispatch'}><MissionStatusFeed /></SurfacePane>
+          <SurfacePane active={activeSurface === 'exports'}><ExportsSheet /></SurfacePane>
+          <SurfacePane active={activeSurface === 'replay'}>
+            <div className="mobile-sheet-section">
+              <span className="mobile-status-line">
+                {replaySession ? `${replaySession.frames.length} replay frames available` : 'No completed mission replay is available.'}
+              </span>
+            </div>
+          </SurfacePane>
+          <SurfacePane active={activeSurface === 'more'}>
+            <div className="mobile-more-grid">
+              <button onClick={() => { closeSurface(); setShowDesigner(true) }}>CUSTOM MISSIONS</button>
+              <button onClick={() => openSurface('dispatch')} disabled={!scenario?.missionBrief}>DISPATCH</button>
+              <button onClick={() => openSurface('replay')} disabled={!replaySession}>REPLAY</button>
+              <button onClick={() => openSurface('exports')}>EXPORTS</button>
+              <button onClick={() => openAccount('analytics')}>ANALYTICS</button>
+              <button onClick={() => openAccount('account')}>{activeAccount ? 'ACCOUNT' : 'SIGN IN'}</button>
+              <button onClick={() => openAccount('settings')} disabled={!activeAccount}>SETTINGS</button>
+            </div>
+            <MapToolsSheet onRecenter={requestRecenter} />
+          </SurfacePane>
         </Drawer>
       </div>
 
-      <BottomDock
-        openSheet={sheet}
-        onToggleSheet={setSheet}
-        onOpenAccount={() => (activeAccount ? setShowSettings(true) : setShowSignIn(true))}
-        accountLabel={activeAccount ? activeAccount.displayName.slice(0, 8).toUpperCase() : 'SIGN IN'}
-      />
+      <BottomDock />
 
       <Suspense fallback={null}>
         <PreflightChecklist />
         <LaunchBayPlanner />
-        <ReplayPanel />
+        {activeSurface === 'replay' && <div className="mobile-replay-host"><ReplayPanel /></div>}
         <SignInModal />
         <AccountPanels />
+        {showDesigner && <CustomMissionHub mobile onClose={() => setShowDesigner(false)} />}
       </Suspense>
 
       {loadingDone && <WelcomeOverlay />}
-      {!loadingDone && (
-        <LoadingScreen mapReady={mapReady} onComplete={() => setLoadingDone(true)} />
-      )}
+      {!loadingDone && <LoadingScreen mapReady={mapReady} onComplete={() => setLoadingDone(true)} />}
     </div>
   )
 }

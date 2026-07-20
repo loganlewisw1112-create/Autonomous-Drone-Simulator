@@ -6,7 +6,7 @@ Choose the deployment made for your device. These are independent Vercel apps wi
 
 | Version | Open | Requirements |
 |---|---|---|
-| **Mobile** | **[Launch Mobile Simulator](https://autonomous-drone-simulator-mobile.vercel.app/)** | iPhone or Android phone; rotate to landscape after opening |
+| **Mobile** | **[Launch Mobile Simulator](https://autonomous-drone-simulator-mobile.vercel.app/)** | iPhone or Android phone; portrait and landscape both supported |
 | **Windows** | **[Launch Windows Simulator](https://autonomous-drone-simulator.vercel.app/)** | Windows PC only |
 
 The Windows link is platform-locked. Opening it on iPhone, Android, macOS, or another non-Windows platform displays an **ERROR — WINDOWS VERSION ONLY** screen with a button to open the mobile version.
@@ -183,8 +183,30 @@ into app code.
 
 The app deploys to **Vercel** via its Git integration: every merge to `main`
 triggers a production build (`npm run build`, output `dist/`, Node 20 from
-`engines`/`.nvmrc`, no environment variables required). `vercel.json` adds
-immutable caching for hashed assets plus basic security headers.
+`engines`/`.nvmrc`) in each of the two Vercel projects described below.
+`vercel.json` adds immutable caching for hashed assets plus basic security
+headers.
+
+The mobile and Windows links above are the **same codebase and the same
+build command**, deployed as two separate Vercel projects. The only thing
+that tells one build apart from the other is a single per-project
+environment variable set in each project's Vercel dashboard —
+`VITE_APP_TARGET=mobile` on the mobile project, `VITE_APP_TARGET=windows` on
+the Windows project (read in `src/platform/appTarget.ts`). No other
+build-time configuration differs between them, and neither project requires
+any other environment variables.
+
+The mobile target is **phone-only by design**: `useDeviceMode`
+(`src/hooks/useDeviceMode.ts`) always renders the mobile shell (portrait or
+landscape, following device orientation) for
+`VITE_APP_TARGET=mobile`, for any device that loads that URL — there is no
+tablet-size check on that path, so a tablet opening the mobile link still
+gets the phone shell, not the desktop grid. (The Windows target is likewise
+unconditional the other way: it always renders the desktop console,
+regardless of device, and is separately platform-gated to Windows clients
+only.) Only a locally run build with no `VITE_APP_TARGET` set at all — e.g.
+`npm run dev` — uses a size/pointer heuristic, where a tablet is treated as
+desktop-class and gets the frozen desktop grid since it already works there.
 
 Fallbacks (maintainer only): `.github/workflows/deploy.yml` can publish a
 GitHub Pages copy on manual dispatch (it sets `GITHUB_PAGES=true` so Vite

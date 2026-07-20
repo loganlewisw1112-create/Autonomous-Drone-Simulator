@@ -108,7 +108,16 @@ export interface GeofenceBreachInfo {
 export type DispatchPriority = 'routine' | 'advisory' | 'urgent' | 'critical'
 export type DispatchTimelineCategory = 'dispatch' | 'field_unit' | 'operator_task' | 'agency_update' | 'safety'
 
-export type LaunchRecoverySiteKind = 'rooftop' | 'police_rooftop' | 'mobile_command' | 'field_icp' | 'vessel' | 'helipad'
+export type LaunchRecoverySiteKind =
+  | 'building_rooftop'
+  | 'rooftop'
+  | 'police_rooftop'
+  | 'police_station'
+  | 'fire_station'
+  | 'mobile_command'
+  | 'field_icp'
+  | 'vessel'
+  | 'helipad'
 
 export interface LaunchRecoverySite {
   kind: LaunchRecoverySiteKind

@@ -1,5 +1,8 @@
 import { useMissionControls } from '@/hooks/useMissionControls'
-import { SCENARIO_OPTIONS } from '@/scenarios/catalog'
+import { useScenarioOptions } from '@/scenarios/registry'
+import { useMobileStore } from '@/store/mobileStore'
+import { useDroneStore } from '@/store/droneStore'
+import { verifyChain } from '@/utils/chainOfCustody'
 import type { OperatorRole, SimSpeed, ScenarioVariantConfig } from '@/types'
 
 export type MobileSheet = 'mission' | 'scenario' | 'exports' | null
@@ -10,63 +13,47 @@ const ROLE_LABELS: Record<OperatorRole, string> = {
   observer: 'OBS',
 }
 
-interface BottomDockProps {
-  openSheet: MobileSheet
-  onToggleSheet: (sheet: MobileSheet) => void
-  onOpenAccount: () => void
-  accountLabel: string
-}
-
 // The dock is the mobile home row: primary mission action always one tap away,
 // everything else one sheet away. Same handlers as the desktop ControlBar via
 // useMissionControls — zero behavioral divergence between shells.
-export function BottomDock({ openSheet, onToggleSheet, onOpenAccount, accountLabel }: BottomDockProps) {
+export function BottomDock() {
   const {
-    ui, scenario, canStart, canStop, launchReady,
-    handleStart, handleStop,
+    scenario, lifecycle, canStart, canStop, launchReady,
+    handleStart, handlePause, handleResume,
   } = useMissionControls()
+  const { activeSurface, toggleSurface } = useMobileStore()
 
-  const toggle = (sheet: Exclude<MobileSheet, null>) => onToggleSheet(openSheet === sheet ? null : sheet)
+  const action = lifecycle === 'running'
+    ? { label: 'PAUSE', icon: 'Ⅱ', className: 'warning', onClick: handlePause, disabled: !canStop }
+    : lifecycle === 'paused'
+      ? { label: 'RESUME', icon: '▶', className: 'primary', onClick: handleResume, disabled: !canStop }
+      : { label: 'START', icon: '▶', className: 'primary', onClick: handleStart, disabled: !scenario || !canStart || !launchReady || lifecycle === 'completed' }
 
   return (
-    <nav className="mobile-dock" data-testid="mobile-dock">
+    <nav className="mobile-dock" data-testid="mobile-dock" aria-label="Primary mission controls">
       <button
-        className={`mobile-dock-btn${openSheet === 'scenario' ? ' active' : ''}`}
-        onClick={() => toggle('scenario')}
+        className={`mobile-dock-btn${activeSurface === 'scenario' ? ' active' : ''}`}
+        onClick={() => toggleSurface('scenario')}
       >
-        <span className="dock-ico">🗂</span>SCENARIO
+        <span className="dock-ico" aria-hidden="true">⌖</span>SCENARIO
       </button>
 
-      {ui.isRunning ? (
-        <button className="mobile-dock-btn danger" onClick={handleStop} disabled={!canStop}>
-          <span className="dock-ico">■</span>STOP
-        </button>
-      ) : (
-        <button
-          className="mobile-dock-btn primary"
-          onClick={handleStart}
-          disabled={!scenario || !canStart || !launchReady}
-        >
-          <span className="dock-ico">▶</span>START
-        </button>
-      )}
-
-      <button
-        className={`mobile-dock-btn${openSheet === 'mission' ? ' active' : ''}`}
-        onClick={() => toggle('mission')}
-      >
-        <span className="dock-ico">🛰</span>MISSION
+      <button className={`mobile-dock-btn ${action.className}`} onClick={action.onClick} disabled={action.disabled}>
+        <span className="dock-ico" aria-hidden="true">{action.icon}</span>{action.label}
       </button>
 
       <button
-        className={`mobile-dock-btn${openSheet === 'exports' ? ' active' : ''}`}
-        onClick={() => toggle('exports')}
+        className={`mobile-dock-btn${activeSurface === 'mission' ? ' active' : ''}`}
+        onClick={() => toggleSurface('mission')}
       >
-        <span className="dock-ico">📦</span>EXPORTS
+        <span className="dock-ico" aria-hidden="true">◇</span>MISSION
       </button>
 
-      <button className="mobile-dock-btn" onClick={onOpenAccount}>
-        <span className="dock-ico">◉</span>{accountLabel}
+      <button
+        className={`mobile-dock-btn${activeSurface === 'more' ? ' active' : ''}`}
+        onClick={() => toggleSurface('more')}
+      >
+        <span className="dock-ico" aria-hidden="true">•••</span>MORE
       </button>
     </nav>
   )
@@ -74,11 +61,12 @@ export function BottomDock({ openSheet, onToggleSheet, onOpenAccount, accountLab
 
 // ── Sheets (rendered inside a bottom Drawer by MobileShell) ──────────────────
 
-export function ScenarioSheet() {
+export function ScenarioSheet({ onScenarioSelected, onOpenCustomMissions }: { onScenarioSelected?: () => void; onOpenCustomMissions?: () => void }) {
   const {
     scenario, scenarioVariant, weatherState,
     handleScenarioChange, handleVariantChange, handleRandomizeSeed, handleDemoReset,
   } = useMissionControls()
+  const scenarioOptions = useScenarioOptions()
 
   return (
     <div className="mobile-sheet-section">
@@ -86,13 +74,22 @@ export function ScenarioSheet() {
       <select
         className="mobile-select"
         value={scenario?.id ?? ''}
-        onChange={(e) => handleScenarioChange(e.target.value)}
+        onChange={(e) => {
+          onScenarioSelected?.()
+          handleScenarioChange(e.target.value)
+        }}
       >
         <option value="" disabled>— Load Scenario —</option>
-        {SCENARIO_OPTIONS.map((s) => (
+        {scenarioOptions.map((s) => (
           <option key={s.id} value={s.id}>{s.label}</option>
         ))}
       </select>
+
+      {onOpenCustomMissions && (
+        <button className="mobile-btn mobile-btn-full" onClick={onOpenCustomMissions}>
+          + CUSTOM MISSIONS
+        </button>
+      )}
 
       <span className="mobile-sheet-label">WEATHER SEVERITY</span>
       <div className="mobile-sheet-row">
@@ -149,34 +146,43 @@ export function ScenarioSheet() {
 
 export function MissionSheet() {
   const {
-    ui, scenario, operatorRole, investorDemo, launchPlan,
+    ui, scenario, lifecycle, operatorRole, investorDemo, launchPlan,
     canStart, canAbort, canStop, launchReady, allLanded,
-    setSimSpeed, setOperatorRole, setInvestorDemoEnabled,
-    handleStart, handleAbort, handleStop,
+    setSimSpeed, setOperatorRole, setInvestorDemoEnabled, setShowPreflight,
+    handleStart, handleAbort, handlePause, handleResume, handleEndMission,
   } = useMissionControls()
+  const setShowLaunchBay = useDroneStore((s) => s.setShowLaunchBay)
+
+  function resumeSetup() {
+    if (!scenario) return
+    if (launchPlan) setShowLaunchBay(true)
+    else setShowPreflight(true)
+  }
 
   return (
     <div className="mobile-sheet-section">
       <span className="mobile-sheet-label">MISSION CONTROL</span>
       <div className="mobile-sheet-row">
-        <button
-          className="mobile-btn primary grow"
-          onClick={handleStart}
-          disabled={!scenario || !canStart || !launchReady}
-        >
-          ▶ START
-        </button>
+        {lifecycle === 'paused' ? (
+          <button className="mobile-btn primary grow" onClick={handleResume} disabled={!canStop}>▶ RESUME</button>
+        ) : lifecycle === 'running' ? (
+          <button className="mobile-btn warning grow" onClick={handlePause} disabled={!canStop}>Ⅱ PAUSE</button>
+        ) : (
+          <button className="mobile-btn primary grow" onClick={handleStart} disabled={!scenario || !canStart || !launchReady || lifecycle === 'completed'}>
+            ▶ START
+          </button>
+        )}
         <button className="mobile-btn warning grow" onClick={handleAbort} disabled={!ui.isRunning || !canAbort}>
           ⬆ RTB ALL
         </button>
-        <button className="mobile-btn danger grow" onClick={handleStop} disabled={!ui.isRunning || !canStop}>
-          ■ STOP
+        <button className="mobile-btn danger grow" onClick={handleEndMission} disabled={!canStop || !(ui.isRunning || lifecycle === 'paused')}>
+          ■ END MISSION
         </button>
       </div>
       {scenario && !ui.isRunning && !launchReady && (
-        <span className="mobile-status-line" style={{ color: 'var(--accent-yellow)' }}>
-          ⚠ BAY PLAN REQUIRED — load a scenario and complete preflight + bay planning
-        </span>
+        <button className="mobile-btn warning mobile-btn-full" onClick={resumeSetup}>
+          RESUME SETUP
+        </button>
       )}
       {launchPlan && !launchPlan.readyToLaunch && launchPlan.blockers.length > 0 && (
         <span className="mobile-status-line" style={{ color: 'var(--accent-yellow)' }}>
@@ -222,7 +228,7 @@ export function MissionSheet() {
       </div>
 
       <span className="mobile-status-line">
-        {ui.isRunning ? '● MISSION ACTIVE' : allLanded ? '● ALL LANDED' : '○ STANDBY'}
+        {lifecycle === 'paused' ? 'Ⅱ MISSION PAUSED' : ui.isRunning ? '● MISSION ACTIVE' : allLanded ? '● ALL LANDED' : '○ STANDBY'}
       </span>
     </div>
   )
@@ -257,6 +263,50 @@ export function ExportsSheet() {
       </div>
       {exportStatus && <span className="mobile-status-line" style={{ color: 'var(--accent-green)' }}>✓ {exportStatus}</span>}
       <span className="mobile-status-line">Files download to this device.</span>
+    </div>
+  )
+}
+
+export function EvidenceSheet() {
+  const events = useDroneStore((s) => s.events)
+  const verified = events.length > 0 && verifyChain(events)
+  return (
+    <div className="mobile-sheet-section">
+      <div className="mobile-evidence-summary">
+        <span className="mobile-sheet-label">EVIDENCE CHAIN</span>
+        <strong className={events.length === 0 ? 'evidence-empty' : verified ? 'evidence-ok' : 'evidence-failed'}>
+          {events.length === 0 ? 'NO EVIDENCE YET' : verified ? 'VERIFIED' : 'FAILED'}
+        </strong>
+        <span>{events.length} linked event{events.length === 1 ? '' : 's'}</span>
+      </div>
+      <ExportsSheet />
+    </div>
+  )
+}
+
+export function MapToolsSheet({ onRecenter }: { onRecenter: () => void }) {
+  const scenario = useDroneStore((s) => s.scenario)
+  const visibility = useDroneStore((s) => s.ui.layerVisibility)
+  const toggleLayer = useDroneStore((s) => s.toggleLayer)
+  const layers = [
+    ['relays', 'Relays'],
+    ['gates', 'Gates'],
+    ['recharge', 'Recharge'],
+    ['traffic', 'Air Traffic'],
+    ['thermal', 'Heat (IR)'],
+    ['irFootprints', 'Sensor FOV (IR)'],
+  ] as const
+  return (
+    <div className="mobile-sheet-section">
+      <button className="mobile-btn primary mobile-btn-full" onClick={onRecenter} disabled={!scenario}>◎ RECENTER MISSION</button>
+      <span className="mobile-sheet-label">MAP LAYERS</span>
+      <div className="mobile-layer-grid">
+        {layers.map(([key, label]) => (
+          <button key={key} className={`mobile-btn${visibility[key] ? ' active' : ''}`} onClick={() => toggleLayer(key)}>
+            {visibility[key] ? '✓ ' : ''}{label.toUpperCase()}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

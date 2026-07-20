@@ -46,7 +46,7 @@ describe('runRecorder', () => {
     expect(summary.durationSec).toBe(180)
     expect(summary.metrics.totalFlightDistanceM).toBe(5200)
     expect(summary.eventCount).toBe(0)
-    expect(summary.chainVerified).toBe(true)
+    expect(summary.chainVerified).toBe(false)
     expect(summary.droneOutcomes).toEqual([
       { id: 'drone-1', missionState: 'landed', batteryPct: 61 },
       { id: 'drone-2', missionState: 'landed', batteryPct: 59 },

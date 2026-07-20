@@ -8,6 +8,8 @@ import { MissionStatusFeed } from '@/components/MissionStatusFeed'
 import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
 import { buildConflictFeatures, buildIrFootprintFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
 import { buildAirspaceReservationFeatures, buildExternalTrafficFeatures, buildUtmAirspaceState } from '@/sim/demo/utmEngine'
+import { useDeviceMode, type DeviceMode } from '@/hooks/useDeviceMode'
+import type { LatLng, ScenarioConfig } from '@/types'
 
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 const MAP_FALLBACK_MS = 4500
@@ -66,7 +68,63 @@ const DRONE_NODE_SVG = (color: string, state: string): string => {
 // States that count as "in the air" for camera follow, HUD display, and next-wp lines
 const FLYING_STATES = new Set(['navigate', 'launch', 'sar_grid', 'return_to_base', 'hover'])
 
-export function TacticalMap() {
+// ── WS7: camera envelope fit ────────────────────────────────────────────────
+// [[minLng, minLat], [maxLng, maxLat]] — the LngLatBoundsLike tuple shape MapLibre's
+// fitBounds() accepts.
+export type ScenarioBounds = [[number, number], [number, number]]
+
+// Floor on the box's lng/lat span so a single-point (or all-identical-point) scenario
+// still produces a real, non-zero-area box. Without this, fitBounds on a zero-area box
+// zooms in to (near-)infinity instead of just centering on the point.
+const MIN_BOUNDS_SPAN_DEG = 0.006 // roughly 500-650m depending on latitude
+
+// Pure and exported so it's unit-testable without a live MapLibre instance — collects
+// every site/route/waypoint position the scenario carries into one envelope.
+export function computeScenarioBounds(scenario: ScenarioConfig): ScenarioBounds {
+  const points: LatLng[] = [scenario.startPosition, ...scenario.waypoints.map((wp) => wp.position)]
+  if (scenario.perDroneWaypoints) {
+    Object.values(scenario.perDroneWaypoints).forEach((wps) => wps.forEach((wp) => points.push(wp.position)))
+  }
+  if (scenario.launchSites) Object.values(scenario.launchSites).forEach((site) => points.push(site.position))
+  if (scenario.recoverySites) Object.values(scenario.recoverySites).forEach((site) => points.push(site.position))
+
+  let minLng = Math.min(...points.map((p) => p.lng))
+  let maxLng = Math.max(...points.map((p) => p.lng))
+  let minLat = Math.min(...points.map((p) => p.lat))
+  let maxLat = Math.max(...points.map((p) => p.lat))
+
+  if (maxLng - minLng < MIN_BOUNDS_SPAN_DEG) {
+    const c = (minLng + maxLng) / 2
+    minLng = c - MIN_BOUNDS_SPAN_DEG / 2
+    maxLng = c + MIN_BOUNDS_SPAN_DEG / 2
+  }
+  if (maxLat - minLat < MIN_BOUNDS_SPAN_DEG) {
+    const c = (minLat + maxLat) / 2
+    minLat = c - MIN_BOUNDS_SPAN_DEG / 2
+    maxLat = c + MIN_BOUNDS_SPAN_DEG / 2
+  }
+
+  return [[minLng, minLat], [maxLng, maxLat]]
+}
+
+// Padding/zoom-cap split between shells: the mobile shell overlays the map canvas with a
+// slim top bar, a bottom dock, edge-drawer tabs, and (on notched phones) safe-area insets
+// that desktop never has — so the fit needs extra clearance on every side, plus a zoom
+// ceiling so a tight single-site envelope doesn't zoom in past a useful mission overview.
+// Desktop's frozen grid has none of that chrome over the map and keeps its prior
+// 16-level mission-start zoom ceiling.
+function scenarioFitOptions(deviceMode: DeviceMode): { padding: number | { top: number; bottom: number; left: number; right: number }; maxZoom?: number } {
+  if (deviceMode === 'desktop') return { padding: 80, maxZoom: 16 }
+  if (deviceMode === 'phone-portrait') return { padding: { top: 38, bottom: 54, left: 28, right: 28 }, maxZoom: 14 }
+  return { padding: { top: 36, bottom: 42, left: 44, right: 44 }, maxZoom: 14 }
+}
+
+interface TacticalMapProps {
+  chromeSlots?: 'inline' | 'external'
+  recenterRequest?: number
+}
+
+export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: TacticalMapProps = {}) {
   // Map + DOM refs
   const mapRef            = useRef<maplibregl.Map | null>(null)
   const containerRef      = useRef<HTMLDivElement>(null)
@@ -97,6 +155,12 @@ export function TacticalMap() {
   const [lockedDroneId, setLockedDroneId] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
   const [mapMode,  setMapMode]  = useState<MapMode>('remote')
+  const lastRecenterRequestRef = useRef(recenterRequest)
+
+  // Drives the scenario-envelope fit padding/zoom-cap split (WS7) — desktop vs. the
+  // mobile shell's top bar / bottom dock / safe-area chrome. Read via a ref (below) inside
+  // effects so it never forces the heavy scenario-rebuild effect to re-run on its own.
+  const deviceMode = useDeviceMode()
 
   const { drones, scenario, thermalContacts, positionHistory, ui, droneWaypoints, routeSuggestions, selectedThermalId, selectThermal, groundUnits, recoveryTeams, toggleLayer } = useDroneStore(
     useShallow((s) => ({
@@ -115,6 +179,7 @@ export function TacticalMap() {
   const latestScenarioRef      = useRef(scenario)
   const latestSuggestionsRef   = useRef(routeSuggestions)
   const latestSelectedDroneRef = useRef(ui.selectedDroneId)
+  const latestDeviceModeRef    = useRef(deviceMode)
   // UTM state used to recompute on every render via a useMemo keyed on elapsedSec — which
   // changes every physics tick (20-200Hz), rebuilding traffic/reservation geometry far more
   // often than the map can even show it. Now computed inside the existing 10fps interval below,
@@ -128,6 +193,7 @@ export function TacticalMap() {
   useEffect(() => { latestScenarioRef.current = scenario },          [scenario])
   useEffect(() => { latestSuggestionsRef.current = routeSuggestions }, [routeSuggestions])
   useEffect(() => { latestSelectedDroneRef.current = ui.selectedDroneId }, [ui.selectedDroneId])
+  useEffect(() => { latestDeviceModeRef.current = deviceMode },          [deviceMode])
 
   // ── GeoJSON interval: all setData() calls at 10fps ────────────────────────
   // Decouples map rendering from the 20fps physics tick.
@@ -313,7 +379,9 @@ export function TacticalMap() {
           id: 'utm-traffic-circle', type: 'circle', source: 'utm-traffic',
           paint: {
             'circle-radius': 7,
-            'circle-color': ['case', ['==', ['get', 'risk'], 'urgent'], '#ffaa00', ['==', ['get', 'risk'], 'critical'], '#ff4444', '#00d4ff'],
+            // Routine/advisory traffic is not rendered. Urgent traffic remains orange and any
+            // future critical track fails conspicuously red rather than falling back to cyan.
+            'circle-color': ['case', ['==', ['get', 'risk'], 'urgent'], '#ffaa00', '#ff4444'],
             'circle-stroke-width': 2, 'circle-stroke-color': '#05070a', 'circle-opacity': 0.88,
           },
         })
@@ -502,7 +570,9 @@ export function TacticalMap() {
       ;(map.getSource('next-wp-lines') as maplibregl.GeoJSONSource | undefined)
         ?.setData({ type: 'FeatureCollection', features: [] })
 
-      map.flyTo({ center: [scenario.startPosition.lng, scenario.startPosition.lat], zoom: 15, duration: 600 })
+      // WS7: fit the whole scenario envelope (sites/routes/waypoints) instead of a flat
+      // zoom-15 flyTo — small scenarios frame tighter, wide ones no longer clip off-screen.
+      map.fitBounds(computeScenarioBounds(scenario), { ...scenarioFitOptions(latestDeviceModeRef.current), duration: 600 })
 
       // NOTE: the static yellow waypoint dots were removed — they duplicated the
       // faint route backbone below and the numbered draggable per-drone nodes
@@ -673,7 +743,7 @@ export function TacticalMap() {
     const lats = allPoints.map((p) => p.lat)
     map.fitBounds(
       [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 80, maxZoom: 16, duration: 800 }
+      { ...scenarioFitOptions(latestDeviceModeRef.current), duration: 800 }
     )
     cameraLockedRef.current = false
     setCameraLocked(false)
@@ -682,6 +752,23 @@ export function TacticalMap() {
     // camera on every route edit during a live mission, which is not the intended behavior.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ui.isRunning])
+
+  // Mobile map tools request an explicit overview without coupling the shell to
+  // the MapLibre instance. Manual panning remains respected until this action.
+  useEffect(() => {
+    if (recenterRequest === lastRecenterRequestRef.current) return
+    lastRecenterRequestRef.current = recenterRequest
+    const map = mapRef.current
+    if (!map || !scenario) return
+    cameraLockedRef.current = false
+    setCameraLocked(false)
+    lockedDroneIdRef.current = null
+    setLockedDroneId(null)
+    map.fitBounds(computeScenarioBounds(scenario), {
+      ...scenarioFitOptions(latestDeviceModeRef.current),
+      duration: 600,
+    })
+  }, [recenterRequest, scenario])
 
   // ── Effect 4: Auto-follow — specific drone lock or centroid of fleet ────────
   useEffect(() => {
@@ -1016,8 +1103,8 @@ export function TacticalMap() {
         </div>
       )}
 
-      <MissionStatusFeed />
-      <OperatorCommandPanel />
+      {chromeSlots === 'inline' && <MissionStatusFeed />}
+      {chromeSlots === 'inline' && <OperatorCommandPanel />}
 
       {/* Camera follow button — shows when manually panned or locked to specific drone */}
       {(cameraLocked || lockedDroneId) && ui.isRunning && (
@@ -1077,7 +1164,7 @@ export function TacticalMap() {
             { key: 'relays' as const, label: 'Relays', swatch: '#00d4ff', irOnly: false },
             { key: 'gates' as const, label: 'Gates', swatch: '#ffaa00', irOnly: false },
             { key: 'recharge' as const, label: 'Recharge', swatch: '#44ff88', irOnly: false },
-            { key: 'traffic' as const, label: 'Air Traffic', swatch: '#00d4ff', irOnly: false },
+            { key: 'traffic' as const, label: 'Air Traffic', swatch: '#ffaa00', irOnly: false },
             { key: 'thermal' as const, label: 'Heat (IR)', swatch: '#ffffff', irOnly: true },
             { key: 'irFootprints' as const, label: 'Sensor FOV (IR)', swatch: '#eaf6ff', irOnly: true },
           ]).map(({ key, label, swatch, irOnly }) => {
