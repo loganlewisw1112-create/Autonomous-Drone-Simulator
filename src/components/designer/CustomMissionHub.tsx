@@ -26,6 +26,7 @@ const SITE_KINDS: Array<{ value: LaunchRecoverySiteKind; label: string }> = [
   { value: 'police_station', label: 'Police station' },
   { value: 'fire_station', label: 'Fire station' },
   { value: 'mobile_command', label: 'Mobile command' },
+  { value: 'field_icp', label: 'Field ICP' },
   { value: 'helipad', label: 'Helipad' },
   { value: 'vessel', label: 'Vessel' },
 ]

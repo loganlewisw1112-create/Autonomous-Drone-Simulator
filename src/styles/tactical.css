@@ -1332,6 +1332,7 @@ html, body, #root {
 .rundetail-body { flex: 1; min-height: 0; overflow: auto; padding: 14px; }
 .rundetail-empty { padding: 24px; color: var(--text-dim); text-align: center; }
 .rundetail-fineprint { color: var(--text-dim); font-size: 10px; }
+.rundetail-completion-reason { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; margin: 0 0 10px; }
 
 .rundetail-stat-grid {
   display: grid;

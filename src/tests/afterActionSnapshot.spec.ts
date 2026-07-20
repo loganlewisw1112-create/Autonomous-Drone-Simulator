@@ -71,7 +71,7 @@ describe('after-action export during replay scrub', () => {
       replayIndex: 0,
       events: [],
     })
-    useDroneStore.getState().finalizeReplaySession()
+    useDroneStore.getState().finalizeReplaySession('operator_ended')
   })
 
   it('snapshots final fleet state onto the session', () => {

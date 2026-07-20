@@ -37,6 +37,7 @@ function makeSession(): MissionReplaySession {
     events: [],
     metrics: { totalFlightDistanceM: 0, waypointsReached: 0, conflictsDetected: 0, thermalContacts: 0, geofenceBreaches: 0, rtbTriggers: 0, recoveryDispatches: 0, groundUnitDispatch: 0 },
     completedAt: Date.now(),
+    completionReason: 'operator_ended',
     finalDrones: [makeDrone('uav-01', 'landed')],
     finalThermalContacts: [],
     finalGroundUnits: [],

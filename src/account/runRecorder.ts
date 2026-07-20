@@ -32,6 +32,7 @@ export function buildRunSummary(session: MissionReplaySession): StoredRunSummary
     scenarioId: session.scenarioId,
     scenarioVariant: session.scenarioVariant,
     completedAt: session.completedAt,
+    completionReason: session.completionReason,
     durationSec: lastFrame?.elapsedSec ?? 0,
     metrics: session.metrics,
     eventCount: session.events.length,
