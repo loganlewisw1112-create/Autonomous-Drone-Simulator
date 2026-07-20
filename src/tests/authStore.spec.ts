@@ -30,6 +30,10 @@ describe('authStore', () => {
     expect(await signUp('LOGAN', '', 'longenough', false)).toBe(false)
   })
 
+  // Three real PBKDF2-310k derivations run synchronously in this one test (signUp,
+  // a wrong-password signIn, a correct signIn) — each is genuinely CPU-bound, so a
+  // shared/slow CI runner can exceed the 5s default. Widen the ceiling; this doesn't
+  // change how fast the crypto actually runs, just the margin before it's flagged.
   it('signIn accepts the right password and rejects the wrong one', async () => {
     await useAuthStore.getState().signUp('op1', 'Operator One', 'password123', false)
     useAuthStore.getState().signOut()
@@ -39,7 +43,7 @@ describe('authStore', () => {
     expect(useAuthStore.getState().authError).toBe('Incorrect password')
     expect(await useAuthStore.getState().signIn('op1', 'password123', false)).toBe(true)
     expect(useAuthStore.getState().activeAccount?.displayName).toBe('Operator One')
-  })
+  }, 20000)
 
   it('remember-me persists a restorable session; signOut clears it', async () => {
     await useAuthStore.getState().signUp('op2', '', 'password123', true)
