@@ -223,7 +223,19 @@
 
 .mobile-surface-pane { display: none; width: 100%; height: 100%; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .mobile-surface-pane.active { display: flex; flex-direction: column; }
-.mobile-fleet-pane .fleet-panel { width: 100%; height: 100%; border-right: 0; }
+/* The desktop @media(max-width:700px) reflow caps .fleet-panel at max-height:34dvh
+   (~187px) for its stacked narrow layout — that clamp also crushed the mobile
+   roster to half the drawer, forcing a scroll with empty space below. Remove the
+   cap and fill the pane via flex so the roster uses the drawer's full height. */
+.mobile-fleet-pane .fleet-panel { width: 100%; flex: 1 1 auto; min-height: 0; max-height: none; border-right: 0; }
+/* Compact fleet cards on mobile so a typical fleet (≤5) fits without scrolling;
+   larger fleets still scroll (only when they truly exceed the drawer). */
+.mobile-fleet-pane .panel-section { padding: 6px 12px; }
+.mobile-fleet-pane .panel-label { margin-bottom: 2px; }
+.mobile-fleet-pane .drone-card { padding: 4px 12px; }
+.mobile-fleet-pane .drone-card-header { margin-bottom: 3px; }
+.mobile-fleet-pane .telemetry-grid { gap: 1px 8px; }
+.mobile-fleet-pane .battery-bar-wrap { margin-top: 3px; }
 .mobile-data-pane { overflow: hidden; }
 .mobile-data-tabs {
   flex: 0 0 48px;
@@ -245,7 +257,13 @@
 .mobile-data-content { flex: 1; min-height: 0; overflow: hidden; }
 .mobile-data-content > .mobile-surface-pane { overflow-y: auto; }
 .mobile-data-content .telemetry-panel { width: 100%; min-height: 100%; border-left: 0; }
-.mobile-data-content .ops-hub { position: static; width: 100%; max-width: none; max-height: none; margin: 0; overflow: visible; }
+.mobile-data-content .ops-hub {
+  /* The desktop @media(max-width:700px) rule hides the ops-hub map OVERLAY with
+     `display:none !important` — but here it's an embedded data-tab panel, not an
+     overlay, so we must re-assert display (and match the !important to win). */
+  display: block !important;
+  position: static; width: 100%; max-width: none; max-height: none; margin: 0; overflow: visible;
+}
 
 .mobile-surface-pane .mission-status-feed {
   position: static;
@@ -573,6 +591,43 @@
 .mobile-drone-chip.active { border-color: var(--accent-blue); color: var(--accent-blue); background: rgba(0, 212, 255, 0.08); }
 .mobile-command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .mobile-command-grid .mobile-btn { min-width: 0; width: 100%; padding: 0 8px; }
+
+/* SUGGEST output — proposed next moves with rationale + accept/dismiss. */
+.mobile-suggestions { display: flex; flex-direction: column; gap: 8px; }
+.mobile-suggestion {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-blue);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-input);
+}
+.mobile-suggestion.suggestion-high { border-left-color: var(--accent-red); }
+.mobile-suggestion.suggestion-medium { border-left-color: var(--accent-yellow); }
+.mobile-suggestion-title { font: 700 12px var(--font-mono); color: var(--text-primary); letter-spacing: .04em; }
+.mobile-suggestion-rationale { margin: 4px 0 8px; font-size: 11px; line-height: 1.4; color: var(--text-secondary); }
+.mobile-suggestion-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* ── Mission sheet: translucent so the live map / drone flight shows through ───
+   Only the MISSION bottom sheet (a partial-height, map-first surface). A blurred
+   dark wash keeps text legible while the operator still sees drones moving. */
+.mobile-drawer.bottom[data-surface="mission"] {
+  /* Near see-through: readability comes from the heavy blur + a faint tint rather
+     than an opaque panel, so drones stay clearly visible flying underneath. */
+  background: rgba(13, 17, 23, 0.34);
+  -webkit-backdrop-filter: blur(9px) saturate(140%);
+  backdrop-filter: blur(9px) saturate(140%);
+}
+/* Give the controls their own legibility floor without darkening the whole sheet:
+   only the text and chips get a subtle shadow so they read over moving map. */
+.mobile-drawer.bottom[data-surface="mission"] .mobile-sheet-label,
+.mobile-drawer.bottom[data-surface="mission"] .mobile-status-line,
+.mobile-drawer.bottom[data-surface="mission"] .mobile-suggestion-rationale {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+.mobile-drawer.bottom[data-surface="mission"] .mobile-drawer-header {
+  background: transparent;
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
 
 /* ── Tablet sizing tier (auto-detected on the mobile deployment) ──────────────
    Same map-first shell as phones, just roomier: bigger type, wider drawers, and
