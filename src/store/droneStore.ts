@@ -10,6 +10,7 @@ import type {
   EventType,
   FullMissionFrame,
   MissionEvent,
+  MissionCompletionReason,
   MissionReplaySession,
   ScenarioConfig,
   UIState,
@@ -32,6 +33,7 @@ import type {
   WaypointSaveSource,
   WaypointSaveStatus,
   InvestorDemoState,
+  MissionLifecycleState,
 } from '@/types'
 
 const MAX_TELEMETRY_POINTS = 240
@@ -114,6 +116,10 @@ interface DroneStore {
   // Operator role — governs which controls are enabled
   operatorRole: OperatorRole
 
+  // Mission lifecycle FSM — gates record-writing (only 'completed' finalizes a run)
+  // and drives Pause/Resume/End Mission button states.
+  lifecycle: MissionLifecycleState
+
   // Investor guided demo overlay and reset state
   investorDemo: InvestorDemoState
 
@@ -155,7 +161,7 @@ interface DroneStore {
   addPositionSample: (droneId: string, pos: LatLng) => void
   addReplayFrame: (frame: FullMissionFrame) => void
   setReplayIndex: (index: number) => void
-  finalizeReplaySession: () => void
+  finalizeReplaySession: (reason: MissionCompletionReason) => void
   setDroneWaypoints: (droneWaypoints: Record<string, Waypoint[]>) => void
   setRouteSaveStatuses: (statuses: Record<string, WaypointSaveStatus>) => void
   saveDroneRouteDraft: (droneId: string, source?: WaypointSaveSource) => boolean
@@ -173,6 +179,7 @@ interface DroneStore {
   setLaunchPlan: (plan: LaunchBayPlan) => void
   setScenario: (scenario: ScenarioConfig) => void
   setOperatorRole: (role: OperatorRole) => void
+  setLifecycle: (lifecycle: MissionLifecycleState) => void
   setInvestorDemoEnabled: (enabled: boolean) => void
   advanceInvestorDemoChapter: () => void
   resetInvestorDemo: () => void
@@ -287,6 +294,7 @@ export const useDroneStore = create<DroneStore>()(
         routeCommandError: null,
         routeSaveStatuses: {},
         operatorRole: 'pic',
+        lifecycle: 'idle',
         investorDemo: DEFAULT_INVESTOR_DEMO,
         metrics: {
           totalFlightDistanceM: 0,
@@ -391,7 +399,7 @@ export const useDroneStore = create<DroneStore>()(
             }
           }),
 
-        finalizeReplaySession: () =>
+        finalizeReplaySession: (reason) =>
           set((s) => {
             if (!s.scenario) return {}
             const session: MissionReplaySession = {
@@ -402,6 +410,7 @@ export const useDroneStore = create<DroneStore>()(
               events: s.events,
               metrics: s.metrics,
               completedAt: Date.now(),
+              completionReason: reason,
               // Snapshot the true end-of-mission state. Replay scrubbing overwrites the live
               // drones/thermalContacts/etc., so exports read these finals instead.
               finalDrones: s.drones.map((d) => ({ ...d })),
@@ -521,6 +530,8 @@ export const useDroneStore = create<DroneStore>()(
 
         setOperatorRole: (role) => set({ operatorRole: role }),
 
+        setLifecycle: (lifecycle) => set({ lifecycle }),
+
         setInvestorDemoEnabled: (enabled) =>
           set((s) => ({
             investorDemo: {
@@ -569,6 +580,7 @@ export const useDroneStore = create<DroneStore>()(
             replayIndex: 0,
             replayFrames: [],
             launchPlan: null,
+            lifecycle: 'idle',
             ui: {
               ...s.ui,
               selectedDroneId: null,
@@ -731,6 +743,7 @@ export const useDroneStore = create<DroneStore>()(
         beginLaunchSequence: () =>
           set((s) => ({
             launchCommandedSec: s.elapsedSec,
+            lifecycle: 'running',
             drones: s.drones.map((d) =>
               d.missionState === 'idle' || d.missionState === 'landed'
                 ? { ...d, missionState: 'preflight', launchTimeSec: undefined }
@@ -770,7 +783,7 @@ export const useDroneStore = create<DroneStore>()(
             selectedThermalId: null, groundUnits: [], recoveryTeams: [],
             routeSuggestions: [], routeCommandError: null, routeSaveStatuses: {},
             positionHistory: {}, replaySession: null, replayIndex: 0, replayFrames: [],
-            launchPlan: null, launchCommandedSec: null,
+            launchPlan: null, launchCommandedSec: null, lifecycle: 'idle',
             metrics: {
               totalFlightDistanceM: 0, waypointsReached: 0, conflictsDetected: 0,
               thermalContacts: 0, geofenceBreaches: 0, rtbTriggers: 0,

@@ -28,7 +28,7 @@ interface BuildUtmAirspaceStateInput {
 }
 
 export function buildUtmAirspaceState(input: BuildUtmAirspaceStateInput): UTMAirspaceState {
-  const externalTracks = buildExternalTracks(input.scenario, input.elapsedSec)
+  const externalTracks = buildExternalTracks(input.scenario)
   const reservations = buildReservations(input.scenario)
   const conflicts = buildConflicts(input.drones, externalTracks)
 
@@ -71,21 +71,11 @@ export function buildAirspaceReservationFeatures(reservations: AirspaceReservati
   }))
 }
 
-function buildExternalTracks(scenario: ScenarioConfig | null, elapsedSec: number): ExternalTrafficTrack[] {
+function buildExternalTracks(scenario: ScenarioConfig | null): ExternalTrafficTrack[] {
   const origin = scenario?.startPosition ?? { lat: 37.7695, lng: -122.4862 }
-  const phase = (elapsedSec % 180) / 180
   const labelPrefix = scenario ? labelPrefixForScenario(scenario) : 'UTM'
 
   return [
-    {
-      id: 'utm-medical-helo',
-      label: `${labelPrefix} medical helicopter corridor`,
-      position: offset(origin, -0.004 + phase * 0.002, 0.003 - phase * 0.001),
-      altitudeFt: 650,
-      headingDeg: 96,
-      speedKts: 82,
-      risk: 'advisory',
-    },
     {
       id: 'utm-news-rotor',
       label: `${labelPrefix} media rotor hold`,

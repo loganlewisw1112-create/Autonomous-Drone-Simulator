@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { buildAutoAssignments, buildDroneIds, computeBayStatuses, computeBlockers } from '@/sim/mission/launchBayPlanning'
@@ -29,6 +29,20 @@ export function LaunchBayPlanner() {
     })
     return rec
   })
+
+  // This modal stays mounted across scenario swaps (only hidden via the ui.showLaunchBay/
+  // scenario guard below), so without this the assignments above go stale — leftover droneId
+  // keys from the previous mission's launch sites. Re-seed whenever the loaded scenario changes.
+  useEffect(() => {
+    const rec: Record<string, string> = {}
+    droneIds.forEach((id) => {
+      if (launchSites[id]) rec[id] = id
+    })
+    setAssignments(rec)
+    // Intentionally keyed on scenario.id only — droneIds/launchSites are derived from
+    // scenario and are already current by the time this effect runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenario?.id])
 
   const bayStatuses: LaunchBayStatus[] = useMemo(
     () => (scenario ? computeBayStatuses(scenario, weatherState, assignments, droneIds) : []),

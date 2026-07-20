@@ -16,7 +16,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
 import { useDroneStore } from '@/store/droneStore'
-import { startSimLoop, stopSimLoop, initFleet } from '@/sim/SimulationLoop'
+import { startSimLoop, stopSimLoop, endMission, initFleet } from '@/sim/SimulationLoop'
 import { verifyChain, getGenesisHash } from '@/utils/chainOfCustody'
 import { getDefaultWeatherState } from '@/sim/weather/weatherEngine'
 import type { FullMissionFrame, MissionEvent } from '@/types'
@@ -41,18 +41,14 @@ function runMission(ticks: number): MissionRunResult {
   })
   initFleet()
 
-  // Mirror ControlBar.handleStart: put idle drones into 'launch' and start the loop.
-  const st = useDroneStore.getState()
-  st.drones.forEach((d) => {
-    if (d.missionState === 'idle' || d.missionState === 'landed') {
-      st.updateDrone(d.id, { missionState: 'launch' })
-    }
-  })
+  // Mirror the production start path so lifecycle enters `running` before End Mission.
+  useDroneStore.getState().beginLaunchSequence()
   useDroneStore.getState().setRunning(true)
   startSimLoop()
   vi.advanceTimersByTime(ticks * TICK_MS)
-  useDroneStore.getState().setRunning(false)
-  stopSimLoop()
+  // Post-split, only endMission() finalizes the replay session (stopSimLoop just cancels
+  // the driver). End the mission here so replaySession.frames is populated for assertions.
+  endMission()
 
   const final = useDroneStore.getState()
   return {

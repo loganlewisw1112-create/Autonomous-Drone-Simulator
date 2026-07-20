@@ -13,6 +13,10 @@ export function computeDeviceMode(target: AppTarget = APP_TARGET): DeviceMode {
   // uses the desktop console, while the mobile build always uses mobile chrome.
   if (target === 'windows') return 'desktop'
   if (target === 'mobile') {
+    // The mobile deployment (VITE_APP_TARGET=mobile in that Vercel project's dashboard —
+    // see src/platform/appTarget.ts) is phone-only BY DESIGN: unlike the 'universal' branch
+    // below, there is no short-side/tablet-size check here. Any device that loads the mobile
+    // URL — including a tablet — gets the landscape phone shell, never the desktop grid.
     if (typeof window === 'undefined') return 'phone-portrait'
     return window.innerWidth >= window.innerHeight ? 'phone-landscape' : 'phone-portrait'
   }

@@ -13,7 +13,6 @@ import type { AccountPrefs, AccountRecord } from '@/account/types'
 // in on a personal device (tradeoff surfaced in the sign-in UI).
 
 const SESSION_KEY = 'drone-sim:session:v1'
-const LAST_ACCOUNT_KEY = 'drone-sim:active-account:v1'
 
 function resolveStorage(): Storage | null {
   try {
@@ -56,7 +55,6 @@ function persistSession(account: AccountRecord, key: Uint8Array, rememberMe: boo
   const storage = resolveStorage()
   if (!storage) return
   try {
-    storage.setItem(LAST_ACCOUNT_KEY, account.username)
     if (rememberMe) {
       storage.setItem(SESSION_KEY, JSON.stringify({ v: 1, username: account.username, key: toBase64(key) }))
     } else {
@@ -87,8 +85,14 @@ export const useAuthStore = create<AuthState>()(
       showAnalytics: false,
 
       setShowSignIn: (show) => set({ showSignIn: show, authError: null }),
-      setShowSettings: (show) => set({ showSettings: show }),
-      setShowAnalytics: (show) => set({ showAnalytics: show }),
+      setShowSettings: (show) => set({
+        showSettings: show,
+        ...(show ? { showAnalytics: false } : {}),
+      }),
+      setShowAnalytics: (show) => set({
+        showAnalytics: show,
+        ...(show ? { showSettings: false } : {}),
+      }),
       clearAuthError: () => set({ authError: null }),
 
       signUp: async (username, displayName, password, rememberMe) => {
