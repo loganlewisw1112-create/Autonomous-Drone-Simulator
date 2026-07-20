@@ -1,4 +1,5 @@
 import type { RechargeStation, ScenarioConfig } from '@/types'
+import { mixedFleet, explicitFleet } from './platformAssignments'
 
 // ── 1. LAPD SIS — Hollywood Bowl Active Shooter Response ──────────────────
 export const lapdHollywoodBowl: ScenarioConfig = {
@@ -7,6 +8,8 @@ export const lapdHollywoodBowl: ScenarioConfig = {
   description: 'LAPD Special Investigations Section deploys a five-drone squad for active shooter response at the Hollywood Bowl amphitheater. Five sectors assigned simultaneously: shell-north, hillside seating south, VIP/press entrance, Highland Ave perimeter, and Cahuenga Pass corridor. Two sorties planned. After recharge, drones relaunch for secondary search phase. SIMULATION ONLY — all positions and contacts are synthetic.',
   seed: 20001,
   droneCount: 5,
+  // Urban crowd overwatch: X10 primaries with a compact Anafi for infill.
+  dronePlatforms: mixedFleet(5, 'skydio_x10', 'parrot_anafi_usa'),
   missionType: 'waypoint',
   startPosition: { lat: 34.1118, lng: -118.3375 },
   waypoints: [],
@@ -75,6 +78,8 @@ export const cbpEaglePassBorder: ScenarioConfig = {
   description: 'U.S. Customs and Border Protection Eagle Pass Station deploys five drones under CBP Air and Marine Operations for overnight surveillance of a 2.5-km stretch of the Rio Grande. Three sorties per drone required for the full operational period. Thermal sensors detect body-temperature signatures against 85°F nighttime riverbed. SIMULATION ONLY.',
   seed: 20002,
   droneCount: 5,
+  // Border doctrine: uniform weatherproof X10D line for sustained ISR.
+  dronePlatforms: mixedFleet(5, 'skydio_x10d'),
   missionType: 'waypoint',
   startPosition: { lat: 28.7062, lng: -100.4965 },
   waypoints: [],
@@ -137,6 +142,9 @@ export const fbiHrtCompound: ScenarioConfig = {
   description: 'FBI Hostage Rescue Team deploys four drones in support of a warrant execution at a fortified residential compound in the Inland Empire, CA. Three-phase mission: outer ISR, dynamic entry support, extraction corridor. Single-sortie continuous airborne presence. Thermal imaging identifies 4 heat signatures inside primary structure. SIMULATION ONLY — all details are synthetic.',
   seed: 20003,
   droneCount: 4,
+  // HRT stack: two Lemur 2s make interior entry (tight turn rate, short
+  // endurance), two X10s hold exterior overwatch.
+  dronePlatforms: explicitFleet(['brinc_lemur_2', 'brinc_lemur_2', 'skydio_x10', 'skydio_x10']),
   missionType: 'waypoint',
   startPosition: { lat: 34.5398, lng: -117.2932 },
   waypoints: [],
@@ -194,6 +202,8 @@ export const uscgCapeCodeSAR: ScenarioConfig = {
   description: 'USCG Sector Southeastern New England deploys five ScanEagle UAS from Air Station Cape Cod for an overdue 28-ft recreational vessel. EPIRB activated at 0214 local. SAROPS drift model projects two probability sectors. Primary detection: thermal — hypothermic survivors at 33–35°C vs 18°C Atlantic water. Two sorties required to cover the full probability area. SIMULATION ONLY.',
   seed: 20004,
   droneCount: 5,
+  // Maritime SAR: weatherproof X10D search ships plus an Astro Max mapper.
+  dronePlatforms: mixedFleet(5, 'skydio_x10d', 'freefly_astro_max'),
   missionType: 'waypoint',
   startPosition: { lat: 41.6688, lng: -70.2978 },
   waypoints: [],
@@ -256,6 +266,8 @@ export const usssPresidentialSF: ScenarioConfig = {
   description: 'USSS JOTSC deploys five drone platforms for a presidential site advance at Moscone Center. Drones sweep: Moscone exterior/docks, motorcade route on 3rd to Market, Union Square and Westin perimeter, Powell Street BART plaza, Nob Hill hotel exterior. Single-sortie advance sweep before POTUS motorcade. SIMULATION ONLY.',
   seed: 20005,
   droneCount: 5,
+  // Protective detail: uniform X10 fleet for consistent overwatch timing.
+  dronePlatforms: mixedFleet(5, 'skydio_x10'),
   missionType: 'waypoint',
   startPosition: { lat: 37.7838, lng: -122.4000 },
   waypoints: [],
@@ -317,6 +329,8 @@ export const femaFortMyers: ScenarioConfig = {
   description: 'FEMA USAR Florida Task Force 4 deploys five DJI Matrice 300 RTK drones from a north-end staging area to grid-search the north sector of Estero Island after Hurricane Ian. Storm surge collapsed ~40% of structures. Primary survivor signature: 36–37°C trapped in void vs 88°F ambient debris. Four parallel lanes sweep north→south while a fifth drone holds high as a comms relay. SIMULATION ONLY.',
   seed: 20006,
   droneCount: 5,
+  // Disaster response: X10D search ships with an Astro Max damage-mapping bird.
+  dronePlatforms: mixedFleet(5, 'skydio_x10d', 'freefly_astro_max'),
   missionType: 'waypoint',
   // Staging area at the north tip (Bowditch Point vicinity) — on land and clear
   // of both the over-water limit and the USAR helo LZ no-fly. Launch bays fan out
@@ -388,6 +402,8 @@ export const atfOaklandStash: ScenarioConfig = {
   description: 'ATF San Francisco Field Division Group IX deploys four drones in support of a Title III surveillance operation targeting a firearms trafficking network in East Oakland. Two sorties — Sortie 1 covers pre-distribution window, Sortie 2 covers the distribution period after recharge. SIMULATION ONLY — all locations are synthetic.',
   seed: 20007,
   droneCount: 4,
+  // Urban surveillance: X10 primaries with an Anafi for fast relocation.
+  dronePlatforms: mixedFleet(4, 'skydio_x10', 'parrot_anafi_usa'),
   missionType: 'waypoint',
   startPosition: { lat: 37.7385, lng: -122.1935 },
   waypoints: [],
@@ -443,6 +459,8 @@ export const dhsPortLAChemical: ScenarioConfig = {
   description: 'DHS coordinates with LAFD HazMat and USCG Marine Safety Unit for a chemical container breach at Port of LA Berth 302. Five drones deployed under LAFD ICS: source characterization, downwind plume tracking (NW at 8 knots), container yard sweep, Seaside Ave perimeter, and ICP comms relay. Single-sortie rapid response. SIMULATION ONLY.',
   seed: 20008,
   droneCount: 5,
+  // Port perimeter: light Anafi patrols with an X10 for endurance overwatch.
+  dronePlatforms: mixedFleet(5, 'parrot_anafi_usa', 'skydio_x10'),
   missionType: 'waypoint',
   startPosition: { lat: 33.7321, lng: -118.2699 },
   waypoints: [],
@@ -505,6 +523,8 @@ export const lapdSkidRowWelfare: ScenarioConfig = {
   description: 'LAPD Air Support Division SkyWatch deploys five drones with LA County DMH and LAHSA for a welfare check grid in Skid Row during a 112°F heat advisory. Thermal: identify individuals with elevated skin temp (>39°C hyperthermia) or motionless. Location and condition only — no identity data logged. Two staggered sorties. SIMULATION ONLY.',
   seed: 20009,
   droneCount: 5,
+  // Urban welfare checks: X10 primaries with a compact Anafi.
+  dronePlatforms: mixedFleet(5, 'skydio_x10', 'parrot_anafi_usa'),
   missionType: 'waypoint',
   startPosition: { lat: 34.0422, lng: -118.2472 },
   waypoints: [],
@@ -568,6 +588,8 @@ export const nypdTimesSqMCI: ScenarioConfig = {
   description: 'NYPD Aviation Unit deploys five drones for a mass casualty incident at Times Square, coordinating with FDNY EMS and ESU. Sectors: Broadway/7th Ave incident zone, 47th–49th St crowd flow, 42nd–45th St/Port Authority, TKTS elevated overwatch, comms relay. Two sorties for secondary search of surrounding blocks. SIMULATION ONLY.',
   seed: 20010,
   droneCount: 5,
+  // Urban MCI: X10 primaries with an Anafi for rapid repositioning.
+  dronePlatforms: mixedFleet(5, 'skydio_x10', 'parrot_anafi_usa'),
   missionType: 'waypoint',
   startPosition: { lat: 40.7570, lng: -73.9862 },
   waypoints: [],
@@ -630,6 +652,8 @@ export const calFireDixieComplex: ScenarioConfig = {
   description: 'CAL FIRE IAAB and USFS Pacific Southwest Region deploy five UAS on the northern flank of the Dixie Fire Complex in Plumas County. Northern flank broke containment overnight with spotfires along the Feather River canyon rim. Three-sortie persistent recon over an 8-km perimeter segment. Tracks Hwy 70 fire edge, spotfires, Greenville structures, canyon crews, and ATGS-ICP comms relay. SIMULATION ONLY.',
   seed: 20011,
   droneCount: 5,
+  // Wildfire doctrine: Teal 2 thermal ships with X10 overwatch.
+  dronePlatforms: mixedFleet(5, 'teal_2', 'skydio_x10'),
   missionType: 'waypoint',
   // ICP staging south of the air-tanker drop corridor (never launch under retardant drops).
   startPosition: { lat: 40.0072, lng: -121.0085 },
@@ -700,6 +724,8 @@ export const cbpBigBendDesertSAR: ScenarioConfig = {
   description: 'CBP Big Bend Sector deploys four UAS from Presidio Station for a humanitarian SAR for migrants overdue in the Chihuahuan Desert. Ground temperature 118°F. Thermal search primary: hyperthermic distress shows 40–42°C vs ~68°C desert surface. CBP EMT teams await cueing at two forward points. Two sorties due to extreme heat battery drain. SIMULATION ONLY — all positions are synthetic.',
   seed: 20012,
   droneCount: 4,
+  // Desert SAR: X10D search ships with an Astro Max mapping payload.
+  dronePlatforms: mixedFleet(4, 'skydio_x10d', 'freefly_astro_max'),
   missionType: 'waypoint',
   // Staging on the US side, north of the Mexican ADIZ boundary.
   startPosition: { lat: 29.3770, lng: -103.7285 },
@@ -760,6 +786,8 @@ export const multiAgencySFPursuit: ScenarioConfig = {
   description: 'SFPD / OPD / CHP / BART PD joint air pursuit of a vehicle fleeing from the SF Financial District, crossing the Bay Bridge, through Oakland, up I-580, through Berkeley, ending at Albany Hills. Eight drones with dedicated tactical roles: two shadows, hi-alt overwatch, two forward intercepts, two perimeter sealers, and a C2 relay. Two sorties with agency-specific staging across SF, Jack London Square simulated rooftop sites, the East Bay, and Oakland Airport. Comms degrade in Bay Bridge superstructure at T+60s. SIMULATION ONLY.',
   seed: 20013,
   droneCount: 8,
+  // Multi-agency pursuit: X10 primaries with Anafis for fast infill.
+  dronePlatforms: mixedFleet(8, 'skydio_x10', 'parrot_anafi_usa'),
   missionType: 'waypoint',
   startPosition: { lat: 37.7213, lng: -122.2205 },
   waypoints: [],
@@ -1057,6 +1085,9 @@ export const cbpRioGrandeLongRange: ScenarioConfig = {
   description: 'CBP Laredo Sector Air and Marine Operations deploys five long-range-kit drones from a mobile command post near Falcon Lake (Starr County, TX) eastward through a 25-mile corridor toward Mission, TX. Drones do NOT return to the origin between sorties — they advance through staged mobile recharge vehicles on the US-83 corridor at Falcon, Roma, Rio Grande City, La Joya, and Mission terminal recovery. Long-range Li-ion packs offset 104°F ambient heat and payload weight while a 25 percent reserve threshold forces forward recovery discipline. SIMULATION ONLY.',
   seed: 20014,
   droneCount: 5,
+  // Long-range border: uniform X10D line. The scenario's 1.6 fleet battery
+  // profile intentionally takes precedence over the platform endurance multiplier.
+  dronePlatforms: mixedFleet(5, 'skydio_x10d'),
   missionType: 'waypoint',
   startPosition: { lat: 26.5655, lng: -99.1195 },
   waypoints: [],

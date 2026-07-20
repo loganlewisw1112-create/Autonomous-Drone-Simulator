@@ -1,4 +1,5 @@
 import type { ScenarioConfig } from '@/types'
+import { mixedFleet } from './platformAssignments'
 
 /**
  * SFPD — Armed Robbery Suspect Grid Search · Financial District, San Francisco
@@ -18,6 +19,8 @@ export const suspectSearch: ScenarioConfig = {
     'Armed robbery at Embarcadero Center. Three drones sweep Financial District in an E-W lawnmower grid. UAV-01 (100ft) thermal ID; UAV-02 (120ft) alley coverage; UAV-03 (140ft) overwatch/relay. Comms degraded by Salesforce Tower RF shadow at T+40s.',
   seed: 1001,
   droneCount: 3,
+  // Urban doctrine: X10 primaries with a compact Anafi for fast-deploy infill.
+  dronePlatforms: mixedFleet(3, 'skydio_x10', 'parrot_anafi_usa'),
   missionType: 'waypoint',
   startPosition: { lat: 37.7955, lng: -122.3937 }, // Ferry Building staging lot
   waypoints: [
@@ -88,6 +91,8 @@ export const vehiclePursuit: ScenarioConfig = {
     'Stolen vehicle fleeing south on Broadway. Relay chain: UAV-01 (100ft) tracks overhead, UAV-02 (120ft) mid-relay, UAV-03 (140ft) pre-positions at I-880 intercept. High battery drain — pursuit speed. Comms lost under overpass at T+55s.',
   seed: 2002,
   droneCount: 3,
+  // Urban pursuit: X10 primaries, Anafi for rapid relocation.
+  dronePlatforms: mixedFleet(3, 'skydio_x10', 'parrot_anafi_usa'),
   missionType: 'waypoint',
   startPosition: { lat: 37.8012, lng: -122.2750 }, // Oakland City Center / 12th St BART staging
   waypoints: [
@@ -160,6 +165,8 @@ export const sarCoastal: ScenarioConfig = {
     'Two missing swimmers, hypothermic. Night op — thermal only. UAV-01 (100ft) sweeps nearshore; UAV-02 (120ft) beach face; UAV-03 (140ft) dune strip + comms relay. Weak thermal signature (34–36°C) demands close approach. Marine layer comms degradation at T+90s.',
   seed: 3003,
   droneCount: 3,
+  // Coastal SAR: weatherproof X10D search ships plus an Astro Max mapping bird.
+  dronePlatforms: mixedFleet(3, 'skydio_x10d', 'freefly_astro_max'),
   missionType: 'sar_parallel',
   startPosition: { lat: 37.7695, lng: -122.5103 }, // Ocean Beach / Balboa St parking lot
   waypoints: [],
@@ -212,6 +219,8 @@ export const portPerimeter: ScenarioConfig = {
     'Suspicious vessel at Terminal 56, no AIS. Overlapping perimeter: UAV-01 (100ft) vessel/dock; UAV-02 (120ft) gates; UAV-03 (140ft) full terminal overwatch. Four thermal contacts: vessel, POI, authorized truck, unscheduled vehicle. Crane RF interference at T+120s.',
   seed: 4004,
   droneCount: 3,
+  // Perimeter watch: light Anafi patrols with an X10 for longer-endurance overwatch.
+  dronePlatforms: mixedFleet(3, 'parrot_anafi_usa', 'skydio_x10'),
   missionType: 'waypoint',
   startPosition: { lat: 37.7965, lng: -122.2855 }, // Port Authority security building
   waypoints: [
@@ -291,6 +300,8 @@ export const wildfireRecon: ScenarioConfig = {
     '15-acre Grizzly Peak grass fire, SW winds. Three-flank approach: UAV-01 (100ft) southern upwind; UAV-02 (120ft) eastern leading edge; UAV-03 (140ft) northern downwind overwatch + relay. No-fly geofence over active fire column. 5 thermal contacts incl. spotfires and structure threat. Smoke RF at T+80s.',
   seed: 5005,
   droneCount: 3,
+  // Fire doctrine: Teal 2 thermal ships (FLIR Hadron 640) with an X10 for overwatch.
+  dronePlatforms: mixedFleet(3, 'teal_2', 'skydio_x10'),
   missionType: 'waypoint',
   startPosition: { lat: 37.8992, lng: -122.2432 }, // Tilden Park / CAL FIRE staging area
   waypoints: [
