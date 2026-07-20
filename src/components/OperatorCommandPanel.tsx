@@ -6,7 +6,9 @@ import { haversineDistanceM } from '@/utils/geometry'
 import { platformForDrone } from '@/sim/drone/platformCatalog'
 import type { DispatchTimelineEntry, OperatorRouteCommand, Waypoint, WaypointSaveStatus } from '@/types'
 
-const COMMANDS: Array<{ command: OperatorRouteCommand; label: string }> = [
+// Shared with the mobile Mission-tab quick commands (DroneQuickCommands) so both
+// surfaces issue the exact same operator route commands — zero divergence.
+export const COMMANDS: Array<{ command: OperatorRouteCommand; label: string }> = [
   { command: 'deep_scan', label: 'Deep Scan' },
   { command: 'street_sweep', label: 'Street Sweep' },
   { command: 'perimeter_orbit', label: 'Perimeter Orbit' },

@@ -21,7 +21,7 @@ import {
   ScenarioSheet,
 } from '@/components/mobile/BottomDock'
 import { useWakeLock } from '@/hooks/useWakeLock'
-import { useDeviceMode } from '@/hooks/useDeviceMode'
+import { useDeviceMode, useIsTablet } from '@/hooks/useDeviceMode'
 import type { ActiveMobileSurface } from '@/types'
 import '@/styles/mobile.css'
 
@@ -106,6 +106,7 @@ export function MobileShell() {
     setOrientation,
   } = useMobileStore()
   const deviceMode = useDeviceMode()
+  const isTablet = useIsTablet()
   const [recenterRequest, setRecenterRequest] = useState(0)
   const [showDesigner, setShowDesigner] = useState(false)
 
@@ -147,7 +148,12 @@ export function MobileShell() {
   }
 
   return (
-    <div className={`mobile-shell mobile-shell--${orientation}`} data-testid="mobile-shell" data-orientation={orientation}>
+    <div
+      className={`mobile-shell mobile-shell--${orientation}${isTablet ? ' mobile-shell--tablet' : ''}`}
+      data-testid="mobile-shell"
+      data-orientation={orientation}
+      data-tablet={isTablet}
+    >
       <header className="mobile-topbar">
         <span className="header-logo">⬡ DRONE OPS</span>
         <span className="header-mission-id">
