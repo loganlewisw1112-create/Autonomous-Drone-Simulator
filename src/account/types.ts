@@ -1,7 +1,9 @@
+import type { PlatformId } from '@/sim/drone/platformCatalog'
 import type {
   AfterActionPackage,
   CustomMissionDefinition,
   DroneState,
+  EventType,
   FullMissionFrame,
   LatLng,
   LaunchBayPlan,
@@ -66,7 +68,16 @@ export interface StoredRunSummary {
     id: string
     missionState: string
     batteryPct: number
+    // Absent on runs recorded before per-platform physics existed — such runs
+    // aggregate under "UNASSIGNED" rather than being dropped.
+    platformId?: PlatformId
   }>
+  /**
+   * Per-event-type totals, reduced once at record time. Aggregating here keeps the
+   * analytics panel from having to bulk-decrypt every run's detail blob to chart
+   * event mix. Absent on runs recorded before this field existed.
+   */
+  eventTypeCounts?: Partial<Record<EventType, number>>
   // Additive: whether the immutable drill-down detail (runDetails row) persisted
   // alongside this summary. 'quota-limited' means the device rejected the heavier
   // detail write — the summary is intact and the UI can badge the missing detail.

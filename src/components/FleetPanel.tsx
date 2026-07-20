@@ -1,5 +1,6 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
+import { PLATFORM_CATALOG } from '@/sim/drone/platformCatalog'
 import type { DroneState, MissionState, RecoveryTeamState } from '@/types'
 
 function batteryColor(pct: number): string {
@@ -47,6 +48,13 @@ function DroneCard({ drone, recoveryTeam }: { drone: DroneState; recoveryTeam?: 
       <div className="drone-card-header">
         <div className="drone-dot" style={{ background: drone.color }} />
         <span className="drone-label">{drone.label}</span>
+        {/* Platform tag — omitted for unassigned drones (custom missions), which
+            fly the generic legacy airframe. */}
+        {drone.platformId && (
+          <span className="drone-platform-tag" title={PLATFORM_CATALOG[drone.platformId].displayName}>
+            {PLATFORM_CATALOG[drone.platformId].shortName}
+          </span>
+        )}
         <span className={`state-badge state-${drone.missionState}`}>
           {drone.missionState.replace('_', ' ')}
         </span>

@@ -1,8 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
+import {
+  buildAggregates, buildTimeline, completionReasons, eventTypeTotals, runsByScenario, safetyTrend, sortiesByPlatform,
+} from '@/components/account/analyticsData'
 import { useAuthStore } from '@/store/authStore'
 import { decryptJson, deriveKey, encryptJson, makeCheckBlob, makeKdfParams, toBase64 } from '@/account/crypto'
 import {
@@ -59,6 +62,10 @@ function StatTile({ label, value }: { label: string; value: string | number }) {
   )
 }
 
+// Completion-reason slice colors. Ordered so the common "all routes complete"
+// case reads green and failure modes read warm.
+const REASON_COLORS = ['#44ff88', '#00d4ff', '#ffaa00', '#ff4444', '#a371f7', '#8b949e']
+
 function AnalyticsPanel() {
   const deviceMode = useDeviceMode()
   const mobile = deviceMode === 'phone-landscape' || deviceMode === 'phone-portrait'
@@ -86,29 +93,15 @@ function AnalyticsPanel() {
     setDetailLoading(false)
   }
 
-  const aggregates = useMemo(() => {
-    const total = runs.length
-    const distanceKm = runs.reduce((sum, r) => sum + r.summary.metrics.totalFlightDistanceM, 0) / 1000
-    const contacts = runs.reduce((sum, r) => sum + r.summary.metrics.thermalContacts, 0)
-    const waypoints = runs.reduce((sum, r) => sum + r.summary.metrics.waypointsReached, 0)
-    const avgDuration = total ? runs.reduce((sum, r) => sum + r.summary.durationSec, 0) / total : 0
-    const verified = runs.filter((r) => r.summary.eventCount > 0 && r.summary.chainVerified).length
-    return { total, distanceKm, contacts, waypoints, avgDuration, verified }
-  }, [runs])
-
-  const timeline = useMemo(() =>
-    runs.map(({ summary: r }, i) => ({
-      name: new Date(r.completedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      run: i + 1,
-      distanceKm: Number((r.metrics.totalFlightDistanceM / 1000).toFixed(2)),
-      contacts: r.metrics.thermalContacts,
-    })), [runs])
-
-  const byScenario = useMemo(() => {
-    const counts = new Map<string, number>()
-    runs.forEach(({ summary: r }) => counts.set(r.scenarioId, (counts.get(r.scenarioId) ?? 0) + 1))
-    return [...counts.entries()].map(([scenarioId, count]) => ({ scenarioId, count }))
-  }, [runs])
+  // Aggregation lives in analyticsData so it stays testable without the panel.
+  const summaries = useMemo(() => runs.map((r) => r.summary), [runs])
+  const aggregates = useMemo(() => buildAggregates(summaries), [summaries])
+  const timeline = useMemo(() => buildTimeline(summaries), [summaries])
+  const byScenario = useMemo(() => runsByScenario(summaries), [summaries])
+  const byPlatform = useMemo(() => sortiesByPlatform(summaries), [summaries])
+  const reasons = useMemo(() => completionReasons(summaries), [summaries])
+  const safety = useMemo(() => safetyTrend(summaries), [summaries])
+  const eventMix = useMemo(() => eventTypeTotals(summaries), [summaries])
 
   if (!showAnalytics) return null
 
@@ -136,6 +129,12 @@ function AnalyticsPanel() {
             <StatTile label="WAYPOINTS" value={aggregates.waypoints} />
             <StatTile label="AVG DURATION" value={`${Math.round(aggregates.avgDuration / 60)}m ${Math.round(aggregates.avgDuration % 60)}s`} />
             <StatTile label="CHAIN VERIFIED" value={`${aggregates.verified}/${aggregates.total}`} />
+            {/* All five come from metrics already persisted on every run — no backfill. */}
+            <StatTile label="CONFLICTS" value={aggregates.conflicts} />
+            <StatTile label="GEOFENCE BREACHES" value={aggregates.geofenceBreaches} />
+            <StatTile label="RTB EVENTS" value={aggregates.rtbTriggers} />
+            <StatTile label="RECOVERIES" value={aggregates.recoveryDispatches} />
+            <StatTile label="GROUND DISPATCHES" value={aggregates.groundDispatches} />
           </div>
 
           <div className="account-chart-grid">
@@ -154,14 +153,74 @@ function AnalyticsPanel() {
             <div className="account-chart-card">
               <span className="account-label">MISSIONS BY SCENARIO</span>
               <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={byScenario} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
+                {/* Real scenario names, angled so they stay legible at this width. */}
+                <BarChart data={byScenario} margin={{ top: 8, right: 12, bottom: 34, left: -18 }}>
                   <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
-                  <XAxis dataKey="scenarioId" tick={{ fill: '#8b949e', fontSize: 9 }} />
+                  <XAxis dataKey="label" tick={{ fill: '#8b949e', fontSize: 9 }} angle={-30} textAnchor="end" interval={0} height={48} />
                   <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 10 }} />
                   <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
                   <Bar dataKey="count" fill="#44ff88" />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+
+            <div className="account-chart-card">
+              <span className="account-label">HOW MISSIONS ENDED</span>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie data={reasons} dataKey="count" nameKey="reason" cx="50%" cy="50%" outerRadius={62} label={{ fill: '#8b949e', fontSize: 9 }}>
+                    {reasons.map((entry, i) => (
+                      <Cell key={entry.reason} fill={REASON_COLORS[i % REASON_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="account-chart-card">
+              <span className="account-label">SAFETY EVENTS PER MISSION</span>
+              <ResponsiveContainer width="100%" height={180}>
+                <LineChart data={safety} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
+                  <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
+                  <XAxis dataKey="run" tick={{ fill: '#8b949e', fontSize: 10 }} />
+                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 10 }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <Line type="monotone" dataKey="conflicts" stroke="#ffaa00" strokeWidth={2} dot={{ r: 2 }} />
+                  <Line type="monotone" dataKey="breaches" stroke="#ff4444" strokeWidth={2} dot={{ r: 2 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="account-chart-card">
+              <span className="account-label">SORTIES BY AIRFRAME</span>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={byPlatform} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
+                  <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
+                  <XAxis dataKey="label" tick={{ fill: '#8b949e', fontSize: 9 }} interval={0} />
+                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 10 }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <Bar dataKey="sorties" fill="#00d4ff" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="account-chart-card">
+              <span className="account-label">EVENT MIX (TOP 8)</span>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={eventMix.totals} layout="vertical" margin={{ top: 8, right: 12, bottom: 0, left: 46 }}>
+                  <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
+                  <XAxis type="number" allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 10 }} />
+                  <YAxis type="category" dataKey="eventType" width={96} tick={{ fill: '#8b949e', fontSize: 8.5 }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <Bar dataKey="count" fill="#a371f7" />
+                </BarChart>
+              </ResponsiveContainer>
+              {eventMix.runsWithoutCounts > 0 && (
+                <span className="account-chart-note">
+                  {eventMix.runsWithoutCounts} earlier run{eventMix.runsWithoutCounts === 1 ? '' : 's'} predate event-type recording and are not included.
+                </span>
+              )}
             </div>
           </div>
 

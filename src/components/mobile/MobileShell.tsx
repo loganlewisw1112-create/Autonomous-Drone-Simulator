@@ -8,6 +8,7 @@ import { FleetPanel } from '@/components/FleetPanel'
 import { TelemetryPanel } from '@/components/TelemetryPanel'
 import { MissionStatusFeed } from '@/components/MissionStatusFeed'
 import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
+import { MAX_WAYPOINTS_PER_DRONE } from '@/components/designer/designerValidation'
 import { LoadingScreen } from '@/components/LoadingScreen'
 import { WelcomeOverlay } from '@/components/WelcomeOverlay'
 import { Drawer } from '@/components/mobile/Drawer'
@@ -67,13 +68,21 @@ function SurfacePane({ active, className = '', children }: { active: boolean; cl
 // One responsive shell is kept mounted through orientation changes. All console
 // functions use the same stores/components as desktop; only their placement changes.
 export function MobileShell() {
-  const { scenario, isRunning, lifecycle, mapReady, replaySession } = useDroneStore(
+  const {
+    scenario, isRunning, lifecycle, mapReady, replaySession,
+    selectedDroneId, routeEditMode, setRouteEditMode, droneWaypoints, routeCommandError,
+  } = useDroneStore(
     useShallow((s) => ({
       scenario: s.scenario,
       isRunning: s.ui.isRunning,
       lifecycle: s.lifecycle,
       mapReady: s.mapReady,
       replaySession: s.replaySession,
+      selectedDroneId: s.ui.selectedDroneId,
+      routeEditMode: s.ui.routeEditMode,
+      setRouteEditMode: s.setRouteEditMode,
+      droneWaypoints: s.droneWaypoints,
+      routeCommandError: s.routeCommandError,
     })),
   )
   const { activeAccount, setShowSignIn, setShowSettings, setShowAnalytics } = useAuthStore(
@@ -103,6 +112,12 @@ export function MobileShell() {
   useEffect(() => {
     setOrientation(deviceMode === 'phone-portrait' ? 'portrait' : 'landscape')
   }, [deviceMode, setOrientation])
+
+  // Opening any surface covers the map, so route editing exits with it — otherwise
+  // the operator returns to a map that is still silently in tap-to-place mode.
+  useEffect(() => {
+    if (activeSurface) setRouteEditMode(false)
+  }, [activeSurface, setRouteEditMode])
 
   useWakeLock(isRunning)
 
@@ -151,6 +166,29 @@ export function MobileShell() {
             <span>{scenario.missionBrief.agencies.join(' / ')}</span>
             <strong>{scenario.missionBrief.primaryObjective}</strong>
           </button>
+        )}
+
+        {/* Tap-to-place route editing (mobile only). The pill only appears once a
+            drone is selected; entering edit mode swaps it for a status banner. */}
+        {selectedDroneId && !routeEditMode && (
+          <button className="route-edit-pill" onClick={() => setRouteEditMode(true)}>
+            ✎ ROUTE
+          </button>
+        )}
+
+        {routeEditMode && selectedDroneId && (
+          <div className="route-edit-banner" data-testid="route-edit-banner">
+            <span>
+              EDITING {selectedDroneId.toUpperCase()} · {(droneWaypoints[selectedDroneId] ?? []).length}/{MAX_WAYPOINTS_PER_DRONE} WPs
+            </span>
+            <button onClick={() => setRouteEditMode(false)}>DONE</button>
+          </div>
+        )}
+
+        {/* A rejected edit (e.g. a waypoint across a no-fly boundary) surfaces the
+            store's existing validation message rather than silently doing nothing. */}
+        {routeEditMode && routeCommandError && (
+          <div className="route-edit-toast" role="status">{routeCommandError}</div>
         )}
 
         <button className="mobile-edge-tab left" onClick={() => toggleSurface('fleet')} aria-pressed={activeSurface === 'fleet'}>

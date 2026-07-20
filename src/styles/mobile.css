@@ -4,30 +4,41 @@
 .mobile-shell * { box-sizing: border-box; }
 
 .mobile-shell {
+  /* Unified mobile z-index scale. Floating chrome sits above in-map badges/chips
+     but below drawers, so opening a surface covers the chrome. */
+  --z-map-overlay: 100;  /* in-map badges: FOLLOW, IR/thermal HUD, SAR, thermal card */
+  --z-map-chip:    200;  /* priority chip, edge tabs */
+  --z-chrome:      300;  /* floating topbar + dock */
+  --z-drawer:      400;  /* surface drawers / sheets / scrims */
+  --z-modal:       500;  /* full-screen modals if any live in mobile.css */
+  --z-boot:        600;  /* welcome + loading overlays */
   position: fixed;
   inset: 0;
   width: 100vw;
   height: 100vh;
   height: 100dvh;
-  display: flex;
-  flex-direction: column;
+  display: block;
   overflow: hidden;
   overscroll-behavior: none;
   background: var(--bg-primary);
-  padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
   touch-action: manipulation;
 }
 
 .mobile-topbar {
-  flex: 0 0 calc(36px + env(safe-area-inset-top));
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   min-width: 0;
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  padding: env(safe-area-inset-top) 10px 5px;
-  background: var(--bg-panel);
+  padding: env(safe-area-inset-top) max(10px, env(safe-area-inset-right)) 5px max(10px, env(safe-area-inset-left));
+  background: rgba(22, 27, 34, 0.85);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--border);
-  z-index: 520;
+  z-index: var(--z-chrome);
 }
 .mobile-topbar .header-logo {
   flex: 0 0 auto;
@@ -59,8 +70,12 @@
 }
 .mobile-topbar .rec-dot { flex: 0 0 auto; margin-bottom: 3px; }
 
-.mobile-map { position: relative; flex: 1; min-height: 0; overflow: hidden; }
-.mobile-map .map-area { position: absolute; inset: 0; }
+.mobile-map { position: absolute; inset: 0; overflow: hidden; }
+/* tactical.css's legacy narrow-viewport stack pins .map-area to `height: 45dvh;
+   min-height: 300px` (L1046). An explicit height beats `inset: 0`, which would cap
+   the full-bleed map at 45% of the viewport — so neutralize both here. Scoped under
+   .mobile-map, so the desktop rule is untouched (LAW.1). */
+.mobile-map .map-area { position: absolute; inset: 0; height: auto; min-height: 0; }
 
 /* Dense desktop map chrome moves into touch surfaces on mobile. */
 .mobile-shell [data-testid="layers-control"],
@@ -69,11 +84,15 @@
 .mobile-shell .perf-monitor,
 .mobile-shell .audit-bar { display: none !important; }
 
+/* In-map HUD badge clearance under the floating topbar/dock is handled in
+   TacticalMap via mapBadgeInsets(deviceMode) — the badges are inline-styled and
+   several have no class or testid, so they can't all be reached from CSS. */
+
 .mobile-priority-chip {
   position: absolute;
-  top: 7px;
+  top: calc(env(safe-area-inset-top) + 44px);
   left: 50%;
-  z-index: 180;
+  z-index: var(--z-map-chip);
   width: min(480px, calc(100% - 104px));
   min-height: 44px;
   padding: 5px 10px;
@@ -96,7 +115,7 @@
 .mobile-edge-tab {
   position: absolute;
   top: 50%;
-  z-index: 300;
+  z-index: var(--z-map-chip);
   min-width: 44px;
   min-height: 78px;
   display: flex;
@@ -112,14 +131,14 @@
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.mobile-edge-tab.left { left: 0; border-left: 0; border-radius: 0 8px 8px 0; }
-.mobile-edge-tab.right { right: 0; border-right: 0; border-radius: 8px 0 0 8px; transform: translateY(-50%) rotate(180deg); }
+.mobile-edge-tab.left { left: env(safe-area-inset-left); border-left: 0; border-radius: 0 8px 8px 0; }
+.mobile-edge-tab.right { right: env(safe-area-inset-right); border-right: 0; border-radius: 8px 0 0 8px; transform: translateY(-50%) rotate(180deg); }
 .mobile-edge-tab[aria-pressed="true"] { background: rgba(0, 212, 255, 0.16); }
 
 .mobile-drawer-scrim {
   position: absolute;
   inset: 0;
-  z-index: 400;
+  z-index: var(--z-drawer);
   opacity: 0;
   pointer-events: none;
   background: rgba(0, 0, 0, 0.38);
@@ -129,7 +148,7 @@
 
 .mobile-drawer {
   position: absolute;
-  z-index: 420;
+  z-index: calc(var(--z-drawer) + 1);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -239,15 +258,20 @@
 }
 
 .mobile-dock {
-  flex: 0 0 calc(60px + env(safe-area-inset-bottom));
-  z-index: 500;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-chrome);
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
-  padding: 5px 7px calc(5px + env(safe-area-inset-bottom));
+  padding: 5px max(7px, env(safe-area-inset-right)) calc(5px + env(safe-area-inset-bottom)) max(7px, env(safe-area-inset-left));
   overflow: hidden;
   border-top: 1px solid var(--border);
-  background: var(--bg-panel);
+  background: rgba(22, 27, 34, 0.85);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 .mobile-dock-btn {
   min-width: 0;
@@ -356,9 +380,156 @@
 .mobile-shell--portrait .mobile-data-tabs { flex-basis: 52px; }
 
 @media (max-height: 430px) and (orientation: landscape) {
-  .mobile-topbar { flex-basis: calc(32px + env(safe-area-inset-top)); padding-bottom: 3px; }
-  .mobile-dock { flex-basis: calc(56px + env(safe-area-inset-bottom)); padding-top: 4px; }
+  /* Floating chrome is content-sized now (no flex band); trim its padding to keep
+     the bars slim, and re-clear the priority chip below the shorter topbar. */
+  .mobile-topbar { padding-bottom: 3px; }
+  .mobile-dock { padding-top: 4px; }
   .mobile-dock-btn { min-height: 44px; }
   .mobile-drawer.bottom { height: min(82%, 330px); }
-  .mobile-priority-chip { top: 4px; min-height: 42px; }
+  .mobile-priority-chip { top: calc(env(safe-area-inset-top) + 38px); min-height: 42px; }
+}
+
+/* ── Tap-to-place route editing (mobile only) ──────────────────────────────
+   Desktop route editing keeps its 18px drag-only markers in tactical.css; all
+   touch affordances are scoped under .mobile-shell so LAW.1 holds. */
+
+/* 44px hit target with the original 18px dot drawn inside, so the touch area
+   grows without the map visually getting heavier. */
+.mobile-shell .route-edit-marker--touch {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  position: relative;
+}
+.mobile-shell .route-edit-marker--touch::after {
+  content: attr(data-label);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--accent-yellow);
+  background: rgba(13, 17, 23, 0.9);
+  color: var(--accent-yellow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.route-edit-pill {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 72px);
+  z-index: var(--z-map-chip);
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 22px;
+  border: 1px solid var(--accent-yellow);
+  background: rgba(13, 17, 23, 0.88);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--accent-yellow);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-edit-banner {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 44px);
+  left: 8px;
+  right: 8px;
+  z-index: var(--z-map-chip);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 6px 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-yellow);
+  background: rgba(13, 17, 23, 0.88);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--accent-yellow);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.route-edit-banner button {
+  min-height: 44px;
+  min-width: 72px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--accent-yellow);
+  background: rgba(255, 200, 0, 0.14);
+  color: var(--accent-yellow);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.route-edit-toast {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom) + 128px);
+  z-index: var(--z-map-chip);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--accent-red);
+  background: rgba(40, 12, 12, 0.92);
+  color: var(--accent-red);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+}
+
+.route-edit-confirm {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 72px);
+  z-index: var(--z-map-chip);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-yellow);
+  background: rgba(13, 17, 23, 0.92);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.route-edit-confirm button {
+  min-height: 44px;
+  min-width: 72px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-accent);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Touch-target parity: the operator command grid is dense by desktop design.
+   Inside the mobile DATA pane every command button gets a 44px minimum. */
+.mobile-shell .operator-command-grid button {
+  min-height: 44px;
 }
