@@ -42,6 +42,16 @@ export function validateOperatorRoute(
   }
 }
 
+/** Altitude band an operator-authored waypoint must fall within: 20–400 ft AGL (inclusive).
+ *  Used by the custom-mission designer to reject waypoints below rooftop clearance or above
+ *  the Part 107 ceiling before a mission is compiled. */
+export const MIN_OPERATOR_ALTITUDE_FT = 20
+export const MAX_OPERATOR_ALTITUDE_FT = 400
+
+export function validateAltitude(altFt: number): boolean {
+  return altFt >= MIN_OPERATOR_ALTITUDE_FT && altFt <= MAX_OPERATOR_ALTITUDE_FT
+}
+
 export function buildOperatorCommandRoute(input: OperatorCommandRouteInput): Waypoint[] {
   const altitudeFt = input.altitudeFt ?? defaultAltitudeFor(input.scenario, input.droneId)
   const center = input.center ?? firstOperationalCue(input.scenario)

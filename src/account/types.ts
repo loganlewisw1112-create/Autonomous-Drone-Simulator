@@ -64,6 +64,10 @@ export interface StoredRunSummary {
     missionState: string
     batteryPct: number
   }>
+  // Additive: whether the immutable drill-down detail (runDetails row) persisted
+  // alongside this summary. 'quota-limited' means the device rejected the heavier
+  // detail write — the summary is intact and the UI can badge the missing detail.
+  detailState?: 'saved' | 'quota-limited' | 'unavailable'
 }
 
 export interface RunRecord {

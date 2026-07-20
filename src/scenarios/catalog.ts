@@ -1,7 +1,7 @@
 import { demoBasic, demoSAR } from '@/scenarios/demoBasic'
 import { suspectSearch, vehiclePursuit, sarCoastal, portPerimeter, wildfireRecon } from '@/scenarios/demoScenarios'
 import { EXTREME_SCENARIOS } from '@/scenarios/extremeScenarios'
-import { buildSafeDroneRoutes, droneIdForIndex, relocatePointOutsideGeofences } from '@/sim/mission/routeAudit'
+import { auditScenarioRoutes, buildSafeDroneRoutes, droneIdForIndex, relocatePointOutsideGeofences } from '@/sim/mission/routeAudit'
 import { getWeatherProfile } from '@/sim/weather/weatherEngine'
 import { haversineDistanceM, bearingDeg, offsetLatLng } from '@/utils/geometry'
 import { BAY_SPACING_M } from '@/sim/mission/LaunchCoordinator'
@@ -16,6 +16,7 @@ import type {
   RechargeStation,
   ScenarioConfig,
   ScenarioWeatherProfile,
+  Waypoint,
   WeatherLocationTag,
 } from '@/types'
 
@@ -97,17 +98,42 @@ export function enhanceScenarioForOperations(scenario: ScenarioConfig): Scenario
     recoverySites,
   }
 
-  const safeRoutes = buildSafeDroneRoutes(prepared)
+  // Custom missions carry operator-authored routes: honor them verbatim (after a safety
+  // audit) instead of generating derived safe routes. Everything downstream — briefs,
+  // operational features, and initFleet's route derivation — then reflects the authored
+  // geometry rather than an overwrite.
+  const routes = scenario.isCustom && scenario.authoredRoutes
+    ? honorAuthoredRoutes(prepared, scenario.authoredRoutes)
+    : buildSafeDroneRoutes(prepared)
 
   return {
     ...prepared,
-    perDroneWaypoints: safeRoutes,
+    perDroneWaypoints: routes,
     missionBrief: scenario.missionBrief ?? deriveMissionBrief(prepared),
     dispatchTimeline: scenario.dispatchTimeline ?? deriveDispatchTimeline(prepared),
-    droneRouteBriefs: scenario.droneRouteBriefs ?? deriveDroneRouteBriefs(prepared, safeRoutes),
-    operationalFeatures: scenario.operationalFeatures ?? deriveOperationalFeatures(prepared, safeRoutes),
+    droneRouteBriefs: scenario.droneRouteBriefs ?? deriveDroneRouteBriefs(prepared, routes),
+    operationalFeatures: scenario.operationalFeatures ?? deriveOperationalFeatures(prepared, routes),
     weatherProfile: scenario.weatherProfile ?? deriveWeatherProfile(scenario),
   }
+}
+
+/**
+ * Custom-mission routes are drawn by the operator in the designer, so they must round-trip
+ * unchanged (the registry spec asserts per-drone waypoints match the authored input exactly).
+ * We keep every waypoint verbatim but run the standard geofence audit so an authored breach is
+ * surfaced rather than silently flown — the audit is advisory here and never rewrites the route.
+ */
+function honorAuthoredRoutes(
+  scenario: ScenarioConfig,
+  authoredRoutes: Record<string, Waypoint[]>,
+): Record<string, Waypoint[]> {
+  const routes: Record<string, Waypoint[]> = {}
+  for (let i = 0; i < scenario.droneCount; i++) {
+    const id = droneIdForIndex(i)
+    routes[id] = authoredRoutes[id] ?? scenario.perDroneWaypoints?.[id] ?? []
+  }
+  auditScenarioRoutes(scenario, { routes, includeRtb: false })
+  return routes
 }
 
 /** Derive the location-appropriate weather profile from scenario metadata. */

@@ -1,6 +1,6 @@
 import { useDroneStore } from '@/store/droneStore'
-import { startSimLoop, stopSimLoop, initFleet } from '@/sim/SimulationLoop'
-import { SCENARIO_OPTIONS } from '@/scenarios/catalog'
+import { startSimLoop, stopTicking, initFleet } from '@/sim/SimulationLoop'
+import { getScenarioById } from '@/scenarios/registry'
 import { buildWeatherState } from '@/sim/weather/weatherEngine'
 import { buildAutoLaunchBayPlan } from '@/sim/mission/launchBayPlanning'
 import { PREFLIGHT_CHECKLIST } from '@/sim/mission/preflightChecklist'
@@ -16,12 +16,12 @@ export interface QuickDemoResult {
 // and SimulationLoop import each other's counterpart lazily — a store action
 // calling startSimLoop would create a hard circular import.
 export function runQuickDemo(scenarioId: string = 'demo_basic'): QuickDemoResult {
-  const found = SCENARIO_OPTIONS.find((s) => s.id === scenarioId)
+  const found = getScenarioById(scenarioId)
   if (!found) return { ok: false, reason: `unknown scenario: ${scenarioId}` }
 
-  // Mirror ControlBar.handleStop + handleScenarioChange
+  // Mirror ControlBar scenario swap: cancel the driver WITHOUT finalizing (no ghost record).
   useDroneStore.getState().setRunning(false)
-  stopSimLoop()
+  stopTicking()
   useDroneStore.getState().setScenario(found.config)
   if (found.config.weatherProfile) {
     const variant = useDroneStore.getState().scenarioVariant

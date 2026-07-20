@@ -19,7 +19,7 @@ import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import { tickGroundUnit, computeGroundUnitEta } from '@/sim/mission/groundUnits'
 import { tickRecoveryTeam, tickRecoveryExtraction, needsRecovery, recoveryTransitionState, createRecoveryTeam } from '@/sim/mission/recoveryManager'
 import { bearingDeg, haversineDistanceM } from '@/utils/geometry'
-import type { DroneState, EventType, FullMissionFrame, LatLng, Waypoint } from '@/types'
+import type { DroneState, EventType, FullMissionFrame, LatLng, LaunchBayPlan, Waypoint } from '@/types'
 
 const THERMAL_CHECK_INTERVAL = 50
 const SNAPSHOT_INTERVAL = 40
@@ -31,6 +31,16 @@ const NON_INSPECTABLE_STATES = new Set<DroneState['missionState']>([
   'idle', 'preflight', 'launch', 'avoid', 'emergency', 'landed', 'recharge',
   'inspect', 'thermal_hold', 'remote_landed', 'stranded', 'recovery_requested', 'recovery_enroute', 'recovered', 'unrecoverable_sim',
 ])
+
+// A mission is genuinely over once every drone that lifted off has come to rest in a
+// terminal grounded state. `launchTimeSec` is stamped on the first 'launch' transition and
+// never cleared mid-mission, so it distinguishes "landed after flying" from "never launched".
+const TERMINAL_GROUNDED_STATES = new Set<DroneState['missionState']>(['landed', 'recovered', 'unrecoverable_sim'])
+
+function isMissionComplete(drones: DroneState[]): boolean {
+  if (drones.length === 0) return false
+  return drones.every((d) => d.launchTimeSec !== undefined && TERMINAL_GROUNDED_STATES.has(d.missionState))
+}
 
 // ephemeral state — not in store
 const lastPositions = new Map<string, LatLng>()
@@ -552,6 +562,14 @@ export function tick() {
 
     useDroneStore.getState().setDrones(finalDrones)
     useDroneStore.getState().incrementTick()
+
+    // Terminal auto-complete: once the whole fleet has launched and landed, the mission is
+    // genuinely over. Finalize exactly once (endMission is idempotent) and stop stepping —
+    // this is the ONLY tick-driven finalize path.
+    if (isMissionComplete(finalDrones)) {
+      endMission()
+      break
+    }
   }
 }
 
@@ -630,7 +648,13 @@ export function startSimLoop() {
   }
 }
 
-export function stopSimLoop() {
+/**
+ * Cancel the raf/interval driver ONLY. No replay finalization, no lifecycle transition.
+ * This is the generic "stop pumping ticks" primitive — used by pause, scenario swap,
+ * RTB-ALL (which stops, mutates, then restarts), and demo reset. Because it never
+ * finalizes, none of those paths writes a spurious run record.
+ */
+export function stopTicking() {
   if (rafId !== null) {
     cancelAnimationFrame(rafId)
     rafId = null
@@ -642,8 +666,30 @@ export function stopSimLoop() {
   }
   accumulatorMs = 0
   lastFrameTs = null
-  // Finalize the replay session so scrubbing is available
-  useDroneStore.getState().finalizeReplaySession()
+}
+
+/**
+ * End the mission: stop ticking and — exactly once — mark the lifecycle 'completed' and
+ * finalize the replay session (the sole path that persists an immutable run record, via
+ * the runRecorder subscription to replaySession). Idempotent: a second call while already
+ * 'completed' is a no-op, so a genuine terminal auto-complete followed by an explicit
+ * End Mission (or repeated End Mission taps) writes nothing further.
+ */
+export function endMission() {
+  stopTicking()
+  const store = useDroneStore.getState()
+  if (store.lifecycle !== 'running' && store.lifecycle !== 'paused') return
+  store.setRunning(false)
+  store.setLifecycle('completed')
+  store.finalizeReplaySession()
+}
+
+/**
+ * Backward-compatible alias retained for existing callers (test cleanup, etc.).
+ * Post-split this cancels the driver WITHOUT finalizing — only endMission() finalizes.
+ */
+export function stopSimLoop() {
+  stopTicking()
 }
 
 export function initFleet() {
@@ -652,18 +698,41 @@ export function initFleet() {
   lastPositions.clear()
   onSceneTicksMap.clear()
 
+  // Custom missions seed a launch plan from their authored assignments so drones launch
+  // from the operator-designated sites without a manual bay-planning pass. Held in a local
+  // for the bay computation below and (re)applied AFTER resetMission() clears the store plan.
+  const seededLaunchPlan: LaunchBayPlan | null =
+    !launchPlan && scenario.isCustom && scenario.defaultLaunchAssignments
+      ? { assignments: { ...scenario.defaultLaunchAssignments }, bayStatuses: [], readyToLaunch: true, blockers: [] }
+      : null
+  const effectiveLaunchPlan = launchPlan ?? seededLaunchPlan
+
   const colors = ['#00d4ff', '#44ff88', '#ffaa00', '#ff88ff', '#ff6644', '#cc44ff', '#ffdd00', '#ff4488']
   const droneIds = Array.from({ length: scenario.droneCount }, (_, i) => `uav-${String(i + 1).padStart(2, '0')}`)
 
   // Routes are computed first: the coordinated launch planner needs each drone's
   // first outbound target to orient its launch bay and sequence its takeoff slot.
-  const baselineRoutes = buildSafeDroneRoutes(scenario)
-  const restoredRoutes = restoreSavedWaypointRoutes({
-    scenarioId: scenario.id,
-    scenarioVariant,
-    baselineRoutes,
-    validateRoute: (droneId, route) => validateOperatorRoute(scenario, droneId, route).accepted,
-  })
+  // Custom missions carry operator-authored routes — honor them verbatim instead of
+  // re-deriving safe routes here (enhanceScenarioForOperations already audited them).
+  const baselineRoutes = scenario.isCustom && scenario.authoredRoutes
+    ? scenario.authoredRoutes
+    : buildSafeDroneRoutes(scenario)
+  // A saved custom definition is authoritative. Do not let an older per-scenario
+  // localStorage draft silently replace routes loaded from the encrypted profile.
+  const restoredRoutes = scenario.isCustom
+    ? {
+        routes: Object.fromEntries(Object.entries(baselineRoutes).map(([droneId, route]) => [
+          droneId,
+          route.map((waypoint) => ({ ...waypoint, position: { ...waypoint.position } })),
+        ])),
+        statuses: {},
+      }
+    : restoreSavedWaypointRoutes({
+        scenarioId: scenario.id,
+        scenarioVariant,
+        baselineRoutes,
+        validateRoute: (droneId, route) => validateOperatorRoute(scenario, droneId, route).accepted,
+      })
 
   // Explicit bays (operator assignment → scenario launch site → per-drone start)
   // are honored as-is; drones with no explicit bay get a fanned-out bay so no two
@@ -671,7 +740,7 @@ export function initFleet() {
   const explicitBays: Record<string, LatLng> = {}
   const firstTargets: Record<string, LatLng> = {}
   for (const id of droneIds) {
-    const launchSiteId = launchPlan?.assignments[id]
+    const launchSiteId = effectiveLaunchPlan?.assignments[id]
     const assigned = launchSiteId ? scenario.launchSites?.[launchSiteId]?.position : undefined
     const bay = assigned ?? scenario.launchSites?.[id]?.position ?? scenario.perDroneStartPositions?.[id]
     if (bay) explicitBays[id] = bay
@@ -709,6 +778,10 @@ export function initFleet() {
 
   useDroneStore.getState().setDrones(drones)
   useDroneStore.getState().resetMission()
+
+  // resetMission() clears launchPlan; re-apply the custom-mission seed so authored launch
+  // assignments survive fleet init (normal scenarios set their plan via the bay planner later).
+  if (seededLaunchPlan) useDroneStore.getState().setLaunchPlan(seededLaunchPlan)
 
   // Re-apply weather state (in case variant changed since last load)
   useDroneStore.getState().setWeatherState(weatherState)

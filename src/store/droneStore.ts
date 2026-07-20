@@ -32,6 +32,7 @@ import type {
   WaypointSaveSource,
   WaypointSaveStatus,
   InvestorDemoState,
+  MissionLifecycleState,
 } from '@/types'
 
 const MAX_TELEMETRY_POINTS = 240
@@ -114,6 +115,10 @@ interface DroneStore {
   // Operator role — governs which controls are enabled
   operatorRole: OperatorRole
 
+  // Mission lifecycle FSM — gates record-writing (only 'completed' finalizes a run)
+  // and drives Pause/Resume/End Mission button states.
+  lifecycle: MissionLifecycleState
+
   // Investor guided demo overlay and reset state
   investorDemo: InvestorDemoState
 
@@ -173,6 +178,7 @@ interface DroneStore {
   setLaunchPlan: (plan: LaunchBayPlan) => void
   setScenario: (scenario: ScenarioConfig) => void
   setOperatorRole: (role: OperatorRole) => void
+  setLifecycle: (lifecycle: MissionLifecycleState) => void
   setInvestorDemoEnabled: (enabled: boolean) => void
   advanceInvestorDemoChapter: () => void
   resetInvestorDemo: () => void
@@ -287,6 +293,7 @@ export const useDroneStore = create<DroneStore>()(
         routeCommandError: null,
         routeSaveStatuses: {},
         operatorRole: 'pic',
+        lifecycle: 'idle',
         investorDemo: DEFAULT_INVESTOR_DEMO,
         metrics: {
           totalFlightDistanceM: 0,
@@ -521,6 +528,8 @@ export const useDroneStore = create<DroneStore>()(
 
         setOperatorRole: (role) => set({ operatorRole: role }),
 
+        setLifecycle: (lifecycle) => set({ lifecycle }),
+
         setInvestorDemoEnabled: (enabled) =>
           set((s) => ({
             investorDemo: {
@@ -569,6 +578,7 @@ export const useDroneStore = create<DroneStore>()(
             replayIndex: 0,
             replayFrames: [],
             launchPlan: null,
+            lifecycle: 'idle',
             ui: {
               ...s.ui,
               selectedDroneId: null,
@@ -731,6 +741,7 @@ export const useDroneStore = create<DroneStore>()(
         beginLaunchSequence: () =>
           set((s) => ({
             launchCommandedSec: s.elapsedSec,
+            lifecycle: 'running',
             drones: s.drones.map((d) =>
               d.missionState === 'idle' || d.missionState === 'landed'
                 ? { ...d, missionState: 'preflight', launchTimeSec: undefined }
@@ -770,7 +781,7 @@ export const useDroneStore = create<DroneStore>()(
             selectedThermalId: null, groundUnits: [], recoveryTeams: [],
             routeSuggestions: [], routeCommandError: null, routeSaveStatuses: {},
             positionHistory: {}, replaySession: null, replayIndex: 0, replayFrames: [],
-            launchPlan: null, launchCommandedSec: null,
+            launchPlan: null, launchCommandedSec: null, lifecycle: 'idle',
             metrics: {
               totalFlightDistanceM: 0, waypointsReached: 0, conflictsDetected: 0,
               thermalContacts: 0, geofenceBreaches: 0, rtbTriggers: 0,

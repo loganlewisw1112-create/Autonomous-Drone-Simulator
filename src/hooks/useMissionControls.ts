@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
-import { startSimLoop, stopSimLoop, initFleet } from '@/sim/SimulationLoop'
-import { SCENARIO_OPTIONS } from '@/scenarios/catalog'
+import { startSimLoop, stopTicking, endMission, initFleet } from '@/sim/SimulationLoop'
+import { getScenarioById } from '@/scenarios/registry'
 import { buildWeatherState } from '@/sim/weather/weatherEngine'
 import { exportChainAsJsonl } from '@/utils/chainOfCustody'
 import { buildFullKML } from '@/utils/kmlExport'
@@ -17,13 +17,14 @@ import type { ScenarioVariantConfig } from '@/types'
 export function useMissionControls() {
   const store = useDroneStore(
     useShallow((s) => ({
-      ui: s.ui, scenario: s.scenario, events: s.events, drones: s.drones,
+      ui: s.ui, scenario: s.scenario, events: s.events, drones: s.drones, lifecycle: s.lifecycle,
       positionHistory: s.positionHistory, thermalContacts: s.thermalContacts, operatorRole: s.operatorRole,
       launchPlan: s.launchPlan, weatherState: s.weatherState, scenarioVariant: s.scenarioVariant,
       metrics: s.metrics, elapsedSec: s.elapsedSec, replaySession: s.replaySession, investorDemo: s.investorDemo,
       setRunning: s.setRunning, setSimSpeed: s.setSimSpeed, setScenario: s.setScenario,
       setShowPreflight: s.setShowPreflight, setOperatorRole: s.setOperatorRole,
       setWeatherState: s.setWeatherState, setScenarioVariant: s.setScenarioVariant,
+      setLifecycle: s.setLifecycle,
       resetInvestorDemo: s.resetInvestorDemo, setInvestorDemoEnabled: s.setInvestorDemoEnabled,
     })),
   )
@@ -31,7 +32,7 @@ export function useMissionControls() {
   const {
     scenario, events, drones, positionHistory, thermalContacts, operatorRole,
     launchPlan, scenarioVariant, metrics, elapsedSec, replaySession,
-    setRunning, setScenario, setShowPreflight, setWeatherState, setScenarioVariant, resetInvestorDemo,
+    setRunning, setScenario, setShowPreflight, setWeatherState, setScenarioVariant, setLifecycle, resetInvestorDemo,
   } = store
 
   const [exportStatus, setExportStatus] = useState<string | null>(null)
@@ -44,6 +45,8 @@ export function useMissionControls() {
 
   function handleStart() {
     if (!scenario || !launchReady) return
+    const currentLifecycle = useDroneStore.getState().lifecycle
+    if (currentLifecycle !== 'idle' && currentLifecycle !== 'preflight') return
     // Issue the coordinated launch command: parked drones enter the 'preflight'
     // hold and lift off on their staggered schedule (see beginLaunchSequence +
     // MissionManager). No more all-at-once takeoff from stacked spawn points.
@@ -52,28 +55,53 @@ export function useMissionControls() {
     startSimLoop()
   }
 
+  // RTB-ALL: stop pumping ticks, reroute the fleet home, then resume the SAME mission.
+  // The loop is only paused across the mutation — lifecycle stays 'running' and NOTHING
+  // is finalized, so no run record is written (the mission is still in progress).
   function handleAbort() {
-    setRunning(false)
-    stopSimLoop()
+    if (useDroneStore.getState().lifecycle !== 'running') return
+    stopTicking()
     const { updateDrone, drones: currentDrones } = useDroneStore.getState()
     currentDrones.forEach((d) => {
       if (!['landed', 'idle'].includes(d.missionState)) {
         updateDrone(d.id, { missionState: 'return_to_base', currentWaypointIndex: 0 })
       }
     })
-    setRunning(true)
     startSimLoop()
   }
 
-  function handleStop() {
+  // Pause halts the driver without ending the mission — no finalize, no record.
+  function handlePause() {
+    if (useDroneStore.getState().lifecycle !== 'running') return
     setRunning(false)
-    stopSimLoop()
+    stopTicking()
+    useDroneStore.getState().setLifecycle('paused')
+  }
+
+  // Resume restarts the driver on the same in-flight mission.
+  function handleResume() {
+    if (useDroneStore.getState().lifecycle !== 'paused') return
+    setRunning(true)
+    useDroneStore.getState().setLifecycle('running')
+    startSimLoop()
+  }
+
+  // The ONLY operator-driven finalize path: ends the mission and persists exactly one run record.
+  function handleEndMission() {
+    endMission()
   }
 
   function handleScenarioChange(id: string) {
-    const found = SCENARIO_OPTIONS.find((s) => s.id === id)
+    const currentLifecycle = useDroneStore.getState().lifecycle
+    // Never discard an in-progress mission. The operator must explicitly end it
+    // before browsing/replacing the active scenario.
+    if (currentLifecycle === 'running' || currentLifecycle === 'paused') return
+    const found = getScenarioById(id)
     if (!found) return
-    handleStop()
+    // Swap scenarios without finalizing the prior one (browsing scenarios must not
+    // write a ghost run record). initFleet() resets lifecycle back to 'idle'.
+    stopTicking()
+    setRunning(false)
     setScenario(found.config)
     // Apply current variant to this scenario's profile
     if (found.config.weatherProfile) {
@@ -82,6 +110,7 @@ export function useMissionControls() {
     }
     // Zustand writes are synchronous — initFleet reads the scenario set above directly.
     initFleet()
+    setLifecycle('preflight')
     setShowPreflight(true)
   }
 
@@ -98,7 +127,8 @@ export function useMissionControls() {
   }
 
   function handleDemoReset() {
-    stopSimLoop()
+    // Reset transient state for a clean run — cancel the driver WITHOUT finalizing.
+    stopTicking()
     resetInvestorDemo()
     if (scenario) initFleet()
   }
@@ -161,7 +191,7 @@ export function useMissionControls() {
     ...store,
     exportStatus,
     canStart, canAbort, canStop, launchReady, allLanded,
-    handleStart, handleAbort, handleStop,
+    handleStart, handleAbort, handlePause, handleResume, handleEndMission,
     handleScenarioChange, handleVariantChange, handleRandomizeSeed, handleDemoReset,
     handleExportLog, handleExportKML, handleExportGeoJSON, handleExportAfterAction,
   }
