@@ -7,12 +7,15 @@ interface DrawerProps {
   onClose: () => void
   children: ReactNode
   testId?: string
+  /** Active surface key, surfaced as data-surface so CSS can style a specific
+   *  sheet (e.g. the translucent map-visible Mission sheet) without new elements. */
+  dataSurface?: string | null
 }
 
 // Slide-over panel. Transform-only animation (GPU compositing, no map reflow —
 // the map never resizes when a drawer opens). Touch events are stopped at the
 // drawer boundary so scrolling a list never pans the MapLibre canvas underneath.
-export function Drawer({ side, open, title, onClose, children, testId }: DrawerProps) {
+export function Drawer({ side, open, title, onClose, children, testId, dataSurface }: DrawerProps) {
   const stopTouch = (e: TouchEvent) => e.stopPropagation()
   const drawerRef = useRef<HTMLDivElement>(null)
   const gestureRef = useRef<{
@@ -116,6 +119,7 @@ export function Drawer({ side, open, title, onClose, children, testId }: DrawerP
         role="dialog"
         aria-hidden={!open}
         {...(!open ? { inert: '' } : {})}
+        data-surface={dataSurface ?? undefined}
         data-testid={testId ?? `drawer-${side}`}
       >
         <div

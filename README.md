@@ -6,24 +6,28 @@ Choose the deployment made for your device. These are independent Vercel apps wi
 
 | Version | Open | Requirements |
 |---|---|---|
-| **Mobile** | **[Launch Mobile Simulator](https://autonomous-drone-simulator-mobile.vercel.app/)** | iPhone or Android phone; portrait and landscape both supported |
+| **Mobile** | **[Launch Mobile Simulator](https://autonomous-drone-simulator-mobile.vercel.app/)** | Any phone or tablet, portrait or landscape |
 | **Windows** | **[Launch Windows Simulator](https://autonomous-drone-simulator.vercel.app/)** | Windows PC only |
 
-The Windows link is platform-locked. Opening it on iPhone, Android, macOS, or another non-Windows platform displays an **ERROR — WINDOWS VERSION ONLY** screen with a button to open the mobile version.
+The Windows link is platform-locked. Open it on a phone, macOS, or anything that isn't Windows and you get an **ERROR — WINDOWS VERSION ONLY** screen with a button through to the mobile version instead.
 
-Both versions let an operator create an encrypted local account or sign back in. Account data stays in that version's browser storage on that device; it is not uploaded or shared between the mobile and Windows deployments.
+Either version lets you spin up an encrypted local account or sign back into one. That account lives in the browser storage of the device you made it on — nothing is uploaded, and the mobile and Windows deployments don't share it.
 
-Click **▶ LAUNCH DEMO** on the welcome screen for a one-click guided mission.
+Click **▶ LAUNCH DEMO** on the welcome screen for a one-tap guided mission.
 
-Local-first React + TypeScript simulator for operator-supervised multi-drone public-safety missions. It demonstrates mission planning, launch readiness, live route control, thermal detections, UTM/compliance readiness, replay, and after-action export without connecting to real drones or live aviation systems.
+A local-first React + TypeScript simulator for the kind of multi-drone public-safety missions a human operator supervises rather than flies. You plan the mission, clear preflight, launch, retask drones mid-flight, work thermal detections, check readiness and airspace, then replay it and export the after-action package — all in the browser, none of it wired to real aircraft or live aviation systems.
+
+On a phone the layout is built around the map rather than fighting it for space. The map runs edge to edge and the panels — fleet, mission control, the data tabs, the scenario picker — slide up over it as drawers instead of boxing it into a corner. You place and drag waypoints by tapping the map directly, retask a drone from the mission drawer while it's still in view, and the launch-bay planner is sized to actually fit a phone screen. Open it on a tablet and you get the same map-first shell with more room to breathe — wider drawers, bigger type, more columns — not a phone layout stretched to fill the glass.
 
 ![Animated capture of the simulator running a coastal SAR mission with active drones, the OPS HUB, route suggestions, telemetry, and tactical map overlays.](docs/media/readme/hero-live-workflow.gif)
 
-**Why this matters**
+**What it's actually going for**
 
-- Shows the full operator workflow, not a static dashboard: scenario load, preflight, launch, retask, detection, readiness, replay, and export.
-- Keeps autonomy supervised: route suggestions, command actions, RTB, hover, recovery, and export decisions remain visible to the operator.
-- Uses deterministic simulation layers for public-safety credibility: geofences, weather, comms, thermal contacts, UTM, compliance flags, and chain-of-custody events.
+Three things set the bar for the whole build:
+
+- **It's the whole job, not a dashboard.** You move through the real arc an operator does — load a scenario, run preflight and launch planning, launch, retask, chase a detection, check readiness, replay, export — instead of staring at a screen of pre-baked numbers.
+- **The autonomy stays on a leash.** Nothing reroutes a drone behind your back. Route suggestions wait for an accept or reject; RTB, hover, recovery, and every export are things you decide and can see.
+- **The sim underneath is deterministic on purpose.** Geofences, weather, comms dropouts, thermal contacts, UTM, compliance flags, and the chain-of-custody log all run from seeded logic — same seed, same mission, every time — which is what makes any of the public-safety framing worth trusting.
 
 ## Workflow At A Glance
 
@@ -196,17 +200,19 @@ the Windows project (read in `src/platform/appTarget.ts`). No other
 build-time configuration differs between them, and neither project requires
 any other environment variables.
 
-The mobile target is **phone-only by design**: `useDeviceMode`
-(`src/hooks/useDeviceMode.ts`) always renders the mobile shell (portrait or
-landscape, following device orientation) for
-`VITE_APP_TARGET=mobile`, for any device that loads that URL — there is no
-tablet-size check on that path, so a tablet opening the mobile link still
-gets the phone shell, not the desktop grid. (The Windows target is likewise
-unconditional the other way: it always renders the desktop console,
-regardless of device, and is separately platform-gated to Windows clients
-only.) Only a locally run build with no `VITE_APP_TARGET` set at all — e.g.
-`npm run dev` — uses a size/pointer heuristic, where a tablet is treated as
-desktop-class and gets the frozen desktop grid since it already works there.
+The mobile target **never falls back to the desktop grid**: `useDeviceMode`
+(`src/hooks/useDeviceMode.ts`) always renders the mobile shell for
+`VITE_APP_TARGET=mobile`, on any device that loads that URL, following the
+device's own orientation. A tablet is the one wrinkle — it stays on that same
+mobile shell but picks up a roomier sizing tier on top of it (wider drawers,
+larger type, three-column grids), driven by a separate `useIsTablet` check.
+That's a CSS tier, not a different shell or a different `DeviceMode`, so the
+phone layout and all the map-fit logic underneath it are untouched. (The
+Windows target is unconditional the other way: always the desktop console,
+regardless of device, and separately platform-gated to Windows clients only.)
+The size/pointer heuristic only comes into play in a local build with no
+`VITE_APP_TARGET` set at all — e.g. `npm run dev` — where a tablet counts as
+desktop-class and gets the frozen desktop grid, since it already works there.
 
 Fallbacks (maintainer only): `.github/workflows/deploy.yml` can publish a
 GitHub Pages copy on manual dispatch (it sets `GITHUB_PAGES=true` so Vite

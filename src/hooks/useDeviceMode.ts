@@ -8,6 +8,13 @@ export type DeviceMode = 'desktop' | 'phone-portrait' | 'phone-landscape'
 // the desktop grid already works there and stays frozen.
 const PHONE_SHORT_SIDE_PX = 700
 
+// On the phone-only mobile deployment, a device whose short side reaches this is
+// a tablet: it still runs the mobile shell (never the frozen desktop grid), but
+// gets a roomier tablet sizing tier layered on top via `mobile-shell--tablet`.
+// This is an ORTHOGONAL flag, deliberately NOT a DeviceMode value — it changes
+// only CSS sizing, so the desktop/phone map-fit and badge logic stay untouched.
+const TABLET_MIN_SHORT_SIDE_PX = 700
+
 export function computeDeviceMode(target: AppTarget = APP_TARGET): DeviceMode {
   // Deployed editions are intentionally independent: the Windows build always
   // uses the desktop console, while the mobile build always uses mobile chrome.
@@ -27,6 +34,15 @@ export function computeDeviceMode(target: AppTarget = APP_TARGET): DeviceMode {
   const shortSide = Math.min(window.innerWidth, window.innerHeight)
   if (!coarse || shortSide >= PHONE_SHORT_SIDE_PX) return 'desktop'
   return window.innerWidth >= window.innerHeight ? 'phone-landscape' : 'phone-portrait'
+}
+
+// True only on the mobile deployment when the viewport is tablet-sized. Scoped to
+// the mobile target so the frozen desktop/universal path (where tablets already
+// render the desktop grid) is completely unaffected — LAW.1.
+export function computeIsTablet(target: AppTarget = APP_TARGET): boolean {
+  if (target !== 'mobile') return false
+  if (typeof window === 'undefined') return false
+  return Math.min(window.innerWidth, window.innerHeight) >= TABLET_MIN_SHORT_SIDE_PX
 }
 
 // Re-evaluates on orientation flip and resize. Uses matchMedia change events
@@ -51,4 +67,25 @@ export function useDeviceMode(): DeviceMode {
   }, [])
 
   return mode
+}
+
+// Companion to useDeviceMode for the tablet sizing tier. Re-evaluates on the same
+// resize/orientation signals so a rotate or window resize flips it live.
+export function useIsTablet(): boolean {
+  const [isTablet, setIsTablet] = useState<boolean>(() => computeIsTablet(APP_TARGET))
+
+  useEffect(() => {
+    const update = () => setIsTablet(computeIsTablet(APP_TARGET))
+    const media = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(orientation: landscape)')
+      : null
+    media?.addEventListener?.('change', update)
+    window.addEventListener('resize', update)
+    return () => {
+      media?.removeEventListener?.('change', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [])
+
+  return isTablet
 }
