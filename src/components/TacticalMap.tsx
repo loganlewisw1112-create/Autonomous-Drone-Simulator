@@ -9,6 +9,8 @@ import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
 import { buildConflictFeatures, buildIrFootprintFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
 import { buildAirspaceReservationFeatures, buildExternalTrafficFeatures, buildUtmAirspaceState } from '@/sim/demo/utmEngine'
 import { useDeviceMode, type DeviceMode } from '@/hooks/useDeviceMode'
+import { buildAppendedWaypoint, canAppend, routeWithoutWaypoint } from '@/components/mapRouteEditing'
+import { MAX_WAYPOINTS_PER_DRONE } from '@/components/designer/designerValidation'
 import type { LatLng, ScenarioConfig } from '@/types'
 
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
@@ -193,6 +195,11 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       groundUnits: s.groundUnits, recoveryTeams: s.recoveryTeams, toggleLayer: s.toggleLayer,
     })),
   )
+
+  // Tap-to-place is a mobile-only affordance layered over the shared setDroneRoute
+  // path; desktop route editing keeps its existing drag-only behavior (LAW.1).
+  const touchEditing = deviceMode !== 'desktop' && ui.routeEditMode
+  const [pendingRemoval, setPendingRemoval] = useState<{ waypointId: string; index: number } | null>(null)
 
   // Latest-data refs — written by sync effects below, read by the GeoJSON interval
   // so the interval never needs to depend on React state and never re-registers
@@ -1069,6 +1076,40 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     }
   }, [groundUnits, recoveryTeams])
 
+  // A pending "remove waypoint?" prompt must never outlive the edit session or the
+  // selection it refers to.
+  useEffect(() => {
+    if (!touchEditing) setPendingRemoval(null)
+  }, [touchEditing, ui.selectedDroneId])
+
+  // ── Effect 8b: Tap empty map to append a waypoint (touch edit mode) ───────
+  // MapLibre only fires `click` for taps that aren't drags, so panning and
+  // pinch-zoom keep working untouched. Double-click zoom is suspended while
+  // editing so a quick double tap appends two waypoints instead of zooming.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapStyleLoadedRef.current) return
+    const selectedId = ui.selectedDroneId
+    if (!touchEditing || !selectedId) return
+
+    const handleMapClick = (event: maplibregl.MapMouseEvent) => {
+      const store = useDroneStore.getState()
+      const route = store.droneWaypoints[selectedId] ?? []
+      if (!canAppend(route)) return
+      const waypoint = buildAppendedWaypoint(route, { lat: event.lngLat.lat, lng: event.lngLat.lng })
+      // setDroneRoute runs validateOperatorRoute internally: a rejected append
+      // surfaces through ui.routeCommandError and the route is left unchanged.
+      store.setDroneRoute(selectedId, [...route, waypoint], 'append_waypoint')
+    }
+
+    map.on('click', handleMapClick)
+    map.doubleClickZoom.disable()
+    return () => {
+      map.off('click', handleMapClick)
+      map.doubleClickZoom.enable()
+    }
+  }, [touchEditing, ui.selectedDroneId, mapReady])
+
   // ── Effect 8: Draggable route-edit markers for selected drone ─────────────
   useEffect(() => {
     const map = mapRef.current
@@ -1080,10 +1121,15 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     const selectedId = ui.selectedDroneId
     if (!selectedId) return
     const route = droneWaypoints[selectedId] ?? []
-    route.slice(0, 24).forEach((wp, index) => {
+    route.slice(0, MAX_WAYPOINTS_PER_DRONE).forEach((wp, index) => {
       const el = document.createElement('div')
-      el.className = 'route-edit-marker'
+      // In touch edit mode the marker grows to a 44px hit target (the visual dot
+      // stays small, drawn via ::after) — desktop keeps the original 18px marker.
+      el.className = `route-edit-marker${touchEditing ? ' route-edit-marker--touch' : ''}`
       el.textContent = String(index + 1)
+      // The touch variant hides the element's own text and re-draws the number in
+      // a ::after dot, which needs the value as an attribute.
+      el.dataset.label = String(index + 1)
       const marker = new maplibregl.Marker({ element: el, draggable: true })
         .setLngLat([wp.position.lng, wp.position.lat])
         .addTo(map)
@@ -1093,9 +1139,18 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         useDroneStore.getState().moveDroneWaypoint(selectedId, wp.id, { lat: pos.lat, lng: pos.lng })
       })
 
+      if (touchEditing) {
+        // Tapping a marker asks to remove it. stopPropagation keeps the tap from
+        // reaching the map-click handler, which would append a new waypoint on top.
+        el.addEventListener('click', (event) => {
+          event.stopPropagation()
+          setPendingRemoval({ waypointId: wp.id, index })
+        })
+      }
+
       routeEditMarkersRef.current.set(wp.id, marker)
     })
-  }, [ui.selectedDroneId, droneWaypoints, mapReady])
+  }, [ui.selectedDroneId, droneWaypoints, mapReady, touchEditing])
 
   return (
     <div className={`map-area${ui.sensorMode === 'ir' ? ' ir-active' : ''}`}>
@@ -1128,6 +1183,32 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
 
       {chromeSlots === 'inline' && <MissionStatusFeed />}
       {chromeSlots === 'inline' && <OperatorCommandPanel />}
+
+      {/* Remove-waypoint confirmation. Lives here rather than in MobileShell so the
+          pending selection stays local to the map that raised it. */}
+      {touchEditing && pendingRemoval && (
+        <div className="route-edit-confirm" data-testid="route-edit-confirm">
+          <span>Remove WP {pendingRemoval.index + 1}?</span>
+          <button
+            type="button"
+            onClick={() => {
+              const selectedId = ui.selectedDroneId
+              if (selectedId) {
+                const route = useDroneStore.getState().droneWaypoints[selectedId] ?? []
+                useDroneStore.getState().setDroneRoute(
+                  selectedId,
+                  routeWithoutWaypoint(route, pendingRemoval.waypointId),
+                  'set_route',
+                )
+              }
+              setPendingRemoval(null)
+            }}
+          >
+            REMOVE
+          </button>
+          <button type="button" onClick={() => setPendingRemoval(null)}>CANCEL</button>
+        </div>
+      )}
 
       {/* Camera follow button — shows when manually panned or locked to specific drone */}
       {(cameraLocked || lockedDroneId) && ui.isRunning && (

@@ -614,6 +614,12 @@ export interface UIState {
   showLaunchBay: boolean
   showEventLog: boolean
   layerVisibility: LayerVisibility
+  /**
+   * Touch route editing is active for the selected drone (mobile only). Cleared
+   * whenever the selection is dropped or the mission resets, so the map can never
+   * be left in edit mode with nothing selected.
+   */
+  routeEditMode: boolean
 }
 
 // ─── Telemetry History ─────────────────────────────────────────────────────────
