@@ -223,7 +223,19 @@
 
 .mobile-surface-pane { display: none; width: 100%; height: 100%; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .mobile-surface-pane.active { display: flex; flex-direction: column; }
-.mobile-fleet-pane .fleet-panel { width: 100%; height: 100%; border-right: 0; }
+/* The desktop @media(max-width:700px) reflow caps .fleet-panel at max-height:34dvh
+   (~187px) for its stacked narrow layout — that clamp also crushed the mobile
+   roster to half the drawer, forcing a scroll with empty space below. Remove the
+   cap and fill the pane via flex so the roster uses the drawer's full height. */
+.mobile-fleet-pane .fleet-panel { width: 100%; flex: 1 1 auto; min-height: 0; max-height: none; border-right: 0; }
+/* Compact fleet cards on mobile so a typical fleet (≤5) fits without scrolling;
+   larger fleets still scroll (only when they truly exceed the drawer). */
+.mobile-fleet-pane .panel-section { padding: 6px 12px; }
+.mobile-fleet-pane .panel-label { margin-bottom: 2px; }
+.mobile-fleet-pane .drone-card { padding: 4px 12px; }
+.mobile-fleet-pane .drone-card-header { margin-bottom: 3px; }
+.mobile-fleet-pane .telemetry-grid { gap: 1px 8px; }
+.mobile-fleet-pane .battery-bar-wrap { margin-top: 3px; }
 .mobile-data-pane { overflow: hidden; }
 .mobile-data-tabs {
   flex: 0 0 48px;
@@ -245,7 +257,13 @@
 .mobile-data-content { flex: 1; min-height: 0; overflow: hidden; }
 .mobile-data-content > .mobile-surface-pane { overflow-y: auto; }
 .mobile-data-content .telemetry-panel { width: 100%; min-height: 100%; border-left: 0; }
-.mobile-data-content .ops-hub { position: static; width: 100%; max-width: none; max-height: none; margin: 0; overflow: visible; }
+.mobile-data-content .ops-hub {
+  /* The desktop @media(max-width:700px) rule hides the ops-hub map OVERLAY with
+     `display:none !important` — but here it's an embedded data-tab panel, not an
+     overlay, so we must re-assert display (and match the !important to win). */
+  display: block !important;
+  position: static; width: 100%; max-width: none; max-height: none; margin: 0; overflow: visible;
+}
 
 .mobile-surface-pane .mission-status-feed {
   position: static;
@@ -533,3 +551,111 @@
 .mobile-shell .operator-command-grid button {
   min-height: 44px;
 }
+
+/* ── Launch Bay Planner: fit the phone viewport ───────────────────────────────
+   The modal carries an inline `min-width: 480px` that is the DESKTOP sizing
+   (frozen). Inline styles beat the generic `.modal-overlay > *` width rule, so on
+   a <480px phone the modal overflowed off-screen. Under .mobile-shell we drop the
+   floor and let it fit, and let the footer buttons wrap instead of overflow. */
+.mobile-shell .launch-bay-modal {
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 640px !important;
+  padding: 16px !important;
+}
+.mobile-shell .launch-bay-actions { flex-wrap: wrap; }
+.mobile-shell .launch-bay-actions .btn { flex: 1 1 auto; min-height: 44px; }
+/* Auto-Assign (first child, inline margin-right:auto) takes its own full row so
+   Cancel / Confirm sit together beneath it rather than getting squeezed. */
+.mobile-shell .launch-bay-actions .btn:first-child {
+  flex-basis: 100%;
+  margin-right: 0 !important;
+}
+
+/* ── Mission-tab drone quick commands ─────────────────────────────────────────
+   Compact "suggested next move" controls surfaced in the MISSION sheet. */
+.mobile-drone-commands { border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.mobile-drone-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.mobile-drone-chip {
+  /* 44px matches the touch-target floor used by the OPS grid and map markers. */
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font: 700 11px var(--font-mono);
+  letter-spacing: .5px;
+  cursor: pointer;
+}
+.mobile-drone-chip.active { border-color: var(--accent-blue); color: var(--accent-blue); background: rgba(0, 212, 255, 0.08); }
+.mobile-command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.mobile-command-grid .mobile-btn { min-width: 0; width: 100%; padding: 0 8px; }
+
+/* SUGGEST output — proposed next moves with rationale + accept/dismiss. */
+.mobile-suggestions { display: flex; flex-direction: column; gap: 8px; }
+.mobile-suggestion {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-blue);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-input);
+}
+.mobile-suggestion.suggestion-high { border-left-color: var(--accent-red); }
+.mobile-suggestion.suggestion-medium { border-left-color: var(--accent-yellow); }
+.mobile-suggestion-title { font: 700 12px var(--font-mono); color: var(--text-primary); letter-spacing: .04em; }
+.mobile-suggestion-rationale { margin: 4px 0 8px; font-size: 11px; line-height: 1.4; color: var(--text-secondary); }
+.mobile-suggestion-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* ── Mission sheet: translucent so the live map / drone flight shows through ───
+   Only the MISSION bottom sheet (a partial-height, map-first surface). A blurred
+   dark wash keeps text legible while the operator still sees drones moving. */
+.mobile-drawer.bottom[data-surface="mission"] {
+  /* Near see-through: readability comes from the heavy blur + a faint tint rather
+     than an opaque panel, so drones stay clearly visible flying underneath. */
+  background: rgba(13, 17, 23, 0.34);
+  -webkit-backdrop-filter: blur(9px) saturate(140%);
+  backdrop-filter: blur(9px) saturate(140%);
+}
+/* Give the controls their own legibility floor without darkening the whole sheet:
+   only the text and chips get a subtle shadow so they read over moving map. */
+.mobile-drawer.bottom[data-surface="mission"] .mobile-sheet-label,
+.mobile-drawer.bottom[data-surface="mission"] .mobile-status-line,
+.mobile-drawer.bottom[data-surface="mission"] .mobile-suggestion-rationale {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+.mobile-drawer.bottom[data-surface="mission"] .mobile-drawer-header {
+  background: transparent;
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Tablet sizing tier (auto-detected on the mobile deployment) ──────────────
+   Same map-first shell as phones, just roomier: bigger type, wider drawers, and
+   three-up command/dock grids so a tablet doesn't render a stretched phone UI.
+   Purely additive CSS — the phone layout and all DeviceMode logic are untouched. */
+.mobile-shell--tablet .mobile-topbar { padding-top: max(env(safe-area-inset-top), 6px); }
+.mobile-shell--tablet .mobile-topbar .header-logo { font-size: 15px; }
+.mobile-shell--tablet .mobile-topbar .header-mission-id { font-size: 12px; }
+.mobile-shell--tablet .mobile-clock { font-size: 12px; }
+
+.mobile-shell--tablet .mobile-dock { gap: 8px; padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
+.mobile-shell--tablet .mobile-dock-btn { min-height: 58px; font-size: 12px; gap: 3px; }
+.mobile-shell--tablet .mobile-dock-btn .dock-ico { font-size: 19px; }
+
+.mobile-shell--tablet .mobile-edge-tab { font-size: 12px; }
+
+.mobile-shell--tablet .mobile-drawer.left { width: min(420px, 56vw); }
+.mobile-shell--tablet .mobile-drawer.right { width: min(520px, 62vw); }
+.mobile-shell--tablet .mobile-drawer.bottom { height: min(66%, 760px); }
+.mobile-shell--tablet .mobile-drawer-header { flex-basis: 54px; font-size: 14px; }
+
+.mobile-shell--tablet .mobile-sheet-section { padding: 16px 20px; gap: 12px; }
+.mobile-shell--tablet .mobile-sheet-label { font-size: 11px; }
+.mobile-shell--tablet .mobile-btn { min-height: 48px; font-size: 13px; }
+.mobile-shell--tablet .mobile-status-line { font-size: 13px; }
+
+/* Roomier multi-column grids on the wider canvas. */
+.mobile-shell--tablet .mobile-command-grid,
+.mobile-shell--tablet .mobile-more-grid,
+.mobile-shell--tablet .mobile-layer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mobile-shell--tablet .mobile-data-tabs button { min-height: 46px; font-size: 12px; }

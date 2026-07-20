@@ -1,4 +1,5 @@
 import { useMissionControls } from '@/hooks/useMissionControls'
+import { DroneQuickCommands } from '@/components/mobile/DroneQuickCommands'
 import { useScenarioOptions } from '@/scenarios/registry'
 import { useMobileStore } from '@/store/mobileStore'
 import { useDroneStore } from '@/store/droneStore'
@@ -161,6 +162,10 @@ export function MissionSheet() {
 
   return (
     <div className="mobile-sheet-section">
+      {/* Suggested-next-move drone controls first, so redirecting a drone is one
+          tap into the Mission tab — the map stays visible above this partial sheet. */}
+      <DroneQuickCommands />
+
       <span className="mobile-sheet-label">MISSION CONTROL</span>
       <div className="mobile-sheet-row">
         {lifecycle === 'paused' ? (
