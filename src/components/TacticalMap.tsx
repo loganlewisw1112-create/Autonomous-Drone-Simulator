@@ -115,8 +115,26 @@ export function computeScenarioBounds(scenario: ScenarioConfig): ScenarioBounds 
 // 16-level mission-start zoom ceiling.
 function scenarioFitOptions(deviceMode: DeviceMode): { padding: number | { top: number; bottom: number; left: number; right: number }; maxZoom?: number } {
   if (deviceMode === 'desktop') return { padding: 80, maxZoom: 16 }
-  if (deviceMode === 'phone-portrait') return { padding: { top: 38, bottom: 54, left: 28, right: 28 }, maxZoom: 14 }
-  return { padding: { top: 36, bottom: 42, left: 44, right: 44 }, maxZoom: 14 }
+  if (deviceMode === 'phone-portrait') return { padding: { top: 96, bottom: 124, left: 28, right: 28 }, maxZoom: 14 }
+  return { padding: { top: 60, bottom: 100, left: 72, right: 72 }, maxZoom: 14 }
+}
+
+// Insets for the badges rendered inside .map-area. On desktop these are the
+// historical literals (8 / 36 / 28) — the map has reserved chrome around it, so
+// nothing overlaps. On mobile the map is full-bleed under a floating translucent
+// topbar (~36px) and dock (~60px), so badges are pushed clear of both, of the
+// device safe areas, and of the centered priority chip (top+44, 44px tall).
+export function mapBadgeInsets(deviceMode: DeviceMode) {
+  if (deviceMode === 'desktop') {
+    return { top: 8, topStacked: 36, topFollow: 80, bottom: 8, bottomRaised: 28 }
+  }
+  return {
+    top: 'calc(env(safe-area-inset-top) + 96px)',          // below topbar + priority chip
+    topStacked: 'calc(env(safe-area-inset-top) + 124px)',  // second badge in the left column
+    topFollow: 'calc(env(safe-area-inset-top) + 168px)',   // keeps the desktop 72px gap below `top`
+    bottom: 'calc(env(safe-area-inset-bottom) + 74px)',    // just above the dock
+    bottomRaised: 'calc(env(safe-area-inset-bottom) + 96px)',
+  }
 }
 
 interface TacticalMapProps {
@@ -161,6 +179,11 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   // mobile shell's top bar / bottom dock / safe-area chrome. Read via a ref (below) inside
   // effects so it never forces the heavy scenario-rebuild effect to re-run on its own.
   const deviceMode = useDeviceMode()
+
+  // On mobile the topbar and dock float *over* a full-bleed map, so in-map badges
+  // must clear them (and the notch) rather than sitting at the old 8px insets that
+  // assumed reserved chrome bands. Desktop keeps its historical values — LAW.1.
+  const badgeInset = mapBadgeInsets(deviceMode)
 
   const { drones, scenario, thermalContacts, positionHistory, ui, droneWaypoints, routeSuggestions, selectedThermalId, selectThermal, groundUnits, recoveryTeams, toggleLayer } = useDroneStore(
     useShallow((s) => ({
@@ -1115,7 +1138,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
             useDroneStore.getState().setSelectedDrone(null)
           }}
           style={{
-            position: 'absolute', top: 80, right: 10, zIndex: 100,
+            position: 'absolute', top: badgeInset.topFollow, right: 10, zIndex: 100,
             fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
             background: '#00d4ff22', border: '1px solid #00d4ff44', color: '#00d4ff',
             borderRadius: 4, padding: '4px 8px', cursor: 'pointer',
@@ -1132,7 +1155,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         <div
           data-testid="ir-hud"
           style={{
-            position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)',
+            position: 'absolute', top: badgeInset.top, left: '50%', transform: 'translateX(-50%)',
             pointerEvents: 'none', zIndex: 40,
             fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: 2,
             color: '#eaf6ff', background: '#00000099',
@@ -1152,7 +1175,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         <div
           data-testid="layers-control"
           style={{
-            position: 'absolute', bottom: 28, right: 8, zIndex: 60,
+            position: 'absolute', bottom: badgeInset.bottomRaised, right: 8, zIndex: 60,
             fontFamily: 'var(--font-mono)', fontSize: 8.5, letterSpacing: '0.04em',
             color: 'var(--text-dim)', background: 'var(--bg-panel)',
             padding: '5px 8px', borderRadius: 'var(--radius-sm)',
@@ -1198,7 +1221,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         <div
           data-testid="zone-legend"
           style={{
-            position: 'absolute', bottom: 28, left: 8,
+            position: 'absolute', bottom: badgeInset.bottomRaised, left: 8,
             display: 'flex', gap: 10, alignItems: 'center',
             fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.05em',
             color: 'var(--text-dim)', background: 'var(--bg-panel)',
@@ -1214,7 +1237,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       {/* SAR mode indicator */}
       {scenario?.missionType === 'sar_parallel' && (
         <div style={{
-          position: 'absolute', top: 8, left: 8,
+          position: 'absolute', top: badgeInset.top, left: 8,
           fontFamily: 'var(--font-mono)', fontSize: 10,
           color: '#ffaa00', background: 'var(--bg-panel)',
           padding: '3px 8px', borderRadius: 4, border: '1px solid #ffaa0044',
@@ -1226,7 +1249,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       {/* Thermal contact count */}
       {thermalContacts.length > 0 && (
         <div style={{
-          position: 'absolute', top: scenario?.missionType === 'sar_parallel' ? 36 : 8, left: 8,
+          position: 'absolute', top: scenario?.missionType === 'sar_parallel' ? badgeInset.topStacked : badgeInset.top, left: 8,
           fontFamily: 'var(--font-mono)', fontSize: 10,
           color: '#ff6600', background: 'var(--bg-panel)',
           padding: '3px 8px', borderRadius: 4, border: '1px solid #ff660044',
@@ -1255,7 +1278,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         const confPct = Math.round((contact.weatherAdjustedConfidence ?? contact.confidence) * 100)
         return (
           <div style={{
-            position: 'absolute', top: 8, right: 56, zIndex: 120,
+            position: 'absolute', top: badgeInset.top, right: 56, zIndex: 120,
             background: 'var(--bg-panel)', border: '1px solid #ff660088',
             borderRadius: 6, padding: '8px 12px', minWidth: 210,
             fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)',
@@ -1308,7 +1331,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       })()}
 
       <div style={{
-        position: 'absolute', bottom: 8, left: 8,
+        position: 'absolute', bottom: badgeInset.bottom, left: 8,
         fontFamily: 'var(--font-mono)', fontSize: 9,
         color: 'var(--text-dim)', background: 'var(--bg-panel)',
         padding: '2px 6px', borderRadius: 'var(--radius-sm)',
