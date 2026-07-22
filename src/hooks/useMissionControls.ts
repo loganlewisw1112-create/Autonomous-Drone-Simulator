@@ -22,11 +22,13 @@ export function useMissionControls() {
       positionHistory: s.positionHistory, thermalContacts: s.thermalContacts, operatorRole: s.operatorRole,
       launchPlan: s.launchPlan, weatherState: s.weatherState, scenarioVariant: s.scenarioVariant,
       metrics: s.metrics, elapsedSec: s.elapsedSec, replaySession: s.replaySession, investorDemo: s.investorDemo,
+      lastRouteChange: s.lastRouteChange,
       setRunning: s.setRunning, setSimSpeed: s.setSimSpeed, setScenario: s.setScenario,
       setShowPreflight: s.setShowPreflight, setOperatorRole: s.setOperatorRole,
       setWeatherState: s.setWeatherState, setScenarioVariant: s.setScenarioVariant,
       setLifecycle: s.setLifecycle,
       resetInvestorDemo: s.resetInvestorDemo, setInvestorDemoEnabled: s.setInvestorDemoEnabled,
+      undoLastRouteChange: s.undoLastRouteChange,
     })),
   )
 
@@ -194,6 +196,7 @@ export function useMissionControls() {
     canStart, canAbort, canStop, launchReady, allLanded,
     handleStart, handleAbort, handlePause, handleResume, handleEndMission,
     handleScenarioChange, handleVariantChange, handleRandomizeSeed, handleDemoReset,
+    handleUndoRouteChange: store.undoLastRouteChange,
     handleExportLog, handleExportKML, handleExportGeoJSON, handleExportAfterAction,
   }
 }

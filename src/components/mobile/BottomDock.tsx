@@ -147,10 +147,10 @@ export function ScenarioSheet({ onScenarioSelected, onOpenCustomMissions }: { on
 
 export function MissionSheet() {
   const {
-    ui, scenario, lifecycle, operatorRole, investorDemo, launchPlan,
+    ui, scenario, lifecycle, operatorRole, investorDemo, launchPlan, lastRouteChange,
     canStart, canAbort, canStop, launchReady, allLanded,
     setSimSpeed, setOperatorRole, setInvestorDemoEnabled, setShowPreflight,
-    handleStart, handleAbort, handlePause, handleResume, handleEndMission,
+    handleStart, handleAbort, handlePause, handleResume, handleEndMission, handleUndoRouteChange,
   } = useMissionControls()
   const setShowLaunchBay = useDroneStore((s) => s.setShowLaunchBay)
 
@@ -184,6 +184,11 @@ export function MissionSheet() {
           ■ END MISSION
         </button>
       </div>
+      {lastRouteChange && (
+        <button className="mobile-btn mobile-btn-full" onClick={handleUndoRouteChange}>
+          ↶ UNDO LAST ROUTE CHANGE
+        </button>
+      )}
       {scenario && !ui.isRunning && !launchReady && (
         <button className="mobile-btn warning mobile-btn-full" onClick={resumeSetup}>
           RESUME SETUP
