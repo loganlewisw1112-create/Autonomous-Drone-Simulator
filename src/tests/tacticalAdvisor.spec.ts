@@ -173,11 +173,16 @@ describe('tactical advisor core', () => {
       ...getDefaultWeatherState(7),
       gustKts: 30,
     } satisfies WeatherVariantState
-    const cases: Array<{ drone: DroneState; weather?: WeatherVariantState; reason: string }> = [
+    const cases: Array<{
+      drone: DroneState
+      weather?: WeatherVariantState
+      reason: 'not_retaskable' | 'critical_battery' | 'battery_reserve' | 'geofence_breach' | 'weather'
+    }> = [
       { drone: makeDrone('uav-01', { missionState: 'landed' }), reason: 'not_retaskable' },
-      { drone: makeDrone('uav-01', { batteryPct: 20 }), reason: 'safety_override' },
-      { drone: makeDrone('uav-01', { geofenceBreachFlag: true }), reason: 'safety_override' },
-      { drone: makeDrone('uav-01'), weather, reason: 'safety_override' },
+      { drone: makeDrone('uav-01', { batteryPct: 5 }), reason: 'critical_battery' },
+      { drone: makeDrone('uav-01', { batteryPct: 20 }), reason: 'battery_reserve' },
+      { drone: makeDrone('uav-01', { geofenceBreachFlag: true }), reason: 'geofence_breach' },
+      { drone: makeDrone('uav-01'), weather, reason: 'weather' },
     ]
 
     for (const item of cases) {

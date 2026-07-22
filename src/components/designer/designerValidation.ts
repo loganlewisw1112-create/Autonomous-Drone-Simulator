@@ -1,9 +1,10 @@
 import { auditScenarioRoutes } from '@/sim/mission/routeAudit'
 import { MAX_OPERATOR_ALTITUDE_FT, MIN_OPERATOR_ALTITUDE_FT, validateAltitude } from '@/sim/mission/operatorRoutes'
+import { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
 import type { CustomMissionDefinition, LaunchRecoverySite, ScenarioConfig, Waypoint } from '@/types'
 
 export const MAX_CUSTOM_DRONES = 8
-export const MAX_WAYPOINTS_PER_DRONE = 50
+export { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
 
 export interface DesignerValidationResult {
   valid: boolean
