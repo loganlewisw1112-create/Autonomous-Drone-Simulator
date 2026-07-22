@@ -9,6 +9,7 @@ import {
   selectRechargeStationForDrone,
 } from '@/sim/mission/rechargeStations'
 import { isRetaskable } from '@/sim/mission/retaskPolicy'
+import { objectiveWeightForKind, resolveMissionObjectives } from '@/sim/mission/missionObjectives'
 import { cumulativePod, probabilityOfDetection } from '@/sim/sensors/sweepWidth'
 import { platformTaskRanges } from '@/sim/sensors/thermalRange'
 import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
@@ -140,6 +141,11 @@ export function buildMissionSituation(input: MissionSituationInput): MissionSitu
   const droneWaypoints = cloneWaypointMap(input.droneWaypoints)
   const positionHistory = clonePositionHistory(input.positionHistory)
   const coverageAt = (position: LatLng) => estimateCoverage(position, drones, positionHistory, scenario)
+  const objectiveCount = resolveMissionObjectives(scenario).length
+  const missionWeightScale = (kind: Parameters<typeof objectiveWeightForKind>[1]) => {
+    const weight = objectiveWeightForKind(scenario, kind)
+    return weight === null ? 1 : Math.max(0.25, weight * objectiveCount)
+  }
   const objectives: TacticalObjective[] = []
 
   for (const contact of [...(input.unresolvedContacts ?? [])]
@@ -151,7 +157,8 @@ export function buildMissionSituation(input: MissionSituationInput): MissionSitu
       label: `Thermal contact ${contact.sourceId}`,
       position: clonePosition(contact.position),
       priority: 'urgent',
-      value: round(65 + clamp01(contact.confidence) * 25 + contactRecencyValue(input.tick, contact.tick)),
+      value: round((65 + clamp01(contact.confidence) * 25 + contactRecencyValue(input.tick, contact.tick))
+        * missionWeightScale('contact_resolution')),
       coverage: coverageAt(contact.position),
     })
   }
@@ -166,7 +173,8 @@ export function buildMissionSituation(input: MissionSituationInput): MissionSitu
       label: feature.label,
       position: clonePosition(position),
       priority,
-      value: round(featureValue(feature.type) + priorityRank(priority) * 5),
+      value: round((featureValue(feature.type) + priorityRank(priority) * 5)
+        * featureMissionWeightScale(feature.type, missionWeightScale)),
       coverage: coverageAt(position),
       featureType: feature.type,
     })
@@ -186,7 +194,7 @@ export function buildMissionSituation(input: MissionSituationInput): MissionSitu
       label: entry.message,
       position: clonePosition(position),
       priority: entry.priority,
-      value: 35 + priorityRank(entry.priority) * 12,
+      value: round((35 + priorityRank(entry.priority) * 12) * missionWeightScale('tasking_compliance')),
       coverage: coverageAt(position),
       linkedDroneId: entry.linkedDroneId,
     })
@@ -689,6 +697,15 @@ function featureValue(type: OperationalFeatureType): number {
   if (['last_known', 'hazard', 'fireline'].includes(type)) return 62
   if (['search_sector', 'gate', 'relay', 'standoff', 'perimeter'].includes(type)) return 50
   return 40
+}
+
+function featureMissionWeightScale(
+  type: OperationalFeatureType,
+  scale: (kind: Parameters<typeof objectiveWeightForKind>[1]) => number,
+): number {
+  if (type === 'last_known' || type === 'search_sector') return scale('sector_coverage')
+  if (type === 'perimeter' || type === 'gate') return scale('containment')
+  return 1
 }
 
 function priorityRank(priority: DispatchPriority): number {
