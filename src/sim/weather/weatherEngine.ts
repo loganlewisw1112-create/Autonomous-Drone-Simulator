@@ -5,6 +5,7 @@ import type {
   ScenarioVariantConfig,
   WeatherHazard,
   WeatherLocationTag,
+  ObservedWeather,
 } from '@/types'
 
 // ─── Default profiles per location tag ────────────────────────────────────────
@@ -52,6 +53,7 @@ export function getWeatherProfile(locationTag: WeatherLocationTag): ScenarioWeat
 export function buildWeatherState(
   profile: ScenarioWeatherProfile,
   variant: ScenarioVariantConfig,
+  observed?: ObservedWeather,
 ): WeatherVariantState {
   const rng = mulberry32(variant.seed ^ 0xdeadbeef)
 
@@ -66,7 +68,13 @@ export function buildWeatherState(
   }
   const activeHazards: WeatherHazard[] = shuffled.slice(0, hazardCount)
 
-  const base = profile.baseConditions
+  // Real observed weather (WP-2), when present, replaces the profile's invented wind/gust/temp
+  // baseline; the seeded dials below then perturb around the documented values. Visibility and
+  // ceiling stay from the profile — ERA5 does not provide them. No fixture → unchanged behaviour,
+  // and the RNG call sequence is identical either way, so determinism per seed is preserved.
+  const base = observed
+    ? { ...profile.baseConditions, windKts: observed.windKts, gustKts: observed.gustKts, tempF: observed.tempF }
+    : profile.baseConditions
   const sev = variant.weatherSeverity / 3  // 0–1 normalised
 
   const windKts    = base.windKts    * (1 + sev * 0.8 * rng())

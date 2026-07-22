@@ -1,0 +1,21 @@
+{
+  "_comment": "Authoring input for the fixture pipeline (WP-0). Each entry pins a scenario to a real date and area of operations so tools/fixtures/index.mjs can freeze real geodata into src/scenarios/fixtures/<id>/. Coordinates are the scenario startPosition; realDate is the modelled real-world incident date. Observed weather is applied to realistic INCIDENT scenarios only — NOT to the demo_basic onboarding tutorial, whose real-day weather can close launch bays (>30kt gust) and must stay launchable. Extend this list to cover more of the 21 incident scenarios.",
+  "scenarios": [
+    {
+      "id": "extreme_fema_fort_myers",
+      "name": "FEMA USAR — Hurricane Ian, Fort Myers Beach",
+      "lat": 26.465,
+      "lng": -81.955,
+      "realDate": "2022-09-28",
+      "note": "Hurricane Ian landfall near Fort Myers Beach / Estero Island. Real ERA5 winds (59kt sustained, 110kt gust) correctly ground the fleet — the sim refusing to launch into documented hurricane conditions IS the realism."
+    },
+    {
+      "id": "demo_sar_coastal",
+      "name": "SAR — Coastal / Ocean Beach",
+      "lat": 37.7695,
+      "lng": -122.5103,
+      "realDate": "2024-07-16",
+      "note": "Representative San Francisco summer marine-layer morning."
+    }
+  ]
+}

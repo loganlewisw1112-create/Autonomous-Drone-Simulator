@@ -2,6 +2,7 @@ import { useDroneStore } from '@/store/droneStore'
 import { startSimLoop, stopTicking, initFleet } from '@/sim/SimulationLoop'
 import { getScenarioById } from '@/scenarios/registry'
 import { buildWeatherState } from '@/sim/weather/weatherEngine'
+import { observedWeatherFor } from '@/scenarios/observedWeather'
 import { buildAutoLaunchBayPlan } from '@/sim/mission/launchBayPlanning'
 import { PREFLIGHT_CHECKLIST } from '@/sim/mission/preflightChecklist'
 
@@ -25,7 +26,7 @@ export function runQuickDemo(scenarioId: string = 'demo_basic'): QuickDemoResult
   useDroneStore.getState().setScenario(found.config)
   if (found.config.weatherProfile) {
     const variant = useDroneStore.getState().scenarioVariant
-    useDroneStore.getState().setWeatherState(buildWeatherState(found.config.weatherProfile, variant))
+    useDroneStore.getState().setWeatherState(buildWeatherState(found.config.weatherProfile, variant, observedWeatherFor(found.config.id)))
   }
   // Real fleet init: resets mission state (including launchPlan — plan must come after),
   // spawns drones at coordinated bays, emits mission_start.
