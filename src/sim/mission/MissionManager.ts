@@ -102,6 +102,10 @@ export function getNextCommand(drone: DroneState, mm: MissionManagerState): Comm
     }
 
     case 'launch':
+      // Climb out toward the first mission leg. Flying every fanned aircraft back
+      // through the shared site center defeats the launch fan and can stack the
+      // fleet before navigation begins.
+      targetPos = waypoints[0]?.position ?? basePosition.position
       targetAltFt = assignedAltitudeFt
       throttle = drone.altitudeFt < targetAltFt - 5 ? 0.3 : 0
       nextMissionState = drone.altitudeFt >= targetAltFt - 5 ? 'navigate' : 'launch'

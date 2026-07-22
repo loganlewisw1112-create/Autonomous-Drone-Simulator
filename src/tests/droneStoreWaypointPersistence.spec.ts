@@ -110,7 +110,7 @@ describe('drone store waypoint autosave', () => {
 
   it('uses an explicit retaskable-state allowlist', () => {
     const allowed = new Set<MissionState>(['navigate', 'sar_grid', 'hover', 'route_complete_loiter'])
-    const start = scenario.launchSites?.['uav-01']?.position ?? scenario.perDroneStartPositions?.['uav-01'] ?? scenario.startPosition
+    const start = scenario.launchSites?.[scenario.defaultLaunchAssignments?.['uav-01'] ?? 'uav-01']?.position ?? scenario.perDroneStartPositions?.['uav-01'] ?? scenario.startPosition
 
     for (const missionState of allMissionStates) {
       const drone = { ...createDroneState('uav-01', 'UAV-01', '#00d4ff', start), missionState }
@@ -119,7 +119,7 @@ describe('drone store waypoint autosave', () => {
   })
 
   it.each(protectedStates)('saves a route draft without interrupting protected state %s', (missionState) => {
-    const start = scenario.launchSites?.['uav-01']?.position ?? scenario.perDroneStartPositions?.['uav-01'] ?? scenario.startPosition
+    const start = scenario.launchSites?.[scenario.defaultLaunchAssignments?.['uav-01'] ?? 'uav-01']?.position ?? scenario.perDroneStartPositions?.['uav-01'] ?? scenario.startPosition
     const drone = { ...createDroneState('uav-01', 'UAV-01', '#00d4ff', start), missionState }
     const route = useDroneStore.getState().droneWaypoints['uav-01']
     useDroneStore.setState({ drones: [drone] })

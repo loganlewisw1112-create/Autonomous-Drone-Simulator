@@ -122,7 +122,11 @@ export type LaunchRecoverySiteKind =
   | 'vessel'
   | 'helipad'
 
+export type LaunchSiteExposure = 'sheltered' | 'semi' | 'exposed'
+
 export interface LaunchRecoverySite {
+  /** Stable pool identifier. Legacy scenarios derive this from the record key. */
+  id?: string
   kind: LaunchRecoverySiteKind
   label: string
   agency: string
@@ -130,6 +134,8 @@ export interface LaunchRecoverySite {
   surfaceNote: string
   isPrimaryRecovery?: boolean
   capacityDrones?: number   // simultaneous launch slots at this surface (default 2)
+  exposure?: LaunchSiteExposure
+  padFootprintM?: number
 }
 
 export interface MissionBrief {
@@ -405,6 +411,48 @@ export interface LaunchBayStatus {
   assignedDroneIds: string[]
   weatherClosed: boolean
   closureReason?: string
+  exposure?: LaunchSiteExposure
+  effectiveCapacityDrones?: number
+}
+
+export type LaunchDoctrineRejectCode =
+  | 'missing_route'
+  | 'missing_recovery'
+  | 'unreachable'
+  | 'launch_geofence'
+  | 'climbout_geofence'
+  | 'weather_exposure'
+  | 'capacity'
+  | 'pad_footprint'
+
+export interface LaunchDoctrineScore {
+  transitEfficiency: number
+  doctrineFit: number
+  recoverySymmetry: number
+  authoredIntent: number
+  dispersionPenalty: number
+  total: number
+}
+
+export interface LaunchDoctrineCandidate {
+  id: string
+  droneId: string
+  siteId: string
+  recoverySiteId: string | null
+  launchPosition: LatLng
+  firstTaskDistanceM: number
+  transitSec: number
+  routeDistanceM: number
+  batteryRequiredPct: number
+  reserveMarginPct: number
+  score: LaunchDoctrineScore
+  rejectedBy: LaunchDoctrineRejectCode[]
+  rationale: string
+}
+
+export interface LaunchDoctrineAssignmentDetail extends LaunchDoctrineCandidate {
+  rank: number
+  bay: LatLng
 }
 
 export interface LaunchBayPlan {
@@ -412,6 +460,9 @@ export interface LaunchBayPlan {
   bayStatuses: LaunchBayStatus[]
   readyToLaunch: boolean
   blockers: string[]
+  assignmentDetails?: Record<string, LaunchDoctrineAssignmentDetail>
+  candidatesByDrone?: Record<string, LaunchDoctrineCandidate[]>
+  rejectedByDrone?: Record<string, LaunchDoctrineCandidate[]>
 }
 
 // ─── Full Mission Replay ────────────────────────────────────────────────────────
@@ -593,6 +644,7 @@ export interface ScenarioConfig {
   isCustom?: boolean
   authoredRoutes?: Record<string, Waypoint[]>       // droneId → operator-authored waypoints
   defaultLaunchAssignments?: Record<string, string> // droneId → siteId, seeds the launch plan
+  defaultRecoveryAssignments?: Record<string, string> // droneId → recovery siteId
 }
 
 // ─── Mission lifecycle ───────────────────────────────────────────────────────────

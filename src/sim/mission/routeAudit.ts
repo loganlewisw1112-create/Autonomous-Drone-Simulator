@@ -1,4 +1,5 @@
 import { generatePerDroneWaypoints } from '@/sim/mission/SARPlanner'
+import { launchSiteForDrone, recoverySiteForDrone } from '@/sim/mission/siteAssignments'
 import { haversineDistanceM, pointInPolygon } from '@/utils/geometry'
 import type { Geofence, LatLng, ScenarioConfig, Waypoint } from '@/types'
 
@@ -37,7 +38,7 @@ export function droneIdForIndex(index: number): string {
 
 export function defaultDroneStartPosition(scenario: ScenarioConfig, index: number): LatLng {
   const id = droneIdForIndex(index)
-  return scenario.launchSites?.[id]?.position ?? scenario.perDroneStartPositions?.[id] ?? {
+  return launchSiteForDrone(scenario, id)?.position ?? scenario.perDroneStartPositions?.[id] ?? {
     lat: scenario.startPosition.lat + index * 0.00005,
     lng: scenario.startPosition.lng + index * 0.00005,
   }
@@ -72,7 +73,7 @@ export function buildSafeDroneRoutes(scenario: ScenarioConfig): Record<string, W
     const droneId = droneIdForIndex(i)
     const start = defaultDroneStartPosition(scenario, i)
     const rechargeStations = scenario.perDroneRechargeStations?.[droneId] ?? []
-    const base = scenario.recoverySites?.[droneId]?.position ?? rechargeStations[rechargeStations.length - 1] ?? scenario.startPosition
+    const base = recoverySiteForDrone(scenario, droneId)?.position ?? rechargeStations[rechargeStations.length - 1] ?? scenario.startPosition
     const recoveryId = `${droneId}-rtb-safe`
     const missionRoute = (routes[droneId] ?? []).filter((wp) => !wp.id.startsWith(recoveryId))
     const routeWithRecovery = [
@@ -130,7 +131,7 @@ export function auditScenarioRoutes(scenario: ScenarioConfig, options: AuditScen
     const droneId = droneIdForIndex(i)
     const start = options.startPositions?.[droneId] ?? defaultDroneStartPosition(scenario, i)
     const rechargeStations = scenario.perDroneRechargeStations?.[droneId] ?? []
-    const base = scenario.recoverySites?.[droneId]?.position ?? rechargeStations[rechargeStations.length - 1] ?? scenario.startPosition
+    const base = recoverySiteForDrone(scenario, droneId)?.position ?? rechargeStations[rechargeStations.length - 1] ?? scenario.startPosition
     const route = routes[droneId] ?? []
     const points: RoutePoint[] = [
       { id: 'start', position: start, altitudeFt: route[0]?.altitudeFt ?? 120 },

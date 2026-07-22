@@ -53,6 +53,11 @@ const MAX_FRAMES = 300
 export const FLEET_RETASK_COOLDOWN_MS = 5_000
 export const FLEET_RETASK_UNDO_WINDOW_MS = 8_000
 const MAX_FLEET_RETASK_HISTORY = 20
+
+export interface ParkedLaunchPlacement {
+  bay: LatLng
+  scheduledLaunchSec: number
+}
 export { isRetaskable } from '@/sim/mission/retaskPolicy'
 
 const DEFAULT_VARIANT: ScenarioVariantConfig = {
@@ -266,6 +271,7 @@ interface DroneStore {
   setWeatherState: (state: WeatherVariantState) => void
   setScenarioVariant: (variant: ScenarioVariantConfig) => void
   setLaunchPlan: (plan: LaunchBayPlan) => void
+  applyParkedLaunchPlan: (plan: LaunchBayPlan, placements: Record<string, ParkedLaunchPlacement>) => boolean
   setScenario: (scenario: ScenarioConfig) => void
   setOperatorRole: (role: OperatorRole) => void
   setLifecycle: (lifecycle: MissionLifecycleState) => void
@@ -696,6 +702,27 @@ export const useDroneStore = create<DroneStore>()(
         })),
 
         setLaunchPlan: (plan) => set({ launchPlan: plan }),
+
+        applyParkedLaunchPlan: (plan, placements) => {
+          let applied = false
+          set((state) => {
+            const parked = (state.lifecycle === 'idle' || state.lifecycle === 'preflight')
+              && !state.ui.isRunning
+              && state.drones.length > 0
+              && state.drones.every((drone) => drone.missionState === 'idle' && drone.altitudeFt === 0 && placements[drone.id])
+            if (!parked || !plan.readyToLaunch) return {}
+            applied = true
+            return {
+              launchPlan: plan,
+              drones: state.drones.map((drone) => ({
+                ...drone,
+                position: { ...placements[drone.id].bay },
+                scheduledLaunchSec: placements[drone.id].scheduledLaunchSec,
+              })),
+            }
+          })
+          return applied
+        },
 
         setOperatorRole: (role) => set({ operatorRole: role }),
 

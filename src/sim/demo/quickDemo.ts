@@ -4,6 +4,7 @@ import { getScenarioById } from '@/scenarios/registry'
 import { buildWeatherState } from '@/sim/weather/weatherEngine'
 import { observedWeatherFor } from '@/scenarios/observedWeather'
 import { buildAutoLaunchBayPlan } from '@/sim/mission/launchBayPlanning'
+import { buildLaunchSlotsForPlan } from '@/sim/mission/launchPlanGeometry'
 import { PREFLIGHT_CHECKLIST } from '@/sim/mission/preflightChecklist'
 
 export interface QuickDemoResult {
@@ -51,7 +52,10 @@ export function runQuickDemo(scenarioId: string = 'demo_basic'): QuickDemoResult
   if (!plan.readyToLaunch) {
     return { ok: false, reason: plan.blockers[0] ?? 'launch plan not ready' }
   }
-  useDroneStore.getState().setLaunchPlan(plan)
+  const placements = buildLaunchSlotsForPlan(st.scenario, plan, st.droneWaypoints)
+  if (!useDroneStore.getState().applyParkedLaunchPlan(plan, placements)) {
+    return { ok: false, reason: 'fleet is not parked for launch-plan application' }
+  }
 
   // Surface the guided tour strip so first-time visitors get narration.
   useDroneStore.getState().setInvestorDemoEnabled(true)
