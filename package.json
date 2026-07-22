@@ -15,12 +15,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "classroom": "vite build --mode classroom && node server/classroom.mjs",
+    "classroom:relay": "node server/classroom.mjs",
     "fixtures": "node tools/fixtures/index.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "prepare": "husky",
     "lint": "eslint src",
+    "assert:bundles": "node scripts/assert-bundle-isolation.mjs",
     "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {

@@ -32,6 +32,12 @@ jobs:
       - name: Build
         run: npx vite build
 
+      # COORDINATOR_BUILD_PLAN §7: prove on the ARTIFACT, not the source, that the shipping
+      # mobile/Windows bundles carry no networking code and that the classroom build still
+      # ships its relay client. Builds both ways, so it runs after (and replaces) nothing above.
+      - name: Assert bundle isolation
+        run: npm run assert:bundles
+
       - name: Audit (high+)
         run: npm audit --audit-level=high
         continue-on-error: true
