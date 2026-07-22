@@ -67,6 +67,11 @@ export function StudentTile({
           {lowBatt != null ? `${lowBatt}%` : '—'}
         </span>
       </div>
+      <div className="cls-tile-assessment" aria-label={`${name} rubric status`}>
+        <span>Progress <strong>{frame?.p ?? '—'}{frame?.p !== undefined ? '%' : ''}</strong></span>
+        <span>Band <strong>{frame?.b ?? '—'}</strong></span>
+        <span>Score <strong>{frame?.sc ?? '—'}{frame?.sc !== undefined ? '/100' : ''}</strong></span>
+      </div>
     </div>
   )
 }
