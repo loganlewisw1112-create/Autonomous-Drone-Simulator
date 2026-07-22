@@ -1,3 +1,4 @@
+import { airspaceCeilingCaption, airspaceForScenario, plannedRoutePoints, worstCeilingBreach } from '@/sim/mission/airspace'
 import type {
   AirspaceAuthorization,
   ComplianceFlag,
@@ -36,6 +37,7 @@ export function buildComplianceState(input: BuildComplianceStateInput): Complian
   const maxObservedAltitudeFt = input.drones.reduce((max, drone) => Math.max(max, drone.altitudeFt), 0)
   const authorization = buildAuthorization(input.scenario)
   const waiverFlags = buildWaiverFlags(input, maxObservedAltitudeFt)
+  const ceilingCaption = airspaceCeilingCaption(airspaceForScenario(input.scenario?.id))
 
   return {
     remoteId: {
@@ -70,6 +72,16 @@ export function buildComplianceState(input: BuildComplianceStateInput): Complian
         label: authorization.label,
         detail: authorization.reference,
       },
+      // WP-3's acceptance criterion asks for MAP_EFF to be visible "so a stale fixture is
+      // visible rather than silently wrong". Putting it on the checklist rather than only in
+      // the panel means the edition date also travels into the exported after-action package,
+      // which is where a reviewer would go looking for it months later.
+      ...(ceilingCaption ? [{
+        kind: 'laanc' as const,
+        severity: 'routine' as const,
+        label: 'Published UAS Facility Map ceilings',
+        detail: `${ceilingCaption}. Real FAA published data; authorization remains simulated.`,
+      }] : []),
       ...waiverFlags,
     ],
     disclaimer: SIM_DISCLAIMER,
@@ -123,6 +135,38 @@ function buildWaiverFlags(input: BuildComplianceStateInput, maxObservedAltitudeF
       severity: 'critical',
       label: 'Altitude limit attention',
       detail: `Max observed altitude is ${Math.round(maxObservedAltitudeFt)}ft AGL; demo should show mitigation below 400ft.`,
+    })
+  }
+
+  // REALISM_ROADMAP WP-3 — the real published ceiling, not the blanket 400ft.
+  //
+  // The 400ft check above is Part 107's ceiling in the general case. Inside a charted facility
+  // map the FAA publishes a *lower* automatic-authorisation ceiling per 30 x 30 arc-second cell,
+  // and a route can sit comfortably under 400ft while still being above the ceiling actually
+  // published for the ground it is over — Times Square's 260ft aviation relay sits over cells
+  // published at 0ft. So the same existing Part 107 flag is raised against the published figure
+  // wherever one exists.
+  //
+  // 'urgent', not 'critical', and deliberately: a published ceiling of 0 means "not
+  // automatically authorisable via LAANC", not "flight is impossible" — the further-safety-
+  // analysis path still exists, and these scenarios run under simulated incident-command
+  // coordination. 'urgent' drives authorization.status to 'attention' (the roadmap's own word
+  // for this criterion) rather than to 'blocked'. Scenarios with no published grid — 11 of the
+  // 21 — produce no flag and behave bit-identically to pre-WP-3.
+  //
+  // Checked against the planned route as well as live telemetry: the criterion is that a
+  // *route* exceeding the published ceiling is flagged, which means the operator is told before
+  // launch rather than after the aircraft is already up there.
+  const ceilingBreach = worstCeilingBreach(airspaceForScenario(input.scenario?.id), [
+    ...input.drones.map((drone) => ({ position: drone.position, altitudeFt: drone.altitudeFt })),
+    ...plannedRoutePoints(input.scenario),
+  ])
+  if (ceilingBreach) {
+    flags.push({
+      kind: 'altitude_limit',
+      severity: 'urgent',
+      label: 'Published ceiling attention',
+      detail: `${Math.round(ceilingBreach.altitudeFt)}ft AGL over a cell the FAA publishes at ${ceilingBreach.publishedCeilingFt}ft (UAS Facility Map eff ${ceilingBreach.mapEffective}); real published data, simulated authorization only.`,
     })
   }
 

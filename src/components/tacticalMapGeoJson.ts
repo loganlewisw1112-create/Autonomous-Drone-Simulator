@@ -1,5 +1,5 @@
 import { offsetLatLng } from '@/utils/geometry'
-import type { DroneState, Waypoint } from '@/types'
+import type { DroneState, ObservedAirspace, Waypoint } from '@/types'
 
 type LngLatCoord = [number, number]
 
@@ -88,6 +88,52 @@ export function buildIrFootprintFeatures(drones: DroneState[]): IrFootprintFeatu
       geometry: { type: 'Polygon' as const, coordinates: [[apex, ...arc, apex]] },
       properties: { id: drone.id },
     }]
+  })
+}
+
+export interface AirspaceCeilingFeature {
+  type: 'Feature'
+  geometry: { type: 'Polygon'; coordinates: LngLatCoord[][] }
+  properties: {
+    ceilingFt: number
+    /** MAP_EFF, repeated per feature so a map click can answer "how old is this?" (§WP-3). */
+    mapEffective: string
+    label: string
+  }
+}
+
+/**
+ * The real FAA UAS Facility Map ceiling grid, as renderable polygons (REALISM_ROADMAP WP-3).
+ *
+ * The fixture stores each 30 x 30 arc-second cell as [west, south, east, north] rather than a
+ * ring — lossless, because the UASFM grid is a lat/lng graticule, and it is what keeps the
+ * 227-cell SF pursuit fixture inside §19's byte budget. The ring is rebuilt here, at the one
+ * place that needs a polygon.
+ *
+ * `label` carries the edition date into the rendered feature so the layer can never show a
+ * ceiling without also being able to show how old it is — WP-3's stated accept criterion is
+ * that a stale fixture must be *visible*, not silently believed.
+ */
+export function buildAirspaceCeilingFeatures(
+  airspace: ObservedAirspace | undefined,
+): AirspaceCeilingFeature[] {
+  if (!airspace) return []
+  return airspace.cells.map((cell) => {
+    const [west, south, east, north] = cell.bounds
+    return {
+      type: 'Feature' as const,
+      geometry: {
+        type: 'Polygon' as const,
+        coordinates: [[
+          [west, south], [east, south], [east, north], [west, north], [west, south],
+        ] as LngLatCoord[]],
+      },
+      properties: {
+        ceilingFt: cell.ceilingFt,
+        mapEffective: airspace.mapEffective,
+        label: `${cell.ceilingFt}ft AGL · FAA UASFM eff ${airspace.mapEffective}`,
+      },
+    }
   })
 }
 
