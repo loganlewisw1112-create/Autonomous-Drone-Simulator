@@ -597,7 +597,7 @@ export interface CustomMissionDefinition {
 
 // ─── UI State ──────────────────────────────────────────────────────────────────
 export type SensorMode = 'eo' | 'ir'
-export type SimSpeed = 1 | 5 | 10
+export type SimSpeed = 1 | 5 | 10 | 20
 
 // Operator-toggleable map overlay categories (numbered waypoint nodes, drone
 // tracks, and safety geofences are always shown and are intentionally NOT here).
