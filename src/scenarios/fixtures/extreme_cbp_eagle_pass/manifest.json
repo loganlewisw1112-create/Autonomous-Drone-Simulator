@@ -1,0 +1,18 @@
+{
+  "scenarioId": "extreme_cbp_eagle_pass",
+  "area": {
+    "lat": 28.7062,
+    "lng": -100.4965
+  },
+  "realDate": "2024-03-14",
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=28.7062&longitude=-100.4965&start_date=2024-03-14&end_date=2024-03-14&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "595c575f405e598d7bb6e458938dba03787db05bfd263286e8e284eff4d2a941"
+    }
+  ]
+}

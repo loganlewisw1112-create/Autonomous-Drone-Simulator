@@ -1,0 +1,18 @@
+{
+  "scenarioId": "extreme_fema_fort_myers",
+  "area": {
+    "lat": 26.465,
+    "lng": -81.955
+  },
+  "realDate": "2022-09-28",
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=26.465&longitude=-81.955&start_date=2022-09-28&end_date=2022-09-28&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "8f87c0b09096def5c292f1e6123a8e2e2379fd81457b437c529998cd8cca6553"
+    }
+  ]
+}

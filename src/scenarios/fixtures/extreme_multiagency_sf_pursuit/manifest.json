@@ -1,0 +1,31 @@
+{
+  "scenarioId": "extreme_multiagency_sf_pursuit",
+  "area": {
+    "lat": 37.7213,
+    "lng": -122.2205,
+    "aoBbox": [
+      -122.412055,
+      37.707825,
+      -122.203445,
+      37.911475
+    ]
+  },
+  "realDate": "2024-05-08",
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "airspace.json",
+      "source": "FAA UAS Facility Map (UASFM) V5 — UAS Data Delivery System",
+      "url": "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/FAA_UAS_FacilityMap_Data_V5/FeatureServer/0/query?where=1%3D1&geometry=%7B%22xmin%22%3A-122.412055%2C%22ymin%22%3A37.707825%2C%22xmax%22%3A-122.203445%2C%22ymax%22%3A37.911475%2C%22spatialReference%22%3A%7B%22wkid%22%3A4326%7D%7D&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects&outFields=OBJECTID%2CCEILING%2CUNIT%2CMAP_EFF%2CAPT1_NAME%2CAPT1_ICAO%2CAIRSPACE_1&returnGeometry=true&resultRecordCount=1000&resultOffset=0&f=geojson",
+      "license": "US Government public domain (17 U.S.C. §105) — FAA UAS Facility Map, UAS Data Delivery System",
+      "sha256": "ad1996db34be79aa128615fdbe6fc1091da3805afeeb86ac3aed59bb042a576c"
+    },
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=37.7213&longitude=-122.2205&start_date=2024-05-08&end_date=2024-05-08&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "95ca41ee479965603dd08bcf8ec37c69f2734a99dd142876319133300a8d7372"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import { useDroneStore } from '@/store/droneStore'
 import { startSimLoop, stopTicking, endMission, initFleet } from '@/sim/SimulationLoop'
 import { getScenarioById } from '@/scenarios/registry'
 import { buildWeatherState } from '@/sim/weather/weatherEngine'
+import { observedWeatherFor } from '@/scenarios/observedWeather'
 import { exportChainAsJsonl } from '@/utils/chainOfCustody'
 import { buildFullKML } from '@/utils/kmlExport'
 import { buildGeoJSON } from '@/utils/geojsonExport'
@@ -105,7 +106,7 @@ export function useMissionControls() {
     setScenario(found.config)
     // Apply current variant to this scenario's profile
     if (found.config.weatherProfile) {
-      const ws = buildWeatherState(found.config.weatherProfile, scenarioVariant)
+      const ws = buildWeatherState(found.config.weatherProfile, scenarioVariant, observedWeatherFor(found.config.id))
       setWeatherState(ws)
     }
     // Zustand writes are synchronous — initFleet reads the scenario set above directly.
@@ -118,7 +119,7 @@ export function useMissionControls() {
     const next = { ...scenarioVariant, ...patch }
     setScenarioVariant(next)
     if (scenario?.weatherProfile) {
-      setWeatherState(buildWeatherState(scenario.weatherProfile, next))
+      setWeatherState(buildWeatherState(scenario.weatherProfile, next, observedWeatherFor(scenario.id)))
     }
   }
 

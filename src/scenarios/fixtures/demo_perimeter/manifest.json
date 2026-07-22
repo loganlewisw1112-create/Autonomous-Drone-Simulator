@@ -1,0 +1,21 @@
+{
+  "scenarioId": "demo_perimeter",
+  "area": {
+    "aoBbox": [
+      -122.305252,
+      37.780025,
+      -122.263598,
+      37.813625
+    ]
+  },
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "airspace.json",
+      "source": "FAA UAS Facility Map (UASFM) V5 — UAS Data Delivery System",
+      "url": "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/FAA_UAS_FacilityMap_Data_V5/FeatureServer/0/query?where=1%3D1&geometry=%7B%22xmin%22%3A-122.305252%2C%22ymin%22%3A37.780025%2C%22xmax%22%3A-122.263598%2C%22ymax%22%3A37.813625%2C%22spatialReference%22%3A%7B%22wkid%22%3A4326%7D%7D&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects&outFields=OBJECTID%2CCEILING%2CUNIT%2CMAP_EFF%2CAPT1_NAME%2CAPT1_ICAO%2CAIRSPACE_1&returnGeometry=true&resultRecordCount=1000&resultOffset=0&f=geojson",
+      "license": "US Government public domain (17 U.S.C. §105) — FAA UAS Facility Map, UAS Data Delivery System",
+      "sha256": "f8a77cd9e8095f3a3eaf8148771e04e82d26e44910e65c9676393117d2f5d196"
+    }
+  ]
+}

@@ -111,6 +111,25 @@ describe('MobileShell', () => {
     expect(screen.getByRole('button', { name: 'RESUME' })).toBeInTheDocument()
   })
 
+  // Regression: ReplayPanel is position:fixed z-index:200 and .mobile-replay-host sets no
+  // z-index, while the drawer is z-index 401 inside the position:fixed .mobile-shell stacking
+  // context. Opening the drawer for 'replay' painted it straight over the replay transport, so
+  // the operator saw a stub and no controls. The drawer must stay shut for this surface.
+  it('gives the replay transport the screen instead of burying it under the drawer', async () => {
+    useMobileStore.setState({ activeSurface: 'replay' })
+    render(<MobileShell />)
+    expect(await screen.findByTestId('replay-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('mobile-surface-drawer')).not.toHaveClass('open')
+  })
+
+  it('applies the tablet sizing tier when the shell is on a tablet', () => {
+    device.tablet = true
+    render(<MobileShell />)
+    const shell = screen.getByTestId('mobile-shell')
+    expect(shell).toHaveClass('mobile-shell--tablet')
+    expect(shell).toHaveAttribute('data-tablet', 'true')
+  })
+
   it('preserves loading and active-surface state across orientation changes', () => {
     useMobileStore.setState({ activeSurface: 'mission', loadingDone: true })
     const view = render(<MobileShell />)

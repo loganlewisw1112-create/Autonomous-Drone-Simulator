@@ -1,0 +1,21 @@
+{
+  "scenarioId": "demo_vehicle_pursuit",
+  "area": {
+    "aoBbox": [
+      -122.307051,
+      37.768525,
+      -122.252949,
+      37.814749
+    ]
+  },
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "airspace.json",
+      "source": "FAA UAS Facility Map (UASFM) V5 — UAS Data Delivery System",
+      "url": "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/FAA_UAS_FacilityMap_Data_V5/FeatureServer/0/query?where=1%3D1&geometry=%7B%22xmin%22%3A-122.307051%2C%22ymin%22%3A37.768525%2C%22xmax%22%3A-122.252949%2C%22ymax%22%3A37.814749%2C%22spatialReference%22%3A%7B%22wkid%22%3A4326%7D%7D&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects&outFields=OBJECTID%2CCEILING%2CUNIT%2CMAP_EFF%2CAPT1_NAME%2CAPT1_ICAO%2CAIRSPACE_1&returnGeometry=true&resultRecordCount=1000&resultOffset=0&f=geojson",
+      "license": "US Government public domain (17 U.S.C. §105) — FAA UAS Facility Map, UAS Data Delivery System",
+      "sha256": "f87e68b74d4c7a928b886b2d9a8fdd309b4784c5bbf3e95d73834a319e7aac5a"
+    }
+  ]
+}

@@ -1,0 +1,141 @@
+{
+  "_comment": "Authoring input for the fixture pipeline (WP-0). Each entry pins a scenario to a date and area of operations so tools/fixtures/index.mjs can freeze real geodata into src/scenarios/fixtures/<id>/. Coordinates are the scenario startPosition. Observed weather is applied to realistic INCIDENT scenarios only — NOT to demo_basic / demo_sar, the onboarding tutorials, whose real-day weather can close launch bays (>30kt gust) and must stay launchable.",
+  "_dateProvenance": "Two kinds of realDate, and the distinction is deliberate. `dateKind: \"documented\"` means the scenario models a specific real incident and the date is that incident's real date — the weather that was actually over that place that day. `dateKind: \"representative\"` means the scenario models a mission TYPE rather than one named event; the date is a real, seasonally-appropriate day at the real location, and the weather is genuinely observed, but it is not tied to a specific historical callout. Never present a representative date as a documented one.",
+  "scenarios": [
+    {
+      "id": "extreme_fema_fort_myers",
+      "name": "FEMA USAR — Hurricane Ian, Fort Myers Beach",
+      "lat": 26.465,
+      "lng": -81.955,
+      "realDate": "2022-09-28",
+      "dateKind": "documented",
+      "note": "Hurricane Ian landfall near Fort Myers Beach / Estero Island. Real ERA5 winds (59kt sustained, 110kt gust) correctly ground the fleet — the sim refusing to launch into documented hurricane conditions IS the realism."
+    },
+    {
+      "id": "extreme_cal_fire_dixie",
+      "name": "CAL FIRE / USFS — Dixie Fire, Northern Flank",
+      "lat": 40.0072,
+      "lng": -121.0085,
+      "realDate": "2021-08-04",
+      "dateKind": "documented",
+      "note": "Dixie Fire, 2021 — the 4 August run on the northern flank that overran Greenville. Real fire-weather for the day the scenario models."
+    },
+    {
+      "id": "demo_sar_coastal",
+      "name": "SAR — Coastal / Ocean Beach",
+      "lat": 37.7695,
+      "lng": -122.5103,
+      "realDate": "2024-07-16",
+      "dateKind": "representative",
+      "note": "Representative San Francisco summer marine-layer morning."
+    },
+    {
+      "id": "extreme_uscg_cape_cod_sar",
+      "name": "USCG District 1 — Atlantic Mariner SAR",
+      "lat": 41.6688,
+      "lng": -70.2978,
+      "realDate": "2024-11-19",
+      "dateKind": "representative",
+      "note": "Representative late-autumn Nantucket Sound day (25kt gust, 49°F) — the season that actually drives Atlantic mariner SAR callouts, and hard enough to matter without closing the launch bays. 2024-11-12 was tried first and came back at 42kt gust, which grounds the fleet; Fort Myers/Ian is the one scenario that should teach that lesson."
+    },
+    {
+      "id": "extreme_cbp_big_bend_desert_sar",
+      "name": "CBP Big Bend — Desert Humanitarian SAR",
+      "lat": 29.377,
+      "lng": -103.7285,
+      "realDate": "2024-07-22",
+      "dateKind": "representative",
+      "note": "Representative Chihuahuan Desert midsummer day — heat is the operative hazard in Big Bend humanitarian SAR."
+    },
+    {
+      "id": "extreme_lapd_skid_row_welfare",
+      "name": "LAPD SkyWatch — Skid Row Welfare Grid",
+      "lat": 34.0422,
+      "lng": -118.2472,
+      "realDate": "2024-01-16",
+      "dateKind": "representative",
+      "note": "Representative Los Angeles winter night — cold-weather welfare checks are the real driver for this mission type."
+    },
+    {
+      "id": "extreme_nypd_times_sq_mci",
+      "name": "NYPD Aviation — Times Square MCI",
+      "lat": 40.757,
+      "lng": -73.9862,
+      "realDate": "2024-11-28",
+      "dateKind": "representative",
+      "note": "Representative Manhattan late-November day — a high-density crowd event in the AO the scenario models."
+    },
+    {
+      "id": "extreme_lapd_hollywood_bowl",
+      "name": "LAPD SIS — Hollywood Bowl Response",
+      "lat": 34.1118,
+      "lng": -118.3375,
+      "realDate": "2024-08-17",
+      "dateKind": "representative",
+      "note": "Representative Los Angeles summer evening — Hollywood Bowl performance season."
+    },
+    {
+      "id": "extreme_dhs_port_la_chemical",
+      "name": "DHS CIKR — Port of LA Chemical Response",
+      "lat": 33.7321,
+      "lng": -118.2699,
+      "realDate": "2024-09-12",
+      "dateKind": "representative",
+      "note": "Representative San Pedro Bay early-autumn day. Wind direction governs plume drift, which is the operative decision here."
+    },
+    {
+      "id": "extreme_atf_oakland_stash",
+      "name": "ATF Group IX — Oakland Stash Surveillance",
+      "lat": 37.7385,
+      "lng": -122.1935,
+      "realDate": "2024-10-03",
+      "dateKind": "representative",
+      "note": "Representative East Bay autumn day — the clear, low-wind spell that favours long static surveillance."
+    },
+    {
+      "id": "extreme_usss_presidential_sf",
+      "name": "USSS — Presidential Visit SF Advance Sweep",
+      "lat": 37.7838,
+      "lng": -122.4,
+      "realDate": "2024-06-20",
+      "dateKind": "representative",
+      "note": "Representative downtown San Francisco early-summer day."
+    },
+    {
+      "id": "extreme_multiagency_sf_pursuit",
+      "name": "Multi-Agency — SF to Albany Hills Suspect Pursuit",
+      "lat": 37.7213,
+      "lng": -122.2205,
+      "realDate": "2024-05-08",
+      "dateKind": "representative",
+      "note": "Representative East Bay late-spring day across the pursuit corridor."
+    },
+    {
+      "id": "extreme_fbi_hrt_compound",
+      "name": "FBI HRT — Compound Siege (ISR/Entry/Extract)",
+      "lat": 34.5398,
+      "lng": -117.2932,
+      "realDate": "2024-05-09",
+      "dateKind": "representative",
+      "note": "Representative Mojave high-desert spring day — afternoon wind is the limiting factor on a long ISR hold."
+    },
+    {
+      "id": "extreme_cbp_eagle_pass",
+      "name": "CBP Eagle Pass — Rio Grande Relay",
+      "lat": 28.7062,
+      "lng": -100.4965,
+      "realDate": "2024-03-14",
+      "dateKind": "representative",
+      "note": "Representative south-Texas early-spring day on the Rio Grande."
+    },
+    {
+      "id": "extreme_cbp_rio_grande_longrange",
+      "name": "CBP Laredo — Rio Grande 25-Mile Relay Patrol",
+      "lat": 26.5655,
+      "lng": -99.1195,
+      "realDate": "2024-04-11",
+      "dateKind": "representative",
+      "note": "Representative Laredo-sector spring day across the 25-mile relay corridor."
+    }
+  ]
+}

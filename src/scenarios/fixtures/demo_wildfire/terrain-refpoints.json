@@ -1,0 +1,129 @@
+{
+  "scenarioId": "demo_wildfire",
+  "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
+  "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
+  "license": "US Geological Survey — US federal government work, public domain",
+  "note": "Independent read of 3DEP at native resolution; used to bound the fixture error, not to build it.",
+  "points": [
+    {
+      "lat": 37.880834,
+      "lng": -122.260968,
+      "elevationM": 150.44,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.880834,
+      "lng": -122.249584,
+      "elevationM": 332.91,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.880834,
+      "lng": -122.2382,
+      "elevationM": 371.58,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.880834,
+      "lng": -122.226816,
+      "elevationM": 489.05,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.880834,
+      "lng": -122.215432,
+      "elevationM": 484.25,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.889817,
+      "lng": -122.260968,
+      "elevationM": 228.44,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.889817,
+      "lng": -122.249584,
+      "elevationM": 386.7,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.889817,
+      "lng": -122.2382,
+      "elevationM": 313.35,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.889817,
+      "lng": -122.226816,
+      "elevationM": 443.57,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.889817,
+      "lng": -122.215432,
+      "elevationM": 298.57,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.8988,
+      "lng": -122.260968,
+      "elevationM": 296.01,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.8988,
+      "lng": -122.249584,
+      "elevationM": 276.95,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.8988,
+      "lng": -122.2382,
+      "elevationM": 360.96,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.8988,
+      "lng": -122.226816,
+      "elevationM": 284.48,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.8988,
+      "lng": -122.215432,
+      "elevationM": 207.46,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.907783,
+      "lng": -122.260968,
+      "elevationM": 212.97,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.907783,
+      "lng": -122.249584,
+      "elevationM": 287.7,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.907783,
+      "lng": -122.2382,
+      "elevationM": 189.07,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.907783,
+      "lng": -122.226816,
+      "elevationM": 97.57,
+      "resolutionM": 1
+    },
+    {
+      "lat": 37.907783,
+      "lng": -122.215432,
+      "elevationM": 113.05,
+      "resolutionM": 1
+    }
+  ]
+}

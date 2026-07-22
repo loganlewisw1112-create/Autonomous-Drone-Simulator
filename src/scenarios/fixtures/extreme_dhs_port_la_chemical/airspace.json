@@ -1,0 +1,26 @@
+{
+  "source": "FAA UAS Facility Map (UASFM) V5 — UAS Data Delivery System",
+  "mapEffective": "10/6/2022",
+  "unit": "ft AGL",
+  "facilities": [
+    "Zamperini Fld (KTOA)"
+  ],
+  "airspaceClasses": [
+    "D"
+  ],
+  "bbox": [
+    -118.292703,
+    33.717325,
+    -118.251297,
+    33.749975
+  ],
+  "minCeilingFt": 200,
+  "maxCeilingFt": 200,
+  "cells": [
+    { "ceilingFt": 200, "bounds": [-118.300015, 33.733339, -118.291681, 33.741672] },
+    { "ceilingFt": 200, "bounds": [-118.291681, 33.733339, -118.283348, 33.741672] },
+    { "ceilingFt": 200, "bounds": [-118.300015, 33.741672, -118.291681, 33.750005] },
+    { "ceilingFt": 200, "bounds": [-118.291681, 33.741672, -118.283348, 33.750005] },
+    { "ceilingFt": 200, "bounds": [-118.283348, 33.741672, -118.275015, 33.750005] }
+  ]
+}

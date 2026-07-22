@@ -199,7 +199,7 @@ export function ControlBar() {
         {/* Speed */}
         <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>SIM</span>
         <div className="btn-group">
-          {([1, 5, 10] as SimSpeed[]).map((s) => (
+          {([1, 5, 10, 20] as SimSpeed[]).map((s) => (
             <button
               key={s}
               className={`btn${ui.simSpeed === s ? ' active' : ''}`}

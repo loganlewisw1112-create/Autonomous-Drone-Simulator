@@ -130,7 +130,14 @@ export function MobileShell() {
       : rightSurfaceOpen
         ? 'right'
         : 'bottom'
-  const drawerOpen = activeSurface !== null && !['account', 'analytics', 'settings'].includes(activeSurface)
+  // Surfaces that render their own chrome outside the drawer must NOT also open it.
+  // account/analytics/settings hand off to modals via openAccount(); 'replay' renders the
+  // real ReplayPanel in .mobile-replay-host below. ReplayPanel is position:fixed z-index:200
+  // and .mobile-replay-host sets no z-index, so an open drawer (z-index 401, inside the
+  // position:fixed .mobile-shell stacking context) painted straight over the replay transport
+  // — the operator got a one-line stub and no controls.
+  const drawerOpen = activeSurface !== null
+    && !['account', 'analytics', 'settings', 'replay'].includes(activeSurface)
 
   function openAccount(kind: 'account' | 'analytics' | 'settings') {
     closeSurface()
@@ -244,13 +251,9 @@ export function MobileShell() {
           <SurfacePane active={activeSurface === 'mission'}><MissionSheet /></SurfacePane>
           <SurfacePane active={activeSurface === 'dispatch'}><MissionStatusFeed /></SurfacePane>
           <SurfacePane active={activeSurface === 'exports'}><ExportsSheet /></SurfacePane>
-          <SurfacePane active={activeSurface === 'replay'}>
-            <div className="mobile-sheet-section">
-              <span className="mobile-status-line">
-                {replaySession ? `${replaySession.frames.length} replay frames available` : 'No completed mission replay is available.'}
-              </span>
-            </div>
-          </SurfacePane>
+          {/* No 'replay' pane: the drawer stays shut for that surface (see drawerOpen above)
+              and ReplayPanel owns the screen instead. The MORE button that opens it is already
+              disabled without a replaySession, so the old "no replay available" stub was dead. */}
           <SurfacePane active={activeSurface === 'more'}>
             <div className="mobile-more-grid">
               <button onClick={() => { closeSurface(); setShowDesigner(true) }}>CUSTOM MISSIONS</button>
