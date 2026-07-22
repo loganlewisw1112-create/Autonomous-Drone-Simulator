@@ -9,6 +9,7 @@ import { exportChainAsJsonl } from '@/utils/chainOfCustody'
 import { buildFullKML } from '@/utils/kmlExport'
 import { buildGeoJSON } from '@/utils/geojsonExport'
 import { buildAfterActionPackage, serializeAfterActionPackage } from '@/sim/demo/missionReport'
+import { isRetaskable } from '@/sim/mission/retaskPolicy'
 import type { ScenarioVariantConfig } from '@/types'
 
 // Mission control logic shared by the desktop ControlBar and the mobile bottom-dock
@@ -23,12 +24,14 @@ export function useMissionControls() {
       launchPlan: s.launchPlan, weatherState: s.weatherState, scenarioVariant: s.scenarioVariant,
       metrics: s.metrics, elapsedSec: s.elapsedSec, replaySession: s.replaySession, investorDemo: s.investorDemo,
       lastRouteChange: s.lastRouteChange,
+      latestFleetRetaskResult: s.latestFleetRetaskResult, fleetRetaskUndo: s.fleetRetaskUndo,
       setRunning: s.setRunning, setSimSpeed: s.setSimSpeed, setScenario: s.setScenario,
       setShowPreflight: s.setShowPreflight, setOperatorRole: s.setOperatorRole,
       setWeatherState: s.setWeatherState, setScenarioVariant: s.setScenarioVariant,
       setLifecycle: s.setLifecycle,
       resetInvestorDemo: s.resetInvestorDemo, setInvestorDemoEnabled: s.setInvestorDemoEnabled,
       undoLastRouteChange: s.undoLastRouteChange,
+      retaskFleet: s.retaskFleet, undoFleetRetask: s.undoFleetRetask,
     })),
   )
 
@@ -41,6 +44,7 @@ export function useMissionControls() {
   const [exportStatus, setExportStatus] = useState<string | null>(null)
 
   const canStart = operatorRole === 'pic'
+  const canRetaskFleet = operatorRole === 'pic' && drones.some(isRetaskable)
   const canAbort = operatorRole === 'pic' || operatorRole === 'mission_commander'
   const canStop  = operatorRole === 'pic' || operatorRole === 'mission_commander'
   const launchReady = launchPlan?.readyToLaunch === true
@@ -193,10 +197,12 @@ export function useMissionControls() {
   return {
     ...store,
     exportStatus,
-    canStart, canAbort, canStop, launchReady, allLanded,
+    canStart, canAbort, canStop, canRetaskFleet, launchReady, allLanded,
     handleStart, handleAbort, handlePause, handleResume, handleEndMission,
     handleScenarioChange, handleVariantChange, handleRandomizeSeed, handleDemoReset,
     handleUndoRouteChange: store.undoLastRouteChange,
+    handleFleetRetask: () => store.retaskFleet(),
+    handleUndoRetask: () => store.undoFleetRetask(),
     handleExportLog, handleExportKML, handleExportGeoJSON, handleExportAfterAction,
   }
 }

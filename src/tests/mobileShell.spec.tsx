@@ -41,6 +41,9 @@ beforeEach(() => {
     lifecycle: 'idle',
     scenario: null,
     replaySession: null,
+    latestFleetRetaskResult: null,
+    fleetRetaskUndo: null,
+    operatorRole: 'pic',
     ui: { ...useDroneStore.getState().ui, isRunning: false, showPreflight: false, showLaunchBay: false },
   })
 })
@@ -100,6 +103,12 @@ describe('MobileShell', () => {
     expect(screen.getByRole('button', { name: /CUSTODY LOG/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /KML/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /GeoJSON/ })).toBeInTheDocument()
+  })
+
+  it('exposes the shared fleet retask control from the Mission surface', () => {
+    render(<MobileShell />)
+    fireEvent.click(screen.getByRole('button', { name: 'MISSION' }))
+    expect(screen.getByRole('button', { name: '⟳ RETASK FLEET' })).toBeDisabled()
   })
 
   it('switches the primary action between Pause and Resume without ending the mission', () => {

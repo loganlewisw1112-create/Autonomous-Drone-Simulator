@@ -190,7 +190,20 @@ function derivedEventEntries(input: MissionStatusFeedInput): DispatchFeedEntry[]
           message: `${droneLabel} mission leg complete; evidence chain updated and recovery state confirmed.`,
         })
         break
-      case 'operator_command':
+      case 'operator_command': {
+        if (event.payload.source === 'fleet_retask') {
+          const tacticalAction = String(event.payload.tacticalAction ?? 'route update').replace(/_/g, ' ')
+          const objectiveId = stringPayload(event.payload.objectiveId)
+          entries.push({
+            ...base,
+            id: `event-route-advisor-${event.droneId}-${String(event.payload.tacticalAction ?? 'route')}-${event.tick}`,
+            source: 'ROUTE ADVISOR',
+            priority: 'advisory',
+            category: 'operator_task',
+            message: `${droneLabel} Route Advisor decision support: ${tacticalAction}${objectiveId ? ` for objective ${objectiveId}` : ''}.`,
+          })
+          break
+        }
         entries.push({
           ...base,
           id: `event-operator-${event.droneId}-${String(event.payload.command ?? 'command')}-${event.tick}`,
@@ -200,6 +213,7 @@ function derivedEventEntries(input: MissionStatusFeedInput): DispatchFeedEntry[]
           message: `${droneLabel} received operator command: ${String(event.payload.command ?? 'route update').replace(/_/g, ' ')}.`,
         })
         break
+      }
       default:
         break
     }
@@ -296,4 +310,3 @@ function priorityForRtbReason(reason: string): DispatchPriority {
   if (reason.includes('battery')) return 'urgent'
   return 'advisory'
 }
-
