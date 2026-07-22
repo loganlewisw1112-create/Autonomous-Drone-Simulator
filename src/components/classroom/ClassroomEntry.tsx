@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import App from '@/App'
 import { useClassroomStore } from '@/classroom/classroomStore'
@@ -34,10 +35,32 @@ export function ClassroomEntry({ mode, initialClassId }: { mode: 'student' | 'in
 }
 
 function StudentLive() {
-  const { classId, beingFocused } = useClassroomStore(useShallow((s) => ({ classId: s.classId, beingFocused: s.beingFocused })))
+  const { classId, beingFocused, takeoverNotice, clearTakeover } = useClassroomStore(useShallow((s) => ({
+    classId: s.classId,
+    beingFocused: s.beingFocused,
+    takeoverNotice: s.takeoverNotice,
+    clearTakeover: s.clearTakeover,
+  })))
+
+  useEffect(() => {
+    if (!takeoverNotice) return
+    const remainingMs = Math.max(3_000, takeoverNotice.expiresAt - Date.now())
+    const timer = window.setTimeout(() => clearTakeover(takeoverNotice.commandId), remainingMs)
+    return () => window.clearTimeout(timer)
+  }, [clearTakeover, takeoverNotice])
+
   return (
     <>
-      <div className="cls-banner">CLASS {classId} · streaming{beingFocused ? ' · instructor watching' : ''}</div>
+      <div
+        className={`cls-banner${takeoverNotice ? ' cls-takeover-banner' : ''}`}
+        role={takeoverNotice ? 'alert' : undefined}
+        aria-live="assertive"
+      >
+        CLASS {classId} · streaming
+        {takeoverNotice
+          ? ` · ● INSTRUCTOR CONTROL — "${takeoverNotice.label}" · ${takeoverNotice.actorId}`
+          : beingFocused ? ' · instructor watching' : ''}
+      </div>
       <App />
       <MissionScorecard />
     </>

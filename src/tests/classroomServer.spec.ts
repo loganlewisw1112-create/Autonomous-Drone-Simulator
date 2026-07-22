@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest'
 import { rm, rmdir } from 'node:fs/promises'
 import { MAX_STUDENTS, MAX_CLASSES, MAX_MESSAGE_BYTES, HEARTBEAT_TIMEOUT_MS, CLASS_ID_ALPHABET, CLASS_ID_LENGTH } from '@/classroom/protocol'
 
@@ -59,10 +59,12 @@ class FakeSocket {
 interface ClassRecord {
   classPubKey: string
   config: unknown
-  instructorSock: FakeSocket
+  instructorSock: FakeSocket | null
   instructorToken: string
   focusedStudentId: string | null
   students: Map<string, { sock: FakeSocket; entry: { studentId: string } }>
+  commandTimestamps: number[]
+  cleanupTimer: ReturnType<typeof setTimeout> | null
 }
 
 interface Relay {
@@ -161,6 +163,75 @@ describe('classroom relay routing', () => {
     expect(grid[0]).toEqual({ v: 1, type: 'student.grid', classId: CLASS_ID, from: adaId, sealed: SEALED })
     // Peer students are never a fan-out target; only the instructor can decrypt anyway.
     expect(bo.ofType('student.grid')).toHaveLength(0)
+  })
+
+  it('routes an authenticated sealed command only to its named student', () => {
+    const { instructor, ada, bo, adaId, token } = classroom()
+    relay.handle(instructor, {
+      v: 1,
+      type: 'class.command',
+      classId: CLASS_ID,
+      studentId: adaId,
+      instructorToken: token,
+      sealed: SEALED,
+    })
+
+    expect(ada.last('command')).toEqual({ v: 1, type: 'command', classId: CLASS_ID, sealed: SEALED })
+    expect(bo.ofType('command')).toHaveLength(0)
+    expect(ada.last('command')).not.toHaveProperty('instructorToken')
+    expect(ada.last('command')).not.toHaveProperty('studentId')
+    expect(ada.last('command')).not.toHaveProperty('from')
+  })
+
+  it('rejects commands without the active instructor socket and correct token', () => {
+    const { instructor, ada, bo, adaId, token } = classroom()
+    const attacker = new FakeSocket()
+    const sendCommand = (sock: FakeSocket, instructorToken?: string) => relay.handle(sock, {
+      v: 1,
+      type: 'class.command',
+      classId: CLASS_ID,
+      studentId: adaId,
+      instructorToken,
+      sealed: SEALED,
+    })
+
+    sendCommand(instructor)
+    sendCommand(instructor, 'wrong-token')
+    sendCommand(attacker, token)
+    sendCommand(bo, token)
+    relay.handle(instructor, {
+      v: 1,
+      type: 'class.command',
+      classId: CLASS_ID,
+      studentId: null,
+      instructorToken: token,
+      sealed: SEALED,
+    })
+    expect(ada.ofType('command')).toHaveLength(0)
+    expect(bo.ofType('command')).toHaveLength(0)
+  })
+
+  it('routes acknowledgements only from the authenticated joined student', () => {
+    const { instructor, ada, bo, adaId } = classroom()
+    relay.handle(ada, { v: 1, type: 'student.ack', classId: CLASS_ID, from: 'spoofed-student', sealed: SEALED })
+
+    expect(instructor.last('student.ack')).toEqual({
+      v: 1,
+      type: 'student.ack',
+      classId: CLASS_ID,
+      from: adaId,
+      sealed: SEALED,
+    })
+    expect(bo.ofType('student.ack')).toHaveLength(0)
+
+    relay.handle(ada, { v: 1, type: 'student.leave', classId: CLASS_ID })
+    relay.handle(ada, { v: 1, type: 'student.ack', classId: CLASS_ID, sealed: { iv: 'LATE', ct: 'LATE' } })
+    const acknowledgements = instructor.ofType('student.ack')
+    expect(acknowledgements).toHaveLength(1)
+
+    const lurker = new FakeSocket()
+    relay.handle(lurker, { v: 1, type: 'student.ack', classId: CLASS_ID, sealed: SEALED })
+    expect(instructor.ofType('student.ack')).toHaveLength(1)
   })
 
   it('ignores telemetry from a socket that never joined', () => {
@@ -308,6 +379,45 @@ describe('classroom relay instructor binding', () => {
     expect(relay.classes.has(CLASS_ID)).toBe(true)
     expect(relay.classes.get(CLASS_ID)!.instructorSock).toBe(reconnected)
   })
+
+  it('retains a class through a temporary instructor disconnect and cancels cleanup on token rebind', () => {
+    vi.useFakeTimers()
+    try {
+      const { instructor, ada, token } = classroom()
+      relay.onClose(instructor)
+
+      const cls = relay.classes.get(CLASS_ID)!
+      expect(cls.instructorSock).toBeNull()
+      expect(relay.classes.has(CLASS_ID)).toBe(true)
+      expect(ada.ofType('class.closed')).toHaveLength(0)
+
+      vi.advanceTimersByTime(Number(relay.LIMITS.INSTRUCTOR_RECONNECT_GRACE_MS) - 1)
+      expect(relay.classes.has(CLASS_ID)).toBe(true)
+
+      const reconnected = new FakeSocket()
+      create(reconnected, CLASS_ID, 'IPUB-REBOUND', token)
+      expect(reconnected.ofType('class.ok')).toHaveLength(1)
+      vi.advanceTimersByTime(Number(relay.LIMITS.INSTRUCTOR_RECONNECT_GRACE_MS) + 1)
+      expect(relay.classes.has(CLASS_ID)).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cleans up a disconnected instructor class after the bounded grace period', () => {
+    vi.useFakeTimers()
+    try {
+      const { instructor, ada, bo } = classroom()
+      relay.onClose(instructor)
+
+      vi.advanceTimersByTime(Number(relay.LIMITS.INSTRUCTOR_RECONNECT_GRACE_MS))
+      expect(relay.classes.has(CLASS_ID)).toBe(false)
+      expect(ada.ofType('class.closed')).toHaveLength(1)
+      expect(bo.ofType('class.closed')).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 // ── defect 2: path traversal in the run backup ────────────────────────────────
@@ -322,8 +432,8 @@ describe('classroom relay class id validation', () => {
 
   it('validates the class id on every websocket entry point, not just the two that key the map', () => {
     const types = [
-      'class.create', 'class.focus', 'class.close',
-      'student.join', 'student.grid', 'student.focus', 'student.run', 'student.leave',
+      'class.create', 'class.command', 'class.focus', 'class.close',
+      'student.join', 'student.grid', 'student.focus', 'student.run', 'student.ack', 'student.leave',
     ]
     for (const type of types) {
       const sock = new FakeSocket()
@@ -356,6 +466,43 @@ describe('classroom relay resource limits', () => {
     expect(relay.LIMITS.MAX_CLASSES).toBe(MAX_CLASSES)
     expect(relay.LIMITS.MAX_MESSAGE_BYTES).toBe(MAX_MESSAGE_BYTES)
     expect(relay.LIMITS.HEARTBEAT_TIMEOUT_MS).toBe(HEARTBEAT_TIMEOUT_MS)
+    expect(relay.LIMITS.MAX_COMMANDS_PER_SEC).toBeGreaterThan(0)
+    expect(relay.LIMITS.INSTRUCTOR_RECONNECT_GRACE_MS).toBeGreaterThan(0)
+  })
+
+  it('rate-limits authenticated commands in a deterministic sliding one-second window', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(10_000)
+    try {
+      const { instructor, ada, adaId, token } = classroom()
+      const cap = Number(relay.LIMITS.MAX_COMMANDS_PER_SEC)
+      for (let index = 0; index < cap + 3; index++) {
+        relay.handle(instructor, {
+          v: 1,
+          type: 'class.command',
+          classId: CLASS_ID,
+          studentId: adaId,
+          instructorToken: token,
+          sealed: { iv: `IV-${index}`, ct: `CT-${index}` },
+        })
+      }
+      expect(ada.ofType('command')).toHaveLength(cap)
+      expect(ada.last('command')?.sealed).toEqual({ iv: `IV-${cap - 1}`, ct: `CT-${cap - 1}` })
+
+      vi.advanceTimersByTime(999)
+      relay.handle(instructor, {
+        v: 1, type: 'class.command', classId: CLASS_ID, studentId: adaId, instructorToken: token, sealed: SEALED,
+      })
+      expect(ada.ofType('command')).toHaveLength(cap)
+
+      vi.advanceTimersByTime(1)
+      relay.handle(instructor, {
+        v: 1, type: 'class.command', classId: CLASS_ID, studentId: adaId, instructorToken: token, sealed: SEALED,
+      })
+      expect(ada.ofType('command')).toHaveLength(cap + 1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('caps the number of live classes so one LAN client cannot mint rooms forever', () => {
@@ -387,7 +534,7 @@ describe('classroom relay resource limits', () => {
   it('frees a class slot when a class closes', () => {
     for (let i = 0; i < MAX_CLASSES; i++) create(new FakeSocket(), `CLS00${i}`)
     const first = relay.classes.get('CLS000')!.instructorSock
-    relay.handle(first, { v: 1, type: 'class.close', classId: 'CLS000' })
+    relay.handle(first!, { v: 1, type: 'class.close', classId: 'CLS000' })
 
     const fresh = new FakeSocket()
     create(fresh, 'CLS999')
