@@ -6,8 +6,9 @@ import { generateGridLines } from '@/sim/mission/SARPlanner'
 import { PerfMonitor } from '@/components/PerfMonitor'
 import { MissionStatusFeed } from '@/components/MissionStatusFeed'
 import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
-import { buildConflictFeatures, buildIrFootprintFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
-import { buildAirspaceReservationFeatures, buildExternalTrafficFeatures, buildUtmAirspaceState } from '@/sim/demo/utmEngine'
+import { buildAirspaceCeilingFeatures, buildConflictFeatures, buildIrFootprintFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
+import { airspaceCeilingCaption, airspaceForScenario } from '@/sim/mission/airspace'
+import { buildAirspaceReservationFeatures, buildExternalTrafficFeatures, buildUtmAirspaceState, utmAirspaceStateEquals } from '@/sim/demo/utmEngine'
 import { useDeviceMode, type DeviceMode } from '@/hooks/useDeviceMode'
 import { buildAppendedWaypoint, canAppend, routeWithoutWaypoint } from '@/components/mapRouteEditing'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/components/designer/designerValidation'
@@ -196,6 +197,10 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     })),
   )
 
+  // WP-3: provenance line for the published FAA ceiling grid. `undefined` for the 11 scenarios
+  // the FAA publishes no facility map over — those render and behave exactly as before.
+  const ceilingCaption = airspaceCeilingCaption(airspaceForScenario(scenario?.id))
+
   // Tap-to-place is a mobile-only affordance layered over the shared setDroneRoute
   // path; desktop route editing keeps its existing drag-only behavior (LAW.1).
   const touchEditing = deviceMode !== 'desktop' && ui.routeEditMode
@@ -232,11 +237,17 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     const id = setInterval(() => {
       // UTM recompute at the same 10fps cadence, reading elapsedSec straight from the store
       // (not a subscribed prop) so this interval doesn't need to depend on it.
-      setUtmState(buildUtmAirspaceState({
-        scenario: latestScenarioRef.current,
-        drones: latestDronesRef.current,
-        elapsedSec: useDroneStore.getState().elapsedSec,
-      }))
+      // Keep the previous object when nothing actually changed: the recompute is value-stable
+      // almost every tick, and handing React a fresh identity re-rendered this whole component
+      // at 10 Hz from mount to unmount, scenario or not.
+      setUtmState((prev) => {
+        const next = buildUtmAirspaceState({
+          scenario: latestScenarioRef.current,
+          drones: latestDronesRef.current,
+          elapsedSec: useDroneStore.getState().elapsedSec,
+        })
+        return utmAirspaceStateEquals(prev, next) ? prev : next
+      })
 
       const map = mapRef.current
       if (!map || !mapStyleLoadedRef.current) return
@@ -607,6 +618,34 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       // NOTE: the static yellow waypoint dots were removed — they duplicated the
       // faint route backbone below and the numbered draggable per-drone nodes
       // (route-edit-marker). Only the dashed backbone line is kept for context.
+
+      // REALISM_ROADMAP WP-3 — the real published FAA ceiling grid, under everything else.
+      //
+      // Drawn first so the scenario's own no-fly / restricted geofences stay legible on top:
+      // these two surfaces mean different things and must not be confused. The geofences are
+      // the *scenario's* simulated constraints; this grid is the FAA's published maximum
+      // altitude for automatic Part 107 authorisation, real data frozen at authoring time.
+      // Colour ramps by ceiling (red at 0ft → green at 400ft) and the edition date rides in
+      // each feature's label so a stale fixture is visible, per WP-3's accept criterion.
+      const ceilingFeatures = buildAirspaceCeilingFeatures(airspaceForScenario(scenario.id))
+      if (ceilingFeatures.length > 0) {
+        map.addSource('uasfm-ceilings', { type: 'geojson', data: { type: 'FeatureCollection', features: ceilingFeatures } })
+        map.addLayer({
+          id: 'uasfm-ceiling-fill',
+          type: 'fill',
+          source: 'uasfm-ceilings',
+          paint: {
+            'fill-color': ['interpolate', ['linear'], ['get', 'ceilingFt'], 0, '#ff4444', 200, '#ffaa00', 400, '#44ff88'],
+            'fill-opacity': 0.1,
+          },
+        })
+        map.addLayer({
+          id: 'uasfm-ceiling-outline',
+          type: 'line',
+          source: 'uasfm-ceilings',
+          paint: { 'line-color': '#8899aa', 'line-width': 0.6, 'line-opacity': 0.45 },
+        })
+      }
 
       const routeCoords = scenario.waypoints.map((wp) => [wp.position.lng, wp.position.lat])
       if (routeCoords.length > 1) {
@@ -1297,21 +1336,36 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         </div>
       )}
 
-      {/* Airspace zone legend — matches geofence layer styling */}
-      {scenario && scenario.geofences.length > 0 && (
+      {/* Airspace zone legend — matches geofence layer styling.
+          WP-3 adds the published-ceiling row to this same legend rather than a fourth stacked
+          badge: the map's bottom-left column is already SIMULATION MODE / zone legend, and
+          mapBadgeInsets has no free tier. It also belongs here — this IS the airspace legend.
+          The MAP_EFF edition date is on-screen because §WP-3's accept criterion is that a stale
+          fixture must be *visible* rather than silently wrong, and the REAL DATA / SIM AUTH
+          wording keeps §17's distinction intact where an operator will actually read it. */}
+      {scenario && (scenario.geofences.length > 0 || ceilingCaption) && (
         <div
           data-testid="zone-legend"
           style={{
             position: 'absolute', bottom: badgeInset.bottomRaised, left: 8,
-            display: 'flex', gap: 10, alignItems: 'center',
+            display: 'flex', flexDirection: 'column', gap: 2,
             fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.05em',
             color: 'var(--text-dim)', background: 'var(--bg-panel)',
             padding: '3px 8px', borderRadius: 'var(--radius-sm)', pointerEvents: 'none',
           }}
         >
-          <span><span style={{ color: '#ff4444' }}>▬</span> NO-FLY</span>
-          <span><span style={{ color: '#ffaa00' }}>┅</span> RESTRICTED ≤ALT</span>
-          <span><span style={{ color: '#44ff88' }}>┅</span> AUTHORIZED BYPASS</span>
+          {scenario.geofences.length > 0 && (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <span><span style={{ color: '#ff4444' }}>▬</span> NO-FLY</span>
+              <span><span style={{ color: '#ffaa00' }}>┅</span> RESTRICTED ≤ALT</span>
+              <span><span style={{ color: '#44ff88' }}>┅</span> AUTHORIZED BYPASS</span>
+            </div>
+          )}
+          {ceilingCaption && (
+            <div data-testid="uasfm-ceiling-legend">
+              FAA UASFM CEILINGS — {ceilingCaption.toUpperCase()} · REAL DATA, SIM AUTH
+            </div>
+          )}
         </div>
       )}
 

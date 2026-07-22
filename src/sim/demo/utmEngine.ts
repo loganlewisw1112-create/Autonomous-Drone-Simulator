@@ -40,6 +40,51 @@ export function buildUtmAirspaceState(input: BuildUtmAirspaceStateInput): UTMAir
   }
 }
 
+/**
+ * Value-equality for two UTM states.
+ *
+ * `buildUtmAirspaceState` is recomputed on a 10 Hz interval, but `externalTracks` and
+ * `reservations` are pure functions of the scenario and `conflicts` only changes when a drone
+ * moves near a track — so the overwhelmingly common result is a value-identical object with a
+ * fresh identity. Feeding that straight into `setState` re-rendered the whole map component ten
+ * times a second forever, including while idle with no scenario loaded. Callers compare first and
+ * keep the previous reference so React can bail out of the render.
+ */
+export function utmAirspaceStateEquals(a: UTMAirspaceState, b: UTMAirspaceState): boolean {
+  if (a === b) return true
+  if (a.coordinationMode !== b.coordinationMode) return false
+
+  if (a.externalTracks.length !== b.externalTracks.length) return false
+  for (let i = 0; i < a.externalTracks.length; i++) {
+    const x = a.externalTracks[i]
+    const y = b.externalTracks[i]
+    // Position is included because tracks are placed relative to scenario.startPosition, so two
+    // scenarios can otherwise yield same-id tracks that are nowhere near each other.
+    if (x.id !== y.id || x.altitudeFt !== y.altitudeFt || x.headingDeg !== y.headingDeg
+      || x.position.lat !== y.position.lat || x.position.lng !== y.position.lng) return false
+  }
+
+  if (a.reservations.length !== b.reservations.length) return false
+  for (let i = 0; i < a.reservations.length; i++) {
+    const x = a.reservations[i]
+    const y = b.reservations[i]
+    if (x.id !== y.id || x.status !== y.status
+      || x.altitudeFloorFt !== y.altitudeFloorFt || x.altitudeCeilingFt !== y.altitudeCeilingFt
+      || x.polygon.length !== y.polygon.length) return false
+  }
+
+  if (a.conflicts.length !== b.conflicts.length) return false
+  for (let i = 0; i < a.conflicts.length; i++) {
+    const x = a.conflicts[i]
+    const y = b.conflicts[i]
+    if (x.id !== y.id || x.severity !== y.severity
+      || x.horizontalSeparationM !== y.horizontalSeparationM
+      || x.verticalSeparationFt !== y.verticalSeparationFt) return false
+  }
+
+  return true
+}
+
 export function buildExternalTrafficFeatures(tracks: ExternalTrafficTrack[]): PointFeature[] {
   return tracks.map((track) => ({
     type: 'Feature',
