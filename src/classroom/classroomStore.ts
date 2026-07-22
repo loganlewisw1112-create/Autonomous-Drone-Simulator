@@ -21,6 +21,17 @@ export interface ClassRunResult {
   receivedAt: number
 }
 
+// Aggregate integrity signal for the instructor. Every decrypt site used to swallow
+// its exception into an empty catch, which made a key mismatch, a hijacked room and a
+// tampered frame all look exactly like "the wifi dropped" — the one failure mode an
+// E2EE product cannot afford to render as silence. Counters, not per-frame logs: at
+// 1 Hz × 40 students a broken key would otherwise bury the console.
+export interface IntegrityCounters {
+  decryptFailures: number // ciphertext that would not open under this student's session key
+  replayRejects: number // opened fine, but repeated or rewound its sealed seq
+  lastAt: number | null
+}
+
 interface ClassroomStore {
   role: ClassroomRole
   status: ClassroomStatus
@@ -34,6 +45,7 @@ interface ClassroomStore {
   focusedStudentId: StudentId | null
   focusFrame: FullMissionFrame | null
   runs: ClassRunResult[]
+  integrity: IntegrityCounters
 
   // Student view
   studentId: StudentId | null
@@ -49,6 +61,7 @@ interface ClassroomStore {
   setFocusFrame: (frame: FullMissionFrame | null) => void
   setBeingFocused: (focused: boolean) => void
   addRun: (run: ClassRunResult) => void
+  noteIntegrityFailure: (kind: 'decrypt' | 'replay') => void
   reset: () => void
 }
 
@@ -63,6 +76,7 @@ const initial = {
   focusedStudentId: null,
   focusFrame: null,
   runs: [] as ClassRunResult[],
+  integrity: { decryptFailures: 0, replayRejects: 0, lastAt: null } as IntegrityCounters,
   studentId: null,
   beingFocused: false,
 }
@@ -109,7 +123,18 @@ export const useClassroomStore = create<ClassroomStore>((set) => ({
 
   addRun: (run) => set((s) => ({
     // Keep only the newest submission per student — a re-flight supersedes the prior run.
+    // Safe only because classroomClient rejects a replayed seq before calling this; an
+    // attacker re-injecting a captured student.run would otherwise overwrite a newer one.
     runs: [...s.runs.filter((r) => r.studentId !== run.studentId), run],
+  })),
+
+  // Replace the object rather than mutating it — `initial` is shared across reset()s.
+  noteIntegrityFailure: (kind) => set((s) => ({
+    integrity: {
+      decryptFailures: s.integrity.decryptFailures + (kind === 'decrypt' ? 1 : 0),
+      replayRejects: s.integrity.replayRejects + (kind === 'replay' ? 1 : 0),
+      lastAt: Date.now(),
+    },
   })),
 
   reset: () => set({ ...initial }),
