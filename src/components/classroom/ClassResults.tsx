@@ -6,6 +6,10 @@ import { useClassroomStore, type ClassRunResult } from '@/classroom/classroomSto
 const COLUMNS: Array<{ key: string; label: string; get: (r: ClassRunResult) => string | number }> = [
   { key: 'student', label: 'Student', get: (r) => r.displayName },
   { key: 'outcome', label: 'Outcome', get: (r) => outcome(r) },
+  { key: 'score', label: 'Score', get: (r) => r.assessment.total },
+  { key: 'band', label: 'Band', get: (r) => r.assessment.band },
+  { key: 'progress', label: 'Progress%', get: (r) => Math.round(r.assessment.progressPercent) },
+  { key: 'lifeSafety', label: 'Safety', get: (r) => r.assessment.lifeSafety.status },
   { key: 'durationSec', label: 'Dur(s)', get: (r) => r.summary.durationSec },
   { key: 'waypointsReached', label: 'WP', get: (r) => r.summary.metrics.waypointsReached },
   { key: 'conflictsDetected', label: 'Conflicts', get: (r) => r.summary.metrics.conflictsDetected },
