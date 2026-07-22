@@ -13,6 +13,7 @@ import { cumulativePod, probabilityOfDetection } from '@/sim/sensors/sweepWidth'
 import { platformTaskRanges } from '@/sim/sensors/thermalRange'
 import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import { haversineDistanceM } from '@/utils/geometry'
+import { recoverySiteForDrone } from '@/sim/mission/siteAssignments'
 import type {
   DispatchFeedEntry,
   DispatchPriority,
@@ -668,7 +669,7 @@ function firstScenarioCue(scenario: ScenarioConfig): LatLng {
 
 function recoveryPosition(scenario: ScenarioConfig, droneId: string): LatLng {
   const recharge = rechargeStationsForDrone(scenario, droneId)
-  return scenario.recoverySites?.[droneId]?.position
+  return recoverySiteForDrone(scenario, droneId)?.position
     ?? recharge[recharge.length - 1]?.position
     ?? scenario.startPosition
 }

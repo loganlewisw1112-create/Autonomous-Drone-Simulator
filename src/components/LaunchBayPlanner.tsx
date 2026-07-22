@@ -1,233 +1,283 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
-import { buildAutoAssignments, buildDroneIds, computeBayStatuses, computeBlockers } from '@/sim/mission/launchBayPlanning'
-import type { LaunchBayPlan, LaunchBayStatus, LaunchRecoverySite } from '@/types'
+import { buildAutoLaunchDoctrinePlan, buildLaunchBayPlan } from '@/sim/mission/launchDoctrine'
+import { buildLaunchSlotsForPlan } from '@/sim/mission/launchPlanGeometry'
+import type {
+  LaunchBayPlan,
+  LaunchBayStatus,
+  LaunchDoctrineCandidate,
+  LaunchDoctrineRejectCode,
+  LaunchRecoverySite,
+  ScenarioConfig,
+} from '@/types'
+
+const REJECTION_LABELS: Record<LaunchDoctrineRejectCode, string> = {
+  missing_route: 'mission route is missing',
+  missing_recovery: 'recovery site is missing',
+  unreachable: 'round trip falls below battery reserve',
+  launch_geofence: 'launch point breaches an active geofence',
+  climbout_geofence: 'climb-out corridor breaches an active geofence',
+  weather_exposure: 'weather exposure exceeds site limits',
+  capacity: 'site capacity is exceeded',
+  pad_footprint: 'pad footprint cannot maintain launch separation',
+}
 
 export function LaunchBayPlanner() {
-  const { scenario, ui, weatherState, setLaunchPlan, setShowLaunchBay } = useDroneStore(
-    useShallow((s) => ({
-      scenario: s.scenario, ui: s.ui, weatherState: s.weatherState,
-      setLaunchPlan: s.setLaunchPlan, setShowLaunchBay: s.setShowLaunchBay,
+  const { scenario, ui, weatherState, launchPlan, droneWaypoints, applyParkedLaunchPlan, setShowLaunchBay } = useDroneStore(
+    useShallow((state) => ({
+      scenario: state.scenario,
+      ui: state.ui,
+      weatherState: state.weatherState,
+      launchPlan: state.launchPlan,
+      droneWaypoints: state.droneWaypoints,
+      applyParkedLaunchPlan: state.applyParkedLaunchPlan,
+      setShowLaunchBay: state.setShowLaunchBay,
     })),
   )
 
-  const launchSites: Record<string, LaunchRecoverySite> = scenario?.launchSites ?? {}
-  const siteEntries = Object.entries(launchSites)
-  // Memoized so identity is stable across renders when scenario doesn't change — otherwise
-  // this fresh array recreated every render defeats the bayStatuses/blockers memos below.
-  const droneIds = useMemo(
-    () => (scenario ? buildDroneIds(scenario) : []),
-    [scenario],
-  )
+  const [assignments, setAssignments] = useState<Record<string, string>>({})
+  const [applyError, setApplyError] = useState<string | null>(null)
 
-  // Assignments state: droneId → siteId (string key like 'site-0')
-  const [assignments, setAssignments] = useState<Record<string, string>>(() => {
-    const rec: Record<string, string> = {}
-    droneIds.forEach((id) => {
-      if (launchSites[id]) rec[id] = id  // use droneId as siteId when 1:1
-    })
-    return rec
-  })
-
-  // This modal stays mounted across scenario swaps (only hidden via the ui.showLaunchBay/
-  // scenario guard below), so without this the assignments above go stale — leftover droneId
-  // keys from the previous mission's launch sites. Re-seed whenever the loaded scenario changes.
   useEffect(() => {
-    const rec: Record<string, string> = {}
-    droneIds.forEach((id) => {
-      if (launchSites[id]) rec[id] = id
-    })
-    setAssignments(rec)
-    // Intentionally keyed on scenario.id only — droneIds/launchSites are derived from
-    // scenario and are already current by the time this effect runs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenario?.id])
+    if (!ui.showLaunchBay || !scenario) return
+    setAssignments(seedAssignments(scenario, launchPlan))
+    setApplyError(null)
+  }, [launchPlan, scenario, ui.showLaunchBay])
 
-  const bayStatuses: LaunchBayStatus[] = useMemo(
-    () => (scenario ? computeBayStatuses(scenario, weatherState, assignments, droneIds) : []),
-    [scenario, assignments, droneIds, weatherState],
+  const plan = useMemo(
+    () => (scenario ? buildLaunchBayPlan(scenario, weatherState, assignments) : null),
+    [assignments, scenario, weatherState],
   )
+  const launchSites = useMemo(() => canonicalSites(scenario?.launchSites), [scenario])
+  const droneIds = useMemo(() => Object.keys(plan?.candidatesByDrone ?? {}).sort(), [plan])
 
-  const blockers: string[] = useMemo(
-    () => computeBlockers(droneIds, assignments, bayStatuses),
-    [droneIds, assignments, bayStatuses],
-  )
-
-  const readyToLaunch = blockers.length === 0
-
-  if (!ui.showLaunchBay || !scenario) return null
+  if (!ui.showLaunchBay || !scenario || !plan) return null
 
   function handleAssign(droneId: string, siteId: string) {
-    setAssignments((prev) => ({ ...prev, [droneId]: siteId }))
+    setApplyError(null)
+    setAssignments((current) => {
+      if (!siteId) {
+        const next = { ...current }
+        delete next[droneId]
+        return next
+      }
+      return { ...current, [droneId]: siteId }
+    })
   }
 
   function handleAutoAssign() {
-    if (scenario) setAssignments(buildAutoAssignments(scenario))
+    if (!scenario) return
+    setApplyError(null)
+    setAssignments(buildAutoLaunchDoctrinePlan(scenario, weatherState).assignments)
   }
 
   function handleConfirm() {
-    const plan: LaunchBayPlan = { assignments, bayStatuses, readyToLaunch, blockers }
-    setLaunchPlan(plan)
-    setShowLaunchBay(false)
+    if (!scenario || !plan) return
+    const placements = buildLaunchSlotsForPlan(scenario, plan, droneWaypoints)
+    if (applyParkedLaunchPlan(plan, placements)) {
+      setApplyError(null)
+      setShowLaunchBay(false)
+    } else {
+      setApplyError('Launch plan could not be applied. Confirm the fleet is parked and try again.')
+    }
   }
 
-  function handleCancel() {
-    setShowLaunchBay(false)
-  }
-
-  const siteOptions = siteEntries.length > 0
-    ? siteEntries
-    : [['default', null]] as [string, null][]
+  const assignedCount = Object.keys(plan.assignmentDetails ?? {}).length
+  const usedSiteCount = new Set(Object.values(assignments)).size
 
   return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && handleCancel()}>
-      {/* Inline min/max width is the desktop sizing (frozen). On mobile the
-          launch-bay-modal class neutralizes the 480px floor so the modal fits a
-          phone viewport instead of overflowing off-screen. */}
-      <div className="modal launch-bay-modal" style={{ maxWidth: 640, minWidth: 480 }}>
-        <div className="modal-title">⬡ Launch Bay Planning</div>
-
-        {/* Weather summary */}
-        {weatherState.activeHazards.length > 0 && (
-          <div style={{
-            marginBottom: 12, padding: '6px 10px',
-            background: 'rgba(255,170,0,0.08)', border: '1px solid #ffaa0044',
-            borderRadius: 4, fontSize: 10, fontFamily: 'var(--font-mono)',
-            color: 'var(--accent-yellow)',
-          }}>
-            ⚠ WEATHER: {weatherState.activeHazards.join(', ')} ·
-            {' '}wind {weatherState.windKts}kt gusts {weatherState.gustKts}kt ·
-            {' '}vis {weatherState.visibilityMi}mi ·
-            {' '}ceil {weatherState.ceilingFt}ft
+    <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && setShowLaunchBay(false)}>
+      <div
+        className="modal launch-bay-modal launch-doctrine-planner"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="launch-doctrine-title"
+      >
+        <header className="launch-doctrine-header">
+          <div>
+            <div className="modal-title" id="launch-doctrine-title">⬡ Launch Doctrine Brief</div>
+            <p>Assign each aircraft from a reachable, legal, weather-safe site.</p>
           </div>
-        )}
+          <div className="launch-doctrine-coverage" aria-label="Launch plan coverage">
+            <strong>{assignedCount}/{droneIds.length}</strong> AIRCRAFT
+            <span>{usedSiteCount}/{Object.keys(launchSites).length} SITES USED</span>
+          </div>
+        </header>
 
-        {/* Bay capacity overview */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 6, marginBottom: 16 }}>
-          {bayStatuses.map((bay) => {
-            const site = launchSites[bay.siteId]
-            const statusColor = bay.weatherClosed ? 'var(--accent-red)' : bay.assignedDroneIds.length >= bay.capacityDrones ? 'var(--accent-yellow)' : 'var(--accent-green)'
-            return (
-              <div key={bay.siteId} style={{
-                padding: '6px 8px', background: 'var(--bg-input)',
-                borderRadius: 4, border: `1px solid ${statusColor}44`,
-                fontSize: 10, fontFamily: 'var(--font-mono)',
-              }}>
-                <div style={{ color: statusColor, fontWeight: 700, marginBottom: 2 }}>
-                  {bay.weatherClosed ? '✗ CLOSED' : `${bay.assignedDroneIds.length}/${bay.capacityDrones} SLOTS`}
-                </div>
-                <div style={{ color: 'var(--text-secondary)' }}>{site?.label ?? bay.siteId}</div>
-                <div style={{ color: 'var(--text-dim)', fontSize: 9 }}>{site?.agency}</div>
-                {bay.closureReason && (
-                  <div style={{ color: 'var(--accent-red)', fontSize: 9, marginTop: 2 }}>{bay.closureReason}</div>
-                )}
-              </div>
-            )
-          })}
+        <div className="launch-doctrine-weather" data-hazards={weatherState.activeHazards.length > 0 ? 'active' : 'clear'}>
+          <strong>{weatherState.activeHazards.length > 0 ? '⚠ CURRENT CONDITIONS' : '✓ CURRENT CONDITIONS'}</strong>
+          <span>{weatherState.activeHazards.join(', ') || 'clear'}</span>
+          <span>wind {weatherState.windKts}kt · gusts {weatherState.gustKts}kt · ceiling {weatherState.ceilingFt}ft</span>
         </div>
 
-        {/* Per-drone assignment table */}
-        <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)', marginBottom: 6, letterSpacing: '0.08em' }}>
-          DRONE ASSIGNMENTS
-        </div>
-        <div style={{ display: 'grid', gap: 4, marginBottom: 12 }}>
-          {droneIds.map((droneId) => {
-            const assigned = assignments[droneId]
-            const site = launchSites[droneId]
-            const brief = scenario.droneRouteBriefs?.[droneId]
-            return (
-              <div key={droneId} style={{
-                display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 8,
-                alignItems: 'center', padding: '4px 8px',
-                background: 'var(--bg-input)', borderRadius: 4,
-                border: assigned ? '1px solid #44ff8833' : '1px solid #ff444433',
-              }}>
-                <span style={{ color: 'var(--accent-yellow)', fontWeight: 700 }}>
-                  {droneId.toUpperCase()}
-                </span>
-                <div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: 9 }}>
-                    {brief?.role ?? 'Mission support'}
-                  </div>
-                  {site && (
-                    <div style={{ color: 'var(--text-dim)', fontSize: 8 }}>
-                      Rec: {site.label.slice(0, 40)}
-                    </div>
-                  )}
-                </div>
-                <select
-                  value={assigned ?? ''}
-                  onChange={(e) => handleAssign(droneId, e.target.value)}
-                  style={{
-                    background: 'var(--bg-panel)', color: 'var(--text-primary)',
-                    border: '1px solid var(--border-color)', borderRadius: 3,
-                    fontFamily: 'var(--font-mono)', fontSize: 9,
-                    padding: '2px 4px', cursor: 'pointer',
-                  }}
-                >
-                  <option value="">— Unassigned —</option>
-                  {siteOptions.map(([siteId]) => {
-                    const s = launchSites[siteId]
-                    return (
-                      <option key={siteId} value={siteId}>
-                        {s ? `${s.agency} — ${s.kind}` : siteId}
-                      </option>
-                    )
-                  })}
-                </select>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Blockers */}
-        {blockers.length > 0 && (
-          <div style={{
-            marginBottom: 12, padding: '6px 10px',
-            background: 'rgba(255,68,68,0.08)', border: '1px solid #ff444444',
-            borderRadius: 4,
-          }}>
-            <div style={{ fontSize: 10, color: 'var(--accent-red)', fontFamily: 'var(--font-mono)', marginBottom: 4 }}>
-              LAUNCH BLOCKED
-            </div>
-            {blockers.map((b, i) => (
-              <div key={i} style={{ fontSize: 9, color: 'var(--accent-red)', fontFamily: 'var(--font-mono)' }}>
-                • {b}
-              </div>
+        <section className="launch-doctrine-sites" aria-labelledby="launch-sites-heading">
+          <h2 id="launch-sites-heading">SITE AVAILABILITY</h2>
+          <div className="launch-doctrine-site-grid">
+            {plan.bayStatuses.map((status) => (
+              <SiteStatusCard key={status.siteId} status={status} site={launchSites[status.siteId]} />
             ))}
           </div>
-        )}
+        </section>
 
-        {readyToLaunch && (
-          <div style={{
-            marginBottom: 12, padding: '6px 10px',
-            background: 'rgba(68,255,136,0.08)', border: '1px solid #44ff8844',
-            borderRadius: 4, fontSize: 10, color: 'var(--accent-green)', fontFamily: 'var(--font-mono)',
-          }}>
-            ✓ All bays assigned and within capacity — ready to launch
+        <section className="launch-doctrine-assignments" aria-labelledby="launch-assignments-heading">
+          <h2 id="launch-assignments-heading">AIRCRAFT ASSIGNMENTS</h2>
+          <div className="launch-doctrine-assignment-list">
+            {droneIds.map((droneId) => {
+              const candidates = plan.candidatesByDrone?.[droneId] ?? []
+              const assignedSiteId = assignments[droneId] ?? ''
+              const assigned = candidates.find((candidate) => candidate.siteId === assignedSiteId)
+              const detail = plan.assignmentDetails?.[droneId] ?? assigned
+              const rejected = plan.rejectedByDrone?.[droneId] ?? []
+              const brief = scenario.droneRouteBriefs?.[droneId]
+
+              return (
+                <article className="launch-doctrine-assignment" key={droneId} data-drone-id={droneId}>
+                  <div className="launch-doctrine-assignment-heading">
+                    <div>
+                      <strong>{droneId.toUpperCase()}</strong>
+                      <span>{brief?.role ?? scenario.perDroneMissionRoles?.[droneId] ?? 'Mission support'}</span>
+                    </div>
+                    <label htmlFor={`launch-site-${droneId}`}>LAUNCH SITE</label>
+                    <select
+                      id={`launch-site-${droneId}`}
+                      value={assignedSiteId}
+                      onChange={(event) => handleAssign(droneId, event.target.value)}
+                    >
+                      <option value="">— Unassigned —</option>
+                      {candidates.map((candidate) => {
+                        const site = launchSites[candidate.siteId]
+                        return (
+                          <option
+                            key={candidate.siteId}
+                            value={candidate.siteId}
+                            disabled={candidate.rejectedBy.length > 0 && candidate.siteId !== assignedSiteId}
+                          >
+                            {optionLabel(site, candidate)}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+
+                  {detail ? (
+                    <CandidateBrief candidate={detail} site={launchSites[detail.siteId]} />
+                  ) : (
+                    <p className="launch-doctrine-empty">No site selected. Choose an eligible launch site or run Auto-Assign.</p>
+                  )}
+
+                  {rejected.length > 0 && (
+                    <details className="launch-doctrine-rejections">
+                      <summary>{rejected.length} REJECTED {rejected.length === 1 ? 'SITE' : 'SITES'} — SHOW REASONS</summary>
+                      <ul>
+                        {rejected.map((candidate) => (
+                          <li key={candidate.siteId} data-site-id={candidate.siteId}>
+                            <strong>{launchSites[candidate.siteId]?.label ?? candidate.siteId}</strong>
+                            <span>{candidate.rejectedBy.map((reason) => REJECTION_LABELS[reason]).join(' · ')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </article>
+              )
+            })}
           </div>
+        </section>
+
+        {plan.blockers.length > 0 ? (
+          <section className="launch-doctrine-blockers" aria-labelledby="launch-blockers-heading">
+            <h2 id="launch-blockers-heading">LAUNCH BLOCKED</h2>
+            <ul>{plan.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
+          </section>
+        ) : (
+          <div className="launch-doctrine-ready" role="status">✓ Doctrine checks passed — ready to confirm</div>
         )}
 
-        <div style={{ padding: '6px 10px', background: 'var(--bg-input)', borderRadius: 4, fontSize: 10, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', marginBottom: 12 }}>
-          ⚠ SIMULATION ONLY — Not for operational deployment. Bay assignments are simulated.
-        </div>
+        {applyError && <div className="launch-doctrine-apply-error" role="alert">{applyError}</div>}
 
-        <div className="launch-bay-actions" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button className="btn" onClick={handleAutoAssign} style={{ marginRight: 'auto' }}>
-            ⚡ Auto-Assign
-          </button>
-          <button className="btn" onClick={handleCancel}>Cancel</button>
+        <div className="launch-doctrine-disclaimer">⚠ SIMULATION ONLY — Not for operational deployment.</div>
+
+        <footer className="launch-bay-actions">
+          <button className="btn" onClick={handleAutoAssign}>⚡ Auto-Assign</button>
+          <button className="btn" onClick={() => setShowLaunchBay(false)}>Cancel</button>
           <button
             className="btn primary"
             onClick={handleConfirm}
-            disabled={!readyToLaunch}
-            title={!readyToLaunch ? blockers[0] : undefined}
+            disabled={!plan.readyToLaunch}
+            title={!plan.readyToLaunch ? plan.blockers[0] : undefined}
           >
             ✓ Confirm Launch Plan
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   )
+}
+
+function SiteStatusCard({ status, site }: { status: LaunchBayStatus; site?: LaunchRecoverySite }) {
+  const capacity = status.effectiveCapacityDrones ?? status.capacityDrones
+  const remaining = Math.max(0, capacity - status.assignedDroneIds.length)
+  const availability = status.weatherClosed ? 'closed' : remaining <= 1 ? 'limited' : 'open'
+  return (
+    <article className={`launch-doctrine-site site-${availability}`} data-availability={availability}>
+      <div>
+        <strong>{availability.toUpperCase()}</strong>
+        <span>{status.assignedDroneIds.length}/{capacity} SLOTS</span>
+      </div>
+      <h3>{site?.label ?? status.siteId}</h3>
+      <p>{site?.agency ?? 'UAS operations'} · {(status.exposure ?? site?.exposure ?? 'semi').toUpperCase()} EXPOSURE</p>
+      {status.closureReason && <small>{status.closureReason}</small>}
+    </article>
+  )
+}
+
+function CandidateBrief({ candidate, site }: { candidate: LaunchDoctrineCandidate; site?: LaunchRecoverySite }) {
+  const rejected = candidate.rejectedBy.length > 0
+  return (
+    <div className={`launch-doctrine-candidate${rejected ? ' candidate-rejected' : ''}`}>
+      <dl>
+        <div><dt>TO TASK</dt><dd>{formatDistance(candidate.firstTaskDistanceM)}</dd></div>
+        <div><dt>TRANSIT</dt><dd>{formatDuration(candidate.transitSec)}</dd></div>
+        <div><dt>ROUND TRIP</dt><dd>{formatDistance(candidate.routeDistanceM)}</dd></div>
+        <div><dt>RESERVE</dt><dd>{candidate.reserveMarginPct.toFixed(1)}%</dd></div>
+        <div><dt>EXPOSURE</dt><dd>{(site?.exposure ?? 'semi').toUpperCase()}</dd></div>
+      </dl>
+      <p>{candidate.rationale}</p>
+      {rejected && (
+        <div className="launch-doctrine-candidate-reasons">
+          {candidate.rejectedBy.map((reason) => REJECTION_LABELS[reason]).join(' · ')}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function seedAssignments(scenario: ScenarioConfig, existing: LaunchBayPlan | null): Record<string, string> {
+  if (existing?.assignments && Object.keys(existing.assignments).length > 0) return { ...existing.assignments }
+  if (scenario.defaultLaunchAssignments) return { ...scenario.defaultLaunchAssignments }
+  return Object.fromEntries(Object.entries(scenario.launchSites ?? {})
+    .filter(([recordKey]) => /^uav-\d+$/.test(recordKey))
+    .map(([recordKey, site]) => [recordKey, site.id ?? recordKey]))
+}
+
+function canonicalSites(sites: Record<string, LaunchRecoverySite> | undefined): Record<string, LaunchRecoverySite> {
+  return Object.fromEntries(Object.entries(sites ?? {}).map(([recordKey, site]) => [site.id ?? recordKey, site]))
+}
+
+function optionLabel(site: LaunchRecoverySite | undefined, candidate: LaunchDoctrineCandidate): string {
+  const label = site?.label ?? candidate.siteId
+  const exposure = (site?.exposure ?? 'semi').toUpperCase()
+  const transit = formatDuration(candidate.transitSec)
+  return candidate.rejectedBy.length > 0
+    ? `${label} — REJECTED: ${candidate.rejectedBy.map((reason) => REJECTION_LABELS[reason]).join(', ')}`
+    : `${label} — ${transit} · ${candidate.reserveMarginPct.toFixed(1)}% reserve · ${exposure}`
+}
+
+function formatDistance(distanceM: number): string {
+  return distanceM < 1_000 ? `${Math.round(distanceM)} m` : `${(distanceM / 1_000).toFixed(1)} km`
+}
+
+function formatDuration(durationSec: number): string {
+  return durationSec < 60 ? `${Math.round(durationSec)} sec` : `${(durationSec / 60).toFixed(1)} min`
 }

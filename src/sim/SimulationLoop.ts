@@ -7,7 +7,7 @@ import { applyGeofenceFlags, applyCommsModel } from '@/sim/safety/SafetyManager'
 import { buildSafeDroneRoutes } from '@/sim/mission/routeAudit'
 import { validateOperatorRoute } from '@/sim/mission/operatorRoutes'
 import { restoreSavedWaypointRoutes } from '@/sim/mission/waypointPersistence'
-import { planCoordinatedLaunch } from '@/sim/mission/LaunchCoordinator'
+import { buildLaunchSlotsForPlan } from '@/sim/mission/launchPlanGeometry'
 import {
   batteryProfileForDrone,
   batteryReservePctForDrone,
@@ -700,11 +700,11 @@ export function initFleet() {
   lastPositions.clear()
   onSceneTicksMap.clear()
 
-  // Custom missions seed a launch plan from their authored assignments so drones launch
-  // from the operator-designated sites without a manual bay-planning pass. Held in a local
-  // for the bay computation below and (re)applied AFTER resetMission() clears the store plan.
+  // Catalog and custom scenarios seed a launch plan from their authored assignments so
+  // drones resolve through the physical site pool without a manual bay-planning pass.
+  // Held locally for bay computation and re-applied after resetMission() clears the store plan.
   const seededLaunchPlan: LaunchBayPlan | null =
-    !launchPlan && scenario.isCustom && scenario.defaultLaunchAssignments
+    !launchPlan && scenario.defaultLaunchAssignments
       ? { assignments: { ...scenario.defaultLaunchAssignments }, bayStatuses: [], readyToLaunch: true, blockers: [] }
       : null
   const effectiveLaunchPlan = launchPlan ?? seededLaunchPlan
@@ -736,31 +736,13 @@ export function initFleet() {
         validateRoute: (droneId, route) => validateOperatorRoute(scenario, droneId, route).accepted,
       })
 
-  // Explicit bays (operator assignment → scenario launch site → per-drone start)
-  // are honored as-is; drones with no explicit bay get a fanned-out bay so no two
-  // launch from the same spot.
-  const explicitBays: Record<string, LatLng> = {}
-  const firstTargets: Record<string, LatLng> = {}
-  for (const id of droneIds) {
-    const launchSiteId = effectiveLaunchPlan?.assignments[id]
-    const assigned = launchSiteId ? scenario.launchSites?.[launchSiteId]?.position : undefined
-    const bay = assigned ?? scenario.launchSites?.[id]?.position ?? scenario.perDroneStartPositions?.[id]
-    if (bay) explicitBays[id] = bay
-    firstTargets[id] = restoredRoutes.routes[id]?.[0]?.position ?? scenario.startPosition
-  }
-
-  const launchSlots = planCoordinatedLaunch({
-    startPosition: scenario.startPosition,
-    droneIds,
-    firstTargets,
-    explicitBays,
-  })
+  const launchSlots = buildLaunchSlotsForPlan(scenario, effectiveLaunchPlan, restoredRoutes.routes)
 
   const drones = droneIds.map((id, i) => ({
     id,
     label: id.toUpperCase(),
     color: colors[i % colors.length],
-    position: launchSlots[id]?.bay ?? explicitBays[id] ?? scenario.startPosition,
+    position: launchSlots[id]?.bay ?? scenario.perDroneStartPositions?.[id] ?? scenario.startPosition,
     altitudeFt: 0,
     headingDeg: 0,
     speedMs: 0,
@@ -782,8 +764,7 @@ export function initFleet() {
   useDroneStore.getState().setDrones(drones)
   useDroneStore.getState().resetMission()
 
-  // resetMission() clears launchPlan; re-apply the custom-mission seed so authored launch
-  // assignments survive fleet init (normal scenarios set their plan via the bay planner later).
+  // resetMission() clears launchPlan; re-apply the authored site-pool assignments.
   if (seededLaunchPlan) useDroneStore.getState().setLaunchPlan(seededLaunchPlan)
 
   // Re-apply weather state (in case variant changed since last load)
