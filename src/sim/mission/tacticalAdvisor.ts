@@ -64,6 +64,7 @@ export interface MissionSituationInput {
   groundUnits?: readonly GroundUnitState[]
   weather?: WeatherVariantState
   positionHistory?: Readonly<Record<string, readonly LatLng[]>>
+  siteOverrides?: Readonly<Record<string, LatLng>>
 }
 
 export interface TacticalObjective {
@@ -134,7 +135,7 @@ export interface FleetRetaskPlan {
  * a binary eligibility gate in planFleetRetask.
  */
 export function buildMissionSituation(input: MissionSituationInput): MissionSituation {
-  const scenario = canonicalScenario(input.scenario)
+  const scenario = canonicalScenario(input.scenario, input.siteOverrides)
   const drones = [...input.drones].sort(byId).map(cloneDrone)
   const droneWaypoints = cloneWaypointMap(input.droneWaypoints)
   const positionHistory = clonePositionHistory(input.positionHistory)
@@ -708,9 +709,14 @@ function cloneDrone(drone: DroneState): DroneState {
   }
 }
 
-function canonicalScenario(scenario: ScenarioConfig): ScenarioConfig {
+function canonicalScenario(
+  scenario: ScenarioConfig,
+  siteOverrides: Readonly<Record<string, LatLng>> = {},
+): ScenarioConfig {
   return {
     ...scenario,
+    launchSites: cloneSitePool(scenario.launchSites, siteOverrides),
+    recoverySites: cloneSitePool(scenario.recoverySites, siteOverrides),
     operationalFeatures: scenario.operationalFeatures
       ? [...scenario.operationalFeatures].sort(byId).map((feature) => ({
           ...feature,
@@ -735,6 +741,21 @@ function canonicalScenario(scenario: ScenarioConfig): ScenarioConfig {
       ? [...scenario.dispatchTimeline].sort(byId).map((entry) => ({ ...entry }))
       : undefined,
   }
+}
+
+function cloneSitePool(
+  sites: ScenarioConfig['launchSites'],
+  overrides: Readonly<Record<string, LatLng>>,
+): ScenarioConfig['launchSites'] {
+  if (!sites) return undefined
+  return Object.fromEntries(Object.entries(sites).sort(([a], [b]) => a.localeCompare(b)).map(([recordKey, site]) => {
+    const id = site.id?.trim() || recordKey
+    return [recordKey, {
+      ...site,
+      id,
+      position: clonePosition(overrides[id] ?? overrides[recordKey] ?? site.position),
+    }]
+  }))
 }
 
 function clonePositionHistory(

@@ -24,13 +24,14 @@ const REJECTION_LABELS: Record<LaunchDoctrineRejectCode, string> = {
 }
 
 export function LaunchBayPlanner() {
-  const { scenario, ui, weatherState, launchPlan, droneWaypoints, applyParkedLaunchPlan, setShowLaunchBay } = useDroneStore(
+  const { scenario, ui, weatherState, launchPlan, droneWaypoints, siteOverrides, applyParkedLaunchPlan, setShowLaunchBay } = useDroneStore(
     useShallow((state) => ({
       scenario: state.scenario,
       ui: state.ui,
       weatherState: state.weatherState,
       launchPlan: state.launchPlan,
       droneWaypoints: state.droneWaypoints,
+      siteOverrides: state.siteOverrides,
       applyParkedLaunchPlan: state.applyParkedLaunchPlan,
       setShowLaunchBay: state.setShowLaunchBay,
     })),
@@ -46,10 +47,10 @@ export function LaunchBayPlanner() {
   }, [launchPlan, scenario, ui.showLaunchBay])
 
   const plan = useMemo(
-    () => (scenario ? buildLaunchBayPlan(scenario, weatherState, assignments) : null),
-    [assignments, scenario, weatherState],
+    () => (scenario ? buildLaunchBayPlan(scenario, weatherState, assignments, siteOverrides) : null),
+    [assignments, scenario, siteOverrides, weatherState],
   )
-  const launchSites = useMemo(() => canonicalSites(scenario?.launchSites), [scenario])
+  const launchSites = useMemo(() => canonicalSites(scenario?.launchSites, siteOverrides), [scenario, siteOverrides])
   const droneIds = useMemo(() => Object.keys(plan?.candidatesByDrone ?? {}).sort(), [plan])
 
   if (!ui.showLaunchBay || !scenario || !plan) return null
@@ -69,12 +70,12 @@ export function LaunchBayPlanner() {
   function handleAutoAssign() {
     if (!scenario) return
     setApplyError(null)
-    setAssignments(buildAutoLaunchDoctrinePlan(scenario, weatherState).assignments)
+    setAssignments(buildAutoLaunchDoctrinePlan(scenario, weatherState, siteOverrides).assignments)
   }
 
   function handleConfirm() {
     if (!scenario || !plan) return
-    const placements = buildLaunchSlotsForPlan(scenario, plan, droneWaypoints)
+    const placements = buildLaunchSlotsForPlan(scenario, plan, droneWaypoints, siteOverrides)
     if (applyParkedLaunchPlan(plan, placements)) {
       setApplyError(null)
       setShowLaunchBay(false)
@@ -261,8 +262,14 @@ function seedAssignments(scenario: ScenarioConfig, existing: LaunchBayPlan | nul
     .map(([recordKey, site]) => [recordKey, site.id ?? recordKey]))
 }
 
-function canonicalSites(sites: Record<string, LaunchRecoverySite> | undefined): Record<string, LaunchRecoverySite> {
-  return Object.fromEntries(Object.entries(sites ?? {}).map(([recordKey, site]) => [site.id ?? recordKey, site]))
+function canonicalSites(
+  sites: Record<string, LaunchRecoverySite> | undefined,
+  overrides: Readonly<Record<string, { lat: number; lng: number }>> = {},
+): Record<string, LaunchRecoverySite> {
+  return Object.fromEntries(Object.entries(sites ?? {}).map(([recordKey, site]) => {
+    const id = site.id ?? recordKey
+    return [id, { ...site, id, position: overrides[id] ?? overrides[recordKey] ?? site.position }]
+  }))
 }
 
 function optionLabel(site: LaunchRecoverySite | undefined, candidate: LaunchDoctrineCandidate): string {

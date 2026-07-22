@@ -31,6 +31,7 @@ const EXPOSURE_LIMITS: Record<LaunchSiteExposure, { maxGustKts: number; minCeili
 export interface LaunchDoctrineInput {
   scenario: ScenarioConfig
   weather: WeatherVariantState
+  siteOverrides?: Readonly<Record<string, LatLng>>
 }
 
 export interface LaunchDoctrineSituation extends LaunchDoctrineInput {
@@ -48,8 +49,8 @@ export function buildLaunchDoctrineSituation(
     scenario: input.scenario,
     weather: input.weather,
     droneIds: Array.from({ length: input.scenario.droneCount }, (_, index) => droneIdForIndex(index)).sort(),
-    launchSites: canonicalSites(input.scenario.launchSites),
-    recoverySites: canonicalSites(input.scenario.recoverySites),
+    launchSites: canonicalSites(input.scenario.launchSites, input.siteOverrides),
+    recoverySites: canonicalSites(input.scenario.recoverySites, input.siteOverrides),
     assignments: { ...assignments },
   }
 }
@@ -145,8 +146,9 @@ export function buildLaunchBayPlan(
   scenario: ScenarioConfig,
   weather: WeatherVariantState,
   assignments: Record<string, string>,
+  siteOverrides: Readonly<Record<string, LatLng>> = {},
 ): LaunchBayPlan {
-  const situation = buildLaunchDoctrineSituation({ scenario, weather }, assignments)
+  const situation = buildLaunchDoctrineSituation({ scenario, weather, siteOverrides }, assignments)
   const candidatesByDrone: Record<string, LaunchDoctrineCandidate[]> = {}
   const rejectedByDrone: Record<string, LaunchDoctrineCandidate[]> = {}
   const blockers: string[] = []
@@ -201,8 +203,9 @@ export function buildLaunchBayPlan(
 export function buildAutoLaunchDoctrinePlan(
   scenario: ScenarioConfig,
   weather: WeatherVariantState,
+  siteOverrides: Readonly<Record<string, LatLng>> = {},
 ): LaunchBayPlan {
-  const emptySituation = buildLaunchDoctrineSituation({ scenario, weather })
+  const emptySituation = buildLaunchDoctrineSituation({ scenario, weather, siteOverrides })
   const candidatesByDrone = Object.fromEntries(emptySituation.droneIds.map((droneId) => [
     droneId,
     Object.keys(emptySituation.launchSites)
@@ -230,16 +233,17 @@ export function buildAutoLaunchDoctrinePlan(
   }
 
   improveAssignments(assignments, candidatesByDrone)
-  return buildLaunchBayPlan(scenario, weather, assignments)
+  return buildLaunchBayPlan(scenario, weather, assignments, siteOverrides)
 }
 
 function canonicalSites(
   sites: Record<string, LaunchRecoverySite> | undefined,
+  overrides: Readonly<Record<string, LatLng>> = {},
 ): Record<string, LaunchRecoverySite> {
   return Object.fromEntries(Object.entries(sites ?? {})
     .map(([recordKey, site]): [string, LaunchRecoverySite] => {
       const id = site.id?.trim() || recordKey
-      return [id, { ...site, id, position: clonePosition(site.position) }]
+      return [id, { ...site, id, position: clonePosition(overrides[id] ?? overrides[recordKey] ?? site.position) }]
     })
     .sort(([left], [right]) => left.localeCompare(right)))
 }
