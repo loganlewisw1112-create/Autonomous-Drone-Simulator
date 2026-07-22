@@ -1,0 +1,18 @@
+{
+  "scenarioId": "extreme_usss_presidential_sf",
+  "area": {
+    "lat": 37.7838,
+    "lng": -122.4
+  },
+  "realDate": "2024-06-20",
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=37.7838&longitude=-122.4&start_date=2024-06-20&end_date=2024-06-20&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "186407d86658521bece38a0c534b7e2869a1521cdf6fdae93377d188454da56f"
+    }
+  ]
+}

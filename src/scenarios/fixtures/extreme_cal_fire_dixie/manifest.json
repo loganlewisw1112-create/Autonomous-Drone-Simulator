@@ -1,0 +1,18 @@
+{
+  "scenarioId": "extreme_cal_fire_dixie",
+  "area": {
+    "lat": 40.0072,
+    "lng": -121.0085
+  },
+  "realDate": "2021-08-04",
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=40.0072&longitude=-121.0085&start_date=2021-08-04&end_date=2021-08-04&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "b962d02cb595e91966fc14c73619a03c83b30b827668dd6a775f7614613c3dfa"
+    }
+  ]
+}

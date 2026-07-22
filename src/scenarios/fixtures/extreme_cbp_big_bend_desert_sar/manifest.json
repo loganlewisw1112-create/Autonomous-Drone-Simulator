@@ -1,0 +1,18 @@
+{
+  "scenarioId": "extreme_cbp_big_bend_desert_sar",
+  "area": {
+    "lat": 29.377,
+    "lng": -103.7285
+  },
+  "realDate": "2024-07-22",
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=29.377&longitude=-103.7285&start_date=2024-07-22&end_date=2024-07-22&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "f94a3841d3a641a0019c665a1cc4250bae78cff66cba02a356ac54fd28f11ebd"
+    }
+  ]
+}

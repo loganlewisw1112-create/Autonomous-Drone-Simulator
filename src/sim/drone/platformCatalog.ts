@@ -21,11 +21,26 @@ export type PlatformId =
 // object-vs-background contrast term. FLIR's Boson, Boson+, Lepton and Hadron cores all
 // use a 12 µm detector pitch (published), so pitch is known even where focal length
 // (rarely published — manufacturers cite FOV instead) is not.
+//
+// Sourced 2026-07-21, per airframe:
+//   Skydio X10 / X10D  FLIR Boson+ 640x512, 12 um, EFL 13.6 mm, <30 mK  (skydio.com/x10/technical-specs)
+//   Teal 2             FLIR Hadron 640R IR optics EFL 13.6 mm / 32 deg HFOV, Boson 640x512 @ 12 um (FLIR Hadron 640 datasheet)
+//   Parrot Anafi USA   FLIR Boson 320x256, <=60 mK, 50 deg HFOV — focal length not published (parrot.com)
+//   BRINC Lemur 2      FLIR Lepton 160x120 — BRINC does not state which lens variant, and Lepton
+//                      ships in 50/57/95/160 deg options, so BOTH focal length and HFOV stay null.
+//   Freefly Astro Max  modular payload, no single integrated sensor -> thermal is null entirely.
+//
+// Cross-check of the geometry (sensors/thermalRange.ts) against two independent manufacturers:
+// 640 x 12 um = 7.68 mm sensor width at f=13.6 mm gives HFOV 31.5 deg (Teal publishes 32) and
+// DFOV 39.8 deg (Skydio publishes 41). The model reproduces both published figures.
 export interface ThermalSensorSpec {
   sensor: string
   resolutionPx: [number, number]
   pixelPitchUm: number | null
   focalLengthMm: number | null
+  /** Published horizontal FOV. Manufacturers cite this far more often than focal length, so
+   *  `platformTaskRanges` derives f from it when `focalLengthMm` is null. Null when unpublished. */
+  hfovDeg: number | null
   netdMk: number | null
 }
 
@@ -70,7 +85,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 12.8,
     enduranceMin: 40,
     enduranceMultiplier: 1.3333,
-    thermal: { sensor: 'FLIR Boson+', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: null, netdMk: 30 },
+    thermal: { sensor: 'FLIR Boson+', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: 13.6, hfovDeg: null, netdMk: 30 },
   },
   skydio_x10d: {
     id: 'skydio_x10d',
@@ -88,7 +103,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 12.8,
     enduranceMin: 40,
     enduranceMultiplier: 1.3333,
-    thermal: { sensor: 'FLIR Boson+', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: null, netdMk: 30 },
+    thermal: { sensor: 'FLIR Boson+', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: 13.6, hfovDeg: null, netdMk: 30 },
   },
   parrot_anafi_usa: {
     id: 'parrot_anafi_usa',
@@ -107,7 +122,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     enduranceMin: 32,
     enduranceMultiplier: 1.0667,
     // Parrot ANAFI USA: FLIR Boson 320×256, <60 mK (9 Hz microbolometer).
-    thermal: { sensor: 'FLIR Boson', resolutionPx: [320, 256], pixelPitchUm: 12, focalLengthMm: null, netdMk: 60 },
+    thermal: { sensor: 'FLIR Boson', resolutionPx: [320, 256], pixelPitchUm: 12, focalLengthMm: null, hfovDeg: 50, netdMk: 60 },
   },
   teal_2: {
     id: 'teal_2',
@@ -126,7 +141,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     enduranceMin: 30,
     enduranceMultiplier: 1.0,
     // Teal 2: FLIR Hadron 640R — 640×512 radiometric thermal core (NETD not published → null).
-    thermal: { sensor: 'FLIR Hadron 640R', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: null, netdMk: null },
+    thermal: { sensor: 'FLIR Hadron 640R', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: 13.6, hfovDeg: 32, netdMk: null },
   },
   freefly_astro_max: {
     id: 'freefly_astro_max',
@@ -165,7 +180,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     enduranceMin: 20,
     enduranceMultiplier: 0.6667,
     // BRINC Lemur 2: FLIR Lepton micro-thermal, 160×120 (7 Hz).
-    thermal: { sensor: 'FLIR Lepton', resolutionPx: [160, 120], pixelPitchUm: 12, focalLengthMm: null, netdMk: null },
+    thermal: { sensor: 'FLIR Lepton', resolutionPx: [160, 120], pixelPitchUm: 12, focalLengthMm: null, hfovDeg: null, netdMk: null },
   },
 }
 
