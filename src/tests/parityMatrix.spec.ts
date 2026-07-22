@@ -91,6 +91,7 @@ const ACTION_HANDLERS = [
   'handleUndoRouteChange',
   'handleFleetRetask',
   'handleUndoRetask',
+  'handleRepositionSite',
   'handleExportLog',
   'handleExportKML',
   'handleExportGeoJSON',

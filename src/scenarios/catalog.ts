@@ -41,6 +41,12 @@ const KNOWN_AGENCIES = [
   'CBP', 'FBI', 'ATF', 'USSS', 'DHS', 'FEMA', 'LAHSA', 'DMH',
 ] as const
 
+const MOBILE_SITE_DEFAULTS: Partial<Record<LaunchRecoverySite['kind'], { radiusM: number; timeSec: number }>> = {
+  mobile_command: { radiusM: 5_000, timeSec: 300 },
+  field_icp: { radiusM: 2_000, timeSec: 180 },
+  vessel: { radiusM: 10_000, timeSec: 600 },
+}
+
 export const ALL_SCENARIOS: ScenarioConfig[] = RAW_SCENARIOS.map((scenario) => enhanceScenarioForOperations(scenario))
 
 export const SCENARIO_OPTIONS = ALL_SCENARIOS.map((scenario) => ({
@@ -166,10 +172,15 @@ function exposureForKind(kind: LaunchRecoverySite['kind']): LaunchRecoverySite['
 
 function normalizeSite(siteId: string, site: LaunchRecoverySite): LaunchRecoverySite {
   const capacityDrones = site.capacityDrones ?? 2
+  const mobileDefaults = MOBILE_SITE_DEFAULTS[site.kind]
+  const mobile = site.mobile ?? Boolean(mobileDefaults)
   return {
     ...site,
     id: site.id ?? siteId,
     exposure: site.exposure ?? exposureForKind(site.kind),
+    mobile,
+    repositionRadiusM: mobile ? site.repositionRadiusM ?? mobileDefaults?.radiusM : undefined,
+    repositionTimeSec: mobile ? site.repositionTimeSec ?? mobileDefaults?.timeSec : undefined,
     capacityDrones,
     padFootprintM: site.padFootprintM ?? Math.max(0, capacityDrones - 1) * BAY_SPACING_M,
   }

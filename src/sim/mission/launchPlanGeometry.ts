@@ -6,6 +6,7 @@ export function buildLaunchSlotsForPlan(
   scenario: ScenarioConfig,
   plan: LaunchBayPlan | null,
   routes: Readonly<Record<string, readonly Waypoint[]>>,
+  siteOverrides: Readonly<Record<string, LatLng>> = {},
 ): Record<string, LaunchSlot> {
   const droneIds = Array.from({ length: scenario.droneCount }, (_, index) => droneIdForIndex(index))
   const explicitBays: Record<string, LatLng> = {}
@@ -19,12 +20,15 @@ export function buildLaunchSlotsForPlan(
     const defaultSiteId = scenario.defaultLaunchAssignments?.[droneId]
     const defaultSite = defaultSiteId ? scenario.launchSites?.[defaultSiteId] : undefined
     const legacySite = scenario.launchSites?.[droneId]
-    const site = plannedSite ?? defaultSite ?? legacySite
+    const authoredSite = plannedSite ?? defaultSite ?? legacySite
     const recordKey = plannedSite
       ? plannedSiteId
       : defaultSite
         ? defaultSiteId
         : legacySite ? droneId : undefined
+    const site = authoredSite && recordKey
+      ? { ...authoredSite, position: siteOverrides[authoredSite.id?.trim() || recordKey] ?? siteOverrides[recordKey] ?? authoredSite.position }
+      : authoredSite
     const bay = site?.position ?? scenario.perDroneStartPositions?.[droneId]
 
     if (bay) explicitBays[droneId] = bay
