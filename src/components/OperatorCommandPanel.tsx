@@ -4,6 +4,7 @@ import { useDroneStore } from '@/store/droneStore'
 import { RECOVERY_STATES } from '@/components/FleetPanel'
 import { haversineDistanceM } from '@/utils/geometry'
 import { platformForDrone } from '@/sim/drone/platformCatalog'
+import { launchSiteForDrone, recoverySiteForDrone } from '@/sim/mission/siteAssignments'
 import type { DispatchTimelineEntry, OperatorRouteCommand, Waypoint, WaypointSaveStatus } from '@/types'
 
 // Shared with the mobile Mission-tab quick commands (DroneQuickCommands) so both
@@ -69,8 +70,8 @@ export function OperatorCommandPanel() {
   const routeBrief = scenario.droneRouteBriefs?.[selectedDrone.id]
   const batteryProfile = scenario.droneBatteryProfiles?.[selectedDrone.id] ?? scenario.batteryProfile
   const platform = platformForDrone(scenario, selectedDrone.id)
-  const launchSite = scenario.launchSites?.[selectedDrone.id]
-  const recoverySite = scenario.recoverySites?.[selectedDrone.id]
+  const launchSite = launchSiteForDrone(scenario, selectedDrone.id)
+  const recoverySite = recoverySiteForDrone(scenario, selectedDrone.id)
   const dispatchTasks = (scenario.dispatchTimeline ?? [])
     .filter((entry) => ['operator_task', 'field_unit', 'agency_update'].includes(entry.category ?? 'dispatch'))
     .filter((entry) => entry.timeSec <= elapsedSec + 180)

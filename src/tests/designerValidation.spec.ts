@@ -34,7 +34,10 @@ describe('custom mission designer validation', () => {
     const compiled = compileCustomMission(definition)
     expect(compiled.isCustom).toBe(true)
     expect(compiled.authoredRoutes?.[customDroneId(0)]).toEqual(definition.routes[customDroneId(0)])
-    expect(compiled.defaultLaunchAssignments).toEqual({ [customDroneId(0)]: customDroneId(0) })
+    expect(compiled.defaultLaunchAssignments).toEqual({ [customDroneId(0)]: 'site-1' })
+    expect(compiled.defaultRecoveryAssignments).toEqual({ [customDroneId(0)]: 'site-1' })
+    expect(compiled.launchSites?.['site-1']?.id).toBe('site-1')
+    expect(compiled.recoverySites?.['site-1']?.id).toBe('site-1')
   })
 
   it('rejects altitude, missing assignment, capacity, and waypoint-limit failures', () => {

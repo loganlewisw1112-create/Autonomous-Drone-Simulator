@@ -33,8 +33,10 @@ describe('route audit and safe mission routing', () => {
     const routes = buildSafeDroneRoutes(scenario)
     for (const [index, id] of ['uav-03', 'uav-04', 'uav-05'].entries()) {
       const droneIndex = index + 2
-      const launch = scenario.launchSites?.[id]
-      const recovery = scenario.recoverySites?.[id]
+      const launchId = scenario.defaultLaunchAssignments?.[id]
+      const recoveryId = scenario.defaultRecoveryAssignments?.[id]
+      const launch = launchId ? scenario.launchSites?.[launchId] : undefined
+      const recovery = recoveryId ? scenario.recoverySites?.[recoveryId] : undefined
       expect(launch, id).toBeTruthy()
       expect(recovery, id).toBeTruthy()
       if (!launch || !recovery) continue
