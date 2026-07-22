@@ -354,6 +354,7 @@ function isWaypointSaveSource(value: unknown): value is WaypointSaveSource {
     || value === 'command_route'
     || value === 'route_suggestion'
     || value === 'route_undo'
+    || value === 'fleet_retask'
 }
 
 function cloneRoutes(routes: Record<string, Waypoint[]>): Record<string, Waypoint[]> {

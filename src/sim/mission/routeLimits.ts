@@ -1,0 +1,1 @@
+export const MAX_WAYPOINTS_PER_DRONE = 50

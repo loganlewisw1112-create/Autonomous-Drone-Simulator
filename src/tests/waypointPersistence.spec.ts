@@ -110,6 +110,25 @@ describe('waypoint persistence', () => {
     })
   })
 
+  it('round-trips the fleet retask save source', () => {
+    const storage = makeMemoryStorage()
+
+    const result = saveFleetWaypointRoutes({
+      storage,
+      scenarioId: 'demo_sar_coastal',
+      scenarioVariant: VARIANT,
+      routes: { 'uav-01': SAVED_ROUTE },
+      source: 'fleet_retask',
+      now: 350,
+    })
+
+    expect(result.statuses['uav-01']).toMatchObject({ state: 'autosaved', source: 'fleet_retask' })
+    expect(loadSavedDroneWaypointRoute(storage, 'demo_sar_coastal', VARIANT, 'uav-01')).toMatchObject({
+      source: 'fleet_retask',
+      updatedAt: 350,
+    })
+  })
+
   it('batches route saves and draft clears into one storage mutation', () => {
     const storage = makeMemoryStorage()
     saveFleetWaypointRoutes({
