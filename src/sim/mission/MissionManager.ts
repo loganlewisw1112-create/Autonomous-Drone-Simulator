@@ -6,7 +6,17 @@ const ARRIVAL_RADIUS_M = 10
 const INSPECT_DWELL_SEC = 8
 export const AVOID_MANEUVER_SEC = 4
 
-export interface MissionManagerState {
+export interface MissionSafetyContext {
+  batteryReservePct?: number
+  weatherForceRtb?: boolean
+}
+
+export interface MissionSafetyOverride {
+  nextState: 'emergency' | 'return_to_base'
+  reason: 'critical_battery' | 'battery_reserve' | 'geofence_breach' | 'weather'
+}
+
+export interface MissionManagerState extends MissionSafetyContext {
   waypoints: Waypoint[]
   basePosition: Waypoint
   elapsedSec: number
@@ -15,8 +25,6 @@ export interface MissionManagerState {
   droneWaypoints?: Record<string, Waypoint[]>
   rechargeTimeSec?: number
   maxSorties?: number
-  batteryReservePct?: number
-  weatherForceRtb?: boolean
   weatherHazard?: string
   launchCommandedSec?: number   // sim-time the launch command was issued (staggered takeoff)
 }
@@ -30,6 +38,30 @@ export interface CommandResult {
   sortieResumeWpIdx?: number
 }
 
+export function getMissionSafetyOverride(
+  drone: DroneState,
+  context: MissionSafetyContext,
+): MissionSafetyOverride | null {
+  if (isBatteryCritical(drone) && !['emergency', 'landed'].includes(drone.missionState)) {
+    return { nextState: 'emergency', reason: 'critical_battery' }
+  }
+
+  const reserveAndGeofenceExempt: MissionState[] = ['return_to_base', 'emergency', 'landed', 'hover', 'recharge']
+  if (drone.batteryPct < (context.batteryReservePct ?? 25) && !reserveAndGeofenceExempt.includes(drone.missionState)) {
+    return { nextState: 'return_to_base', reason: 'battery_reserve' }
+  }
+  if (drone.geofenceBreachFlag && !reserveAndGeofenceExempt.includes(drone.missionState)) {
+    return { nextState: 'return_to_base', reason: 'geofence_breach' }
+  }
+
+  const weatherExempt: MissionState[] = ['return_to_base', 'emergency', 'landed', 'recharge']
+  if (context.weatherForceRtb && !weatherExempt.includes(drone.missionState)) {
+    return { nextState: 'return_to_base', reason: 'weather' }
+  }
+
+  return null
+}
+
 export function getNextCommand(drone: DroneState, mm: MissionManagerState): CommandResult {
   const waypoints = mm.droneWaypoints?.[drone.id] ?? mm.waypoints
   const { basePosition, assignedAltitudeFt } = mm
@@ -38,22 +70,10 @@ export function getNextCommand(drone: DroneState, mm: MissionManagerState): Comm
   let sortieResumeWpIdx: number | undefined
 
   // ── Emergency overrides (highest priority) ──────────────────────────────────
-  if (isBatteryCritical(drone) && drone.missionState !== 'emergency' && drone.missionState !== 'landed') {
+  const safetyOverride = getMissionSafetyOverride(drone, mm)
+  if (safetyOverride?.nextState === 'emergency') {
     nextMissionState = 'emergency'
-  } else if (isBelowReserve(drone, mm.batteryReservePct) && !['return_to_base', 'emergency', 'landed', 'hover', 'recharge'].includes(drone.missionState)) {
-    if (mm.maxSorties && drone.sortieCount < mm.maxSorties - 1) {
-      sortieResumeWpIdx = drone.currentWaypointIndex
-    }
-    nextMissionState = 'return_to_base'
-    nextWpIdx = 0
-  } else if (drone.geofenceBreachFlag && !['return_to_base', 'emergency', 'landed', 'hover', 'recharge'].includes(drone.missionState)) {
-    if (mm.maxSorties && drone.sortieCount < mm.maxSorties - 1) {
-      sortieResumeWpIdx = drone.currentWaypointIndex
-    }
-    nextMissionState = 'return_to_base'
-    nextWpIdx = 0
-  } else if (mm.weatherForceRtb && !['return_to_base', 'emergency', 'landed', 'recharge'].includes(drone.missionState)) {
-    // Weather severity forces divert to safe zone (base). Preserve sortie for resume.
+  } else if (safetyOverride?.nextState === 'return_to_base') {
     if (mm.maxSorties && drone.sortieCount < mm.maxSorties - 1) {
       sortieResumeWpIdx = drone.currentWaypointIndex
     }
@@ -280,8 +300,4 @@ export function getNextCommand(drone: DroneState, mm: MissionManagerState): Comm
     nextWaypointIndex: nextWpIdx,
     sortieResumeWpIdx,
   }
-}
-
-function isBelowReserve(drone: DroneState, reservePct = 25): boolean {
-  return drone.batteryPct < reservePct
 }

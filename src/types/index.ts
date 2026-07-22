@@ -252,6 +252,7 @@ export type WaypointSaveSource =
   | 'manual_save'
   | 'command_route'
   | 'route_suggestion'
+  | 'route_undo'
 
 export type WaypointSaveState = 'autosaved' | 'restored' | 'failed' | 'cleared'
 

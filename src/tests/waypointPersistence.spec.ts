@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   clearSavedDroneWaypointRoute,
   loadSavedDroneWaypointRoute,
   restoreSavedWaypointRoutes,
   saveDroneWaypointRoute,
+  saveFleetWaypointRoutes,
   storageKeyForWaypointPlan,
 } from '@/sim/mission/waypointPersistence'
 import type { ScenarioVariantConfig, Waypoint } from '@/types'
@@ -81,6 +82,62 @@ describe('waypoint persistence', () => {
 
     expect(loadSavedDroneWaypointRoute(storage, 'demo_sar_coastal', VARIANT, 'uav-01')?.route).toEqual(SAVED_ROUTE)
     expect(loadSavedDroneWaypointRoute(storage, 'demo_sar_coastal', OTHER_VARIANT, 'uav-01')?.route).toEqual(BASELINE_ROUTE)
+  })
+
+  it('persists a fleet route update with one storage write', () => {
+    const storage = makeMemoryStorage()
+    const setItem = vi.spyOn(storage, 'setItem')
+
+    const result = saveFleetWaypointRoutes({
+      storage,
+      scenarioId: 'demo_sar_coastal',
+      scenarioVariant: VARIANT,
+      routes: {
+        'uav-01': SAVED_ROUTE,
+        'uav-02': BASELINE_ROUTE,
+      },
+      source: 'operator_edit',
+      now: 300,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(setItem).toHaveBeenCalledTimes(1)
+    expect(loadSavedDroneWaypointRoute(storage, 'demo_sar_coastal', VARIANT, 'uav-01')?.route).toEqual(SAVED_ROUTE)
+    expect(loadSavedDroneWaypointRoute(storage, 'demo_sar_coastal', VARIANT, 'uav-02')?.route).toEqual(BASELINE_ROUTE)
+    expect(result.statuses).toMatchObject({
+      'uav-01': { state: 'autosaved', updatedAt: 300 },
+      'uav-02': { state: 'autosaved', updatedAt: 300 },
+    })
+  })
+
+  it('batches route saves and draft clears into one storage mutation', () => {
+    const storage = makeMemoryStorage()
+    saveFleetWaypointRoutes({
+      storage,
+      scenarioId: 'demo_sar_coastal',
+      scenarioVariant: VARIANT,
+      routes: { 'uav-01': BASELINE_ROUTE, 'uav-02': BASELINE_ROUTE },
+      source: 'operator_edit',
+      now: 100,
+    })
+    const setItem = vi.spyOn(storage, 'setItem')
+
+    const result = saveFleetWaypointRoutes({
+      storage,
+      scenarioId: 'demo_sar_coastal',
+      scenarioVariant: VARIANT,
+      routes: { 'uav-01': SAVED_ROUTE },
+      removedDroneIds: ['uav-02'],
+      source: 'route_undo',
+      now: 400,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(setItem).toHaveBeenCalledTimes(1)
+    expect(result.statuses['uav-01']).toMatchObject({ state: 'autosaved', source: 'route_undo' })
+    expect(result.statuses['uav-02']).toMatchObject({ state: 'cleared', message: 'Draft cleared' })
+    expect(loadSavedDroneWaypointRoute(storage, 'demo_sar_coastal', VARIANT, 'uav-01')?.route).toEqual(SAVED_ROUTE)
+    expect(loadSavedDroneWaypointRoute(storage, 'demo_sar_coastal', VARIANT, 'uav-02')).toBeNull()
   })
 
   it('returns null for malformed storage instead of throwing', () => {
