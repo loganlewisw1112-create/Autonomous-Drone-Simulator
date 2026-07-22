@@ -4,6 +4,7 @@ import type { StoredRunSummary } from '@/account/types'
 import type { ClassConfig, ClassId, RosterEntry, StudentId } from '@/classroom/protocol'
 import type { GridFrame } from '@/classroom/gridFrame'
 import type { MissionAssessment } from '@/classroom/missionAssessment'
+import type { InstructorCommand } from '@/classroom/commandRegistry'
 
 // Instructor- and student-side view state for the classroom. Deliberately holds
 // only serializable UI state and the LATEST frame per student — never frame
@@ -34,6 +35,40 @@ export interface IntegrityCounters {
   lastAt: number | null
 }
 
+export type ClassroomCommandStatus = 'pending' | 'acknowledged' | 'failed'
+
+export interface ClassroomCommandRecord {
+  commandId: string
+  studentId: StudentId
+  command: InstructorCommand
+  actorId: string
+  issuedAt: number
+  status: ClassroomCommandStatus
+}
+
+export interface ClassroomCommandAck {
+  commandId: string
+  studentId: StudentId
+  actorId: string
+  ok: boolean
+  code?: string
+  message?: string
+  affectedDroneIds: string[]
+  receivedAt: number
+}
+
+export interface ClassroomIntervention {
+  commandId: string
+  command: InstructorCommand
+  actorId: string
+  label: string
+  executedAt: number
+}
+
+export interface TakeoverNotice extends ClassroomIntervention {
+  expiresAt: number
+}
+
 interface ClassroomStore {
   role: ClassroomRole
   status: ClassroomStatus
@@ -49,10 +84,15 @@ interface ClassroomStore {
   focusAssessment: MissionAssessment | null
   runs: ClassRunResult[]
   integrity: IntegrityCounters
+  commands: ClassroomCommandRecord[]
+  commandAcks: ClassroomCommandAck[]
 
   // Student view
   studentId: StudentId | null
   beingFocused: boolean
+  interventions: ClassroomIntervention[]
+  takeoverNotice: TakeoverNotice | null
+  commandRejects: number
 
   setStatus: (status: ClassroomStatus, error?: string | null) => void
   setInstructorClass: (classId: ClassId, config: ClassConfig) => void
@@ -65,6 +105,12 @@ interface ClassroomStore {
   setBeingFocused: (focused: boolean) => void
   addRun: (run: ClassRunResult) => void
   noteIntegrityFailure: (kind: 'decrypt' | 'replay') => void
+  addCommand: (command: ClassroomCommandRecord) => void
+  addCommandAck: (ack: ClassroomCommandAck) => void
+  addIntervention: (intervention: ClassroomIntervention) => void
+  showTakeover: (notice: TakeoverNotice) => void
+  clearTakeover: (commandId?: string) => void
+  noteCommandReject: () => void
   reset: () => void
 }
 
@@ -81,8 +127,13 @@ const initial = {
   focusAssessment: null,
   runs: [] as ClassRunResult[],
   integrity: { decryptFailures: 0, replayRejects: 0, lastAt: null } as IntegrityCounters,
+  commands: [] as ClassroomCommandRecord[],
+  commandAcks: [] as ClassroomCommandAck[],
   studentId: null,
   beingFocused: false,
+  interventions: [] as ClassroomIntervention[],
+  takeoverNotice: null as TakeoverNotice | null,
+  commandRejects: 0,
 }
 
 export const useClassroomStore = create<ClassroomStore>((set) => ({
@@ -142,6 +193,27 @@ export const useClassroomStore = create<ClassroomStore>((set) => ({
       lastAt: Date.now(),
     },
   })),
+
+  addCommand: (command) => set((s) => ({ commands: [...s.commands, command] })),
+
+  addCommandAck: (ack) => set((s) => ({
+    commandAcks: [...s.commandAcks, ack],
+    commands: s.commands.map((command) => command.commandId === ack.commandId && command.studentId === ack.studentId
+      ? { ...command, status: ack.ok ? 'acknowledged' : 'failed' }
+      : command),
+  })),
+
+  addIntervention: (intervention) => set((s) => ({ interventions: [...s.interventions, intervention] })),
+
+  showTakeover: (takeoverNotice) => set({ takeoverNotice }),
+
+  clearTakeover: (commandId) => set((s) => (
+    !s.takeoverNotice || (commandId && s.takeoverNotice.commandId !== commandId)
+      ? {}
+      : { takeoverNotice: null }
+  )),
+
+  noteCommandReject: () => set((s) => ({ commandRejects: s.commandRejects + 1 })),
 
   reset: () => set({ ...initial }),
 }))

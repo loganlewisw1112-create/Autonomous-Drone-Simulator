@@ -9,6 +9,7 @@ import { useClassroomStore } from '@/classroom/classroomStore'
 export function JoinGate({ initialClassId = '' }: { initialClassId?: string }) {
   const [code, setCode] = useState(initialClassId.toUpperCase())
   const [name, setName] = useState('')
+  const [remoteControlConsent, setRemoteControlConsent] = useState(false)
   const { status, error } = useClassroomStore(useShallow((s) => ({ status: s.status, error: s.error })))
 
   const codeOk = isValidClassId(code)
@@ -16,7 +17,7 @@ export function JoinGate({ initialClassId = '' }: { initialClassId?: string }) {
   const connecting = status === 'connecting'
 
   function submit() {
-    if (codeOk && nameOk && !connecting) joinClass(code, name.trim())
+    if (codeOk && nameOk && remoteControlConsent && !connecting) joinClass(code, name.trim(), true)
   }
 
   return (
@@ -44,13 +45,22 @@ export function JoinGate({ initialClassId = '' }: { initialClassId?: string }) {
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
         />
-        <button className="cls-btn" disabled={!codeOk || !nameOk || connecting} onClick={submit}>
+        <label className="cls-consent">
+          <input
+            type="checkbox"
+            checked={remoteControlConsent}
+            onChange={(event) => setRemoteControlConsent(event.target.checked)}
+          />
+          <span>I understand that the instructor can observe and remotely control this simulator during the class.</span>
+        </label>
+        <button className="cls-btn" disabled={!codeOk || !nameOk || !remoteControlConsent || connecting} onClick={submit}>
           {connecting ? 'Joining…' : 'Join class'}
         </button>
         {status === 'error' && (
           <div style={{ color: '#ff8080', fontSize: 12 }}>
             {error === 'class-full' ? 'That class is full.'
               : error === 'no-such-class' ? 'No class with that code is running.'
+                : error === 'remote-control-consent-required' ? 'Consent is required to join this class.'
                 : `Could not join: ${error ?? 'unknown error'}`}
           </div>
         )}

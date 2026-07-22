@@ -39,7 +39,16 @@ const runsDir = fileURLToPath(new URL('../classroom-runs', import.meta.url))
 // alphabet, and therefore never validating a classId at all. Read synchronously and
 // unguarded on purpose: a relay that cannot see its own limits must not boot.
 export const LIMITS = JSON.parse(readFileSync(fileURLToPath(new URL('../src/classroom/limits.json', import.meta.url)), 'utf8'))
-const { MAX_STUDENTS, MAX_CLASSES, MAX_MESSAGE_BYTES, HEARTBEAT_TIMEOUT_MS, CLASS_ID_ALPHABET, CLASS_ID_LENGTH } = LIMITS
+const {
+  MAX_STUDENTS,
+  MAX_CLASSES,
+  MAX_MESSAGE_BYTES,
+  MAX_COMMANDS_PER_SEC,
+  HEARTBEAT_TIMEOUT_MS,
+  INSTRUCTOR_RECONNECT_GRACE_MS,
+  CLASS_ID_ALPHABET,
+  CLASS_ID_LENGTH,
+} = LIMITS
 const HEARTBEAT_PING_MS = Math.floor(HEARTBEAT_TIMEOUT_MS / 2)
 
 const TYPES = {
@@ -53,7 +62,8 @@ const TYPES = {
   '.map': 'application/json',
 }
 
-// classId -> { classPubKey, config, instructorSock, instructorToken, focusedStudentId, students }
+// classId -> { classPubKey, config, instructorSock, instructorToken, focusedStudentId,
+//              students, commandTimestamps, cleanupTimer }
 // students: studentId -> { sock, entry }
 export const classes = new Map()
 
@@ -87,6 +97,10 @@ function tokenMatches(expected, given) {
 }
 
 function bindInstructor(sock, cls, classId) {
+  if (cls.cleanupTimer) {
+    clearTimeout(cls.cleanupTimer)
+    cls.cleanupTimer = null
+  }
   sock.role = 'instructor'
   sock.classId = classId
   send(sock, { v: 1, type: 'class.ok', classId, instructorToken: cls.instructorToken })
@@ -129,6 +143,8 @@ function onCreate(sock, msg) {
     instructorToken: crypto.randomBytes(32).toString('base64url'),
     focusedStudentId: null,
     students: new Map(),
+    commandTimestamps: [],
+    cleanupTimer: null,
   }
   classes.set(classId, created)
   bindInstructor(sock, created, classId)
@@ -174,10 +190,39 @@ async function persistRun(classId, studentId, envelope) {
 // instructor. `sealed` is forwarded by reference, never opened.
 function onStudentMsg(sock, msg) {
   const cls = classes.get(sock.classId)
-  if (!cls || sock.role !== 'student') return
+  if (!cls || sock.role !== 'student' || msg.classId !== sock.classId) return
   const from = sock.studentId
+  const student = from && cls.students.get(from)
+  if (!student || student.sock !== sock) return
   if (msg.type === 'student.run') persistRun(sock.classId, from, msg)
-  send(cls.instructorSock, { v: 1, type: msg.type, classId: sock.classId, from, sealed: msg.sealed })
+  const type = msg.type === 'student.ack' ? 'student.ack' : msg.type
+  send(cls.instructorSock, { v: 1, type, classId: sock.classId, from, sealed: msg.sealed })
+}
+
+// Sliding one-second window, scoped to the class. Only an authenticated command to
+// a live named student consumes capacity; malformed targets and token probes do not
+// let an attacker exhaust the instructor's budget. Over-limit commands are dropped
+// deterministically before any student receives bytes.
+function consumeCommandCapacity(cls, now = Date.now()) {
+  const cutoff = now - 1000
+  cls.commandTimestamps = cls.commandTimestamps.filter(stamp => stamp > cutoff)
+  if (cls.commandTimestamps.length >= MAX_COMMANDS_PER_SEC) return false
+  cls.commandTimestamps.push(now)
+  return true
+}
+
+// Instructor -> one named student. The relay authenticates and routes only; the
+// sealed command remains opaque and is forwarded unchanged, without the instructor
+// token or target id attached to the student-visible envelope.
+function onClassCommand(sock, msg) {
+  const cls = classes.get(msg.classId)
+  if (!cls || cls.instructorSock !== sock || sock.role !== 'instructor') return
+  if (!tokenMatches(cls.instructorToken, msg.instructorToken)) return
+  if (typeof msg.studentId !== 'string') return
+  const target = cls.students.get(msg.studentId)
+  if (!target) return
+  if (!consumeCommandCapacity(cls)) return
+  send(target.sock, { v: 1, type: 'command', classId: msg.classId, sealed: msg.sealed })
 }
 
 function onFocus(sock, msg) {
@@ -206,6 +251,7 @@ function removeStudent(sock) {
 function closeClass(classId) {
   const cls = classes.get(classId)
   if (!cls) return
+  if (cls.cleanupTimer) clearTimeout(cls.cleanupTimer)
   for (const { sock } of cls.students.values()) send(sock, { v: 1, type: 'class.closed', classId })
   classes.delete(classId)
 }
@@ -218,10 +264,18 @@ function onClassClose(sock) {
 export function onClose(sock) {
   if (sock.role === 'student') removeStudent(sock)
   else if (sock.role === 'instructor') {
-    // Only tear the room down if this socket is still the active instructor —
-    // a superseded (reconnected-over) socket closing must not kill the class.
+    // Keep the room and roster through a temporary instructor disconnect so the
+    // server-minted token can rebind the tab. Cleanup is bounded; explicit
+    // class.close still calls closeClass immediately.
     const cls = classes.get(sock.classId)
-    if (cls && cls.instructorSock === sock) closeClass(sock.classId)
+    if (cls && cls.instructorSock === sock) {
+      cls.instructorSock = null
+      if (cls.cleanupTimer) clearTimeout(cls.cleanupTimer)
+      cls.cleanupTimer = setTimeout(() => {
+        if (classes.get(sock.classId) === cls && cls.instructorSock === null) closeClass(sock.classId)
+      }, INSTRUCTOR_RECONNECT_GRACE_MS)
+      cls.cleanupTimer.unref?.()
+    }
   }
 }
 
@@ -235,12 +289,14 @@ export function handle(sock, msg) {
   if (msg.classId !== undefined && !isValidClassId(msg.classId)) return
   switch (msg.type) {
     case 'class.create': return onCreate(sock, msg)
+    case 'class.command': return onClassCommand(sock, msg)
     case 'class.focus': return onFocus(sock, msg)
     case 'class.close': return onClassClose(sock)
     case 'student.join': return onJoin(sock, msg)
     case 'student.grid':
     case 'student.focus':
-    case 'student.run': return onStudentMsg(sock, msg)
+    case 'student.run':
+    case 'student.ack': return onStudentMsg(sock, msg)
     case 'student.leave': return removeStudent(sock)
   }
 }
@@ -328,6 +384,7 @@ export function startRelay(port = PORT) {
 // sockets (build plan §10 requires the WS test to stay offline) and needs a clean map
 // between cases.
 export function resetRelayState() {
+  for (const cls of classes.values()) if (cls.cleanupTimer) clearTimeout(cls.cleanupTimer)
   classes.clear()
 }
 

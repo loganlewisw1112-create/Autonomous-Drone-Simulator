@@ -31,6 +31,9 @@ describe('classroom protocol', () => {
   it('recognizes only known message types', () => {
     expect(isMsgType('student.grid')).toBe(true)
     expect(isMsgType('class.create')).toBe(true)
+    expect(isMsgType('class.command')).toBe(true)
+    expect(isMsgType('command')).toBe(true)
+    expect(isMsgType('student.ack')).toBe(true)
     expect(isMsgType('nope')).toBe(false)
     expect(isMsgType(7)).toBe(false)
   })
@@ -39,16 +42,19 @@ describe('classroom protocol', () => {
     const messages: Envelope[] = [
       { v: 1, type: 'class.create', classId: CLASS_ID, classPubKey: 'PUB', config: { kind: 'catalog', scenarioId: 'demo', variant: variant() } },
       { v: 1, type: 'class.focus', classId: CLASS_ID, studentId: 'stu-1' },
+      { v: 1, type: 'class.command', classId: CLASS_ID, studentId: 'stu-1', instructorToken: 'TOK', sealed: { iv: 'IV', ct: 'CT' } },
       { v: 1, type: 'class.close', classId: CLASS_ID },
       { v: 1, type: 'student.join', classId: CLASS_ID, displayName: 'Ada', studentPubKey: 'SPUB' },
       { v: 1, type: 'student.grid', classId: CLASS_ID, from: 'stu-1', sealed: { iv: 'IV', ct: 'CT' } },
       { v: 1, type: 'student.focus', classId: CLASS_ID, sealed: { iv: 'IV', ct: 'CT' } },
       { v: 1, type: 'student.run', classId: CLASS_ID, sealed: { iv: 'IV', ct: 'CT' } },
+      { v: 1, type: 'student.ack', classId: CLASS_ID, sealed: { iv: 'IV', ct: 'CT' } },
       { v: 1, type: 'student.leave', classId: CLASS_ID },
       { v: 1, type: 'join.ok', classId: CLASS_ID, studentId: 'stu-1', classPubKey: 'PUB', config: { kind: 'catalog', scenarioId: 'demo', variant: variant() } },
       { v: 1, type: 'join.err', classId: CLASS_ID, reason: 'class-full' },
       { v: 1, type: 'focus.on', classId: CLASS_ID },
       { v: 1, type: 'focus.off', classId: CLASS_ID },
+      { v: 1, type: 'command', classId: CLASS_ID, sealed: { iv: 'IV', ct: 'CT' } },
       { v: 1, type: 'class.closed', classId: CLASS_ID },
       { v: 1, type: 'roster.update', classId: CLASS_ID, students: [{ studentId: 'stu-1', displayName: 'Ada', joinedAt: 1, studentPubKey: 'SPUB' }] },
       { v: 1, type: 'student.gone', classId: CLASS_ID, from: 'stu-1' },
