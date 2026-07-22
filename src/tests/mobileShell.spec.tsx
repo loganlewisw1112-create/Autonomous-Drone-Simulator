@@ -26,6 +26,7 @@ vi.mock('@/components/designer/CustomMissionHub', () => ({ CustomMissionHub: () 
 import { MobileShell } from '@/components/mobile/MobileShell'
 import { useMobileStore } from '@/store/mobileStore'
 import { useDroneStore } from '@/store/droneStore'
+import { ALL_SCENARIOS } from '@/scenarios/catalog'
 
 beforeEach(() => {
   device.mode = 'phone-landscape'
@@ -106,9 +107,11 @@ describe('MobileShell', () => {
   })
 
   it('exposes the shared fleet retask control from the Mission surface', () => {
+    useDroneStore.setState({ scenario: ALL_SCENARIOS[0] })
     render(<MobileShell />)
     fireEvent.click(screen.getByRole('button', { name: 'MISSION' }))
     expect(screen.getByRole('button', { name: '⟳ RETASK FLEET' })).toBeDisabled()
+    expect(screen.getByTestId('mission-progress')).toHaveTextContent('TASK 0%')
   })
 
   it('switches the primary action between Pause and Resume without ending the mission', () => {
