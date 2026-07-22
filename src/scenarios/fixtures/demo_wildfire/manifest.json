@@ -1,0 +1,25 @@
+{
+  "scenarioId": "demo_wildfire",
+  "area": {
+    "aoBbox": [
+      -122.26666010159904,
+      37.876342220625226,
+      -122.20973989840097,
+      37.92125777937478
+    ]
+  },
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "buildings.json",
+      "source": "Overture Maps Foundation — buildings theme",
+      "url": "https://docs.overturemaps.org/guides/buildings/",
+      "license": "ODbL 1.0; upstream attribution retained by Overture",
+      "attribution": "© OpenStreetMap contributors, Overture Maps Foundation",
+      "retrievedAt": "2026-07-22",
+      "sha256": "3ec913311223f5ff074948003df3fd391828a75a45841107cbd3a07c50b125ab",
+      "input": "official overturemaps Python client, latest STAC release",
+      "filters": "measured height, or num_floors × 3m; unknown-height footprints excluded"
+    }
+  ]
+}
