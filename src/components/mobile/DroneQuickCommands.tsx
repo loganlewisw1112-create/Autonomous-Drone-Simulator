@@ -35,7 +35,7 @@ export function DroneQuickCommands() {
     [drones, selectedDroneId],
   )
 
-  // Pending AI route suggestions for the selected drone. SUGGEST generates these
+  // Pending Route Advisor decision-support suggestions for the selected drone. SUGGEST generates these
   // into the shared store; the OPS hub renders them, so the Mission tab must too —
   // otherwise the button appears to do nothing.
   const suggestions = useMemo(
@@ -113,11 +113,11 @@ export function DroneQuickCommands() {
           and an ACCEPT (adopts the route) / DISMISS (drops it) choice. */}
       <div className="mobile-suggestions">
         <span className="mobile-sheet-label">
-          SUGGESTED MOVES{suggestions.length > 0 ? ` (${suggestions.length})` : ''}
+          ROUTE ADVISOR · SUGGESTED MOVES{suggestions.length > 0 ? ` (${suggestions.length})` : ''}
         </span>
         {suggestions.length === 0 ? (
           <span className="mobile-status-line">
-            Tap SUGGEST for AI-proposed next moves for {selected.id.toUpperCase()} (hold pattern, expanding search, route to last-known-location).
+            Tap SUGGEST to request Route Advisor decision support for {selected.id.toUpperCase()} (hold pattern, expanding search, route to last-known-location).
           </span>
         ) : (
           suggestions.map((s) => (

@@ -87,6 +87,7 @@ describe('<OperatorCommandPanel />', () => {
     expect(useDroneStore.getState().routeSuggestions.length).toBeGreaterThan(0)
 
     render(<OperatorCommandPanel />)
+    expect(screen.getByText('ROUTE ADVISOR · PENDING DECISION SUPPORT')).toBeInTheDocument()
     const diff = screen.getAllByTestId('suggestion-route-diff')[0]
     // Old side: no saved route in this fixture; new side: waypoint count + distance.
     expect(diff.textContent).toContain('no saved route')

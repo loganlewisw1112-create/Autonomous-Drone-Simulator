@@ -1,4 +1,5 @@
 import { useMissionControls } from '@/hooks/useMissionControls'
+import { FleetRetaskReview } from '@/components/FleetRetaskReview'
 import { DroneQuickCommands } from '@/components/mobile/DroneQuickCommands'
 import { useScenarioOptions } from '@/scenarios/registry'
 import { useMobileStore } from '@/store/mobileStore'
@@ -147,10 +148,12 @@ export function ScenarioSheet({ onScenarioSelected, onOpenCustomMissions }: { on
 
 export function MissionSheet() {
   const {
-    ui, scenario, lifecycle, operatorRole, investorDemo, launchPlan, lastRouteChange,
-    canStart, canAbort, canStop, launchReady, allLanded,
+    ui, scenario, drones, lifecycle, operatorRole, investorDemo, launchPlan, lastRouteChange,
+    latestFleetRetaskResult, fleetRetaskUndo,
+    canStart, canAbort, canStop, canRetaskFleet, launchReady, allLanded,
     setSimSpeed, setOperatorRole, setInvestorDemoEnabled, setShowPreflight,
     handleStart, handleAbort, handlePause, handleResume, handleEndMission, handleUndoRouteChange,
+    handleFleetRetask, handleUndoRetask,
   } = useMissionControls()
   const setShowLaunchBay = useDroneStore((s) => s.setShowLaunchBay)
 
@@ -184,7 +187,20 @@ export function MissionSheet() {
           ■ END MISSION
         </button>
       </div>
-      {lastRouteChange && (
+      <button
+        className="mobile-btn primary mobile-btn-full"
+        onClick={handleFleetRetask}
+        disabled={!scenario || drones.length === 0 || !canRetaskFleet}
+      >
+        ⟳ RETASK FLEET
+      </button>
+      <FleetRetaskReview
+        result={latestFleetRetaskResult}
+        undoUntil={fleetRetaskUndo?.undoUntil}
+        onUndo={handleUndoRetask}
+        compact
+      />
+      {lastRouteChange && lastRouteChange.source !== 'fleet_retask' && (
         <button className="mobile-btn mobile-btn-full" onClick={handleUndoRouteChange}>
           ↶ UNDO LAST ROUTE CHANGE
         </button>

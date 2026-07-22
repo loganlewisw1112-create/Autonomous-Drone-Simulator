@@ -22,6 +22,8 @@ describe('<ControlBar />', () => {
       weatherState: getDefaultWeatherState(scenario.seed),
       launchPlan: null,
       lastRouteChange: null,
+      latestFleetRetaskResult: null,
+      fleetRetaskUndo: null,
       operatorRole: 'pic',
       ui: { ...useDroneStore.getState().ui, isRunning: false },
     })
@@ -56,6 +58,29 @@ describe('<ControlBar />', () => {
   it('shows the BAY PLAN REQUIRED hint before a plan is confirmed', () => {
     render(<ControlBar />)
     expect(screen.getByText('⚠ BAY PLAN REQUIRED')).toBeInTheDocument()
+  })
+
+  it('exposes fleet retask to the PIC and blocks observers', () => {
+    render(<ControlBar />)
+    expect(screen.getByRole('button', { name: '⟳ RETASK FLEET' })).toBeDisabled()
+
+    cleanup()
+    useDroneStore.setState({
+      drones: [{
+        id: 'uav-01', label: 'UAV-01', color: '#00d4ff', position: scenario.startPosition,
+        altitudeFt: 120, headingDeg: 0, speedMs: 8, batteryPct: 80, signalDbm: -60,
+        missionState: 'navigate', currentWaypointIndex: 0, conflictFlag: false,
+        geofenceBreachFlag: false, bvlosFlag: false, sortieCount: 0,
+      }],
+      operatorRole: 'pic',
+    })
+    render(<ControlBar />)
+    expect(screen.getByRole('button', { name: '⟳ RETASK FLEET' })).toBeEnabled()
+
+    cleanup()
+    useDroneStore.setState({ operatorRole: 'observer' })
+    render(<ControlBar />)
+    expect(screen.getByRole('button', { name: '⟳ RETASK FLEET' })).toBeDisabled()
   })
 
   it('shows one-click route undo only when a route change is available', () => {

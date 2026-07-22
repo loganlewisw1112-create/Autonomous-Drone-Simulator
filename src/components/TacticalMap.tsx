@@ -12,12 +12,53 @@ import { buildAirspaceReservationFeatures, buildExternalTrafficFeatures, buildUt
 import { useDeviceMode, type DeviceMode } from '@/hooks/useDeviceMode'
 import { buildAppendedWaypoint, canAppend, routeWithoutWaypoint } from '@/components/mapRouteEditing'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/components/designer/designerValidation'
-import type { LatLng, ScenarioConfig } from '@/types'
+import type { LatLng, RouteSuggestion, ScenarioConfig } from '@/types'
 
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 const MAP_FALLBACK_MS = 4500
 
 export type MapMode = 'remote' | 'fallback'
+
+type SuggestedRouteCoordinate = [number, number]
+
+export interface SuggestedRouteFeature {
+  type: 'Feature'
+  geometry: {
+    type: 'LineString'
+    coordinates: SuggestedRouteCoordinate[]
+  }
+  properties: {
+    droneId: string
+    priority: RouteSuggestion['priority']
+    suggestionId: string
+  }
+}
+
+export function buildSuggestedRouteFeatures(
+  suggestions: readonly RouteSuggestion[],
+): SuggestedRouteFeature[] {
+  return suggestions.flatMap((suggestion) => {
+    if (
+      suggestion.route.length < 2
+      || suggestion.route.some((waypoint) => (
+        !Number.isFinite(waypoint.position.lat) || !Number.isFinite(waypoint.position.lng)
+      ))
+    ) return []
+
+    return [{
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: suggestion.route.map((waypoint) => [waypoint.position.lng, waypoint.position.lat]),
+      },
+      properties: {
+        droneId: suggestion.droneId,
+        priority: suggestion.priority,
+        suggestionId: suggestion.id,
+      },
+    }]
+  })
+}
 
 export function parseMapMode(search: string): MapMode {
   return new URLSearchParams(search).get('map') === 'fallback' ? 'fallback' : 'remote'
@@ -213,7 +254,6 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   const latestDroneWaypointsRef = useRef(droneWaypoints)
   const latestScenarioRef      = useRef(scenario)
   const latestSuggestionsRef   = useRef(routeSuggestions)
-  const latestSelectedDroneRef = useRef(ui.selectedDroneId)
   const latestDeviceModeRef    = useRef(deviceMode)
   // UTM state used to recompute on every render via a useMemo keyed on elapsedSec — which
   // changes every physics tick (20-200Hz), rebuilding traffic/reservation geometry far more
@@ -227,7 +267,6 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   useEffect(() => { latestDroneWaypointsRef.current = droneWaypoints }, [droneWaypoints])
   useEffect(() => { latestScenarioRef.current = scenario },          [scenario])
   useEffect(() => { latestSuggestionsRef.current = routeSuggestions }, [routeSuggestions])
-  useEffect(() => { latestSelectedDroneRef.current = ui.selectedDroneId }, [ui.selectedDroneId])
   useEffect(() => { latestDeviceModeRef.current = deviceMode },          [deviceMode])
 
   // ── GeoJSON interval: all setData() calls at 10fps ────────────────────────
@@ -255,7 +294,6 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       const ph = latestPosHistRef.current
       const dw = latestDroneWaypointsRef.current
       const sc = latestScenarioRef.current
-      const selectedDroneId = latestSelectedDroneRef.current
 
       // Trails
       d.forEach((drone) => {
@@ -301,16 +339,9 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
 
       const suggestedSrc = map.getSource('suggested-route') as maplibregl.GeoJSONSource | undefined
       if (suggestedSrc) {
-        const suggestion = latestSuggestionsRef.current.find((item) => item.droneId === selectedDroneId)
         suggestedSrc.setData({
           type: 'FeatureCollection',
-          features: suggestion && suggestion.route.length > 1
-            ? [{
-                type: 'Feature' as const,
-                geometry: { type: 'LineString' as const, coordinates: suggestion.route.map((wp) => [wp.position.lng, wp.position.lat]) },
-                properties: { priority: suggestion.priority },
-              }]
-            : [],
+          features: buildSuggestedRouteFeatures(latestSuggestionsRef.current),
         })
       }
     }, 100)   // 10fps map updates — smooth enough for overlays, far cheaper than 20fps

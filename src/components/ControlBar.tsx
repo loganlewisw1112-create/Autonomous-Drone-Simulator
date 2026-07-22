@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
+import { FleetRetaskReview } from '@/components/FleetRetaskReview'
 import { useMissionControls } from '@/hooks/useMissionControls'
 import { useScenarioOptions } from '@/scenarios/registry'
 import type { OperatorRole, SimSpeed, ScenarioVariantConfig } from '@/types'
@@ -14,9 +15,11 @@ const CustomMissionHub = lazy(() => import('@/components/designer/CustomMissionH
 export function ControlBar() {
   const {
     ui, scenario, events, drones, lifecycle, operatorRole, weatherState, scenarioVariant, investorDemo, lastRouteChange,
+    latestFleetRetaskResult, fleetRetaskUndo,
     setSimSpeed, setOperatorRole, setInvestorDemoEnabled,
-    exportStatus, canStart, canAbort, canStop, launchReady, allLanded,
+    exportStatus, canStart, canAbort, canStop, canRetaskFleet, launchReady, allLanded,
     handleStart, handleAbort, handlePause, handleResume, handleEndMission, handleUndoRouteChange,
+    handleFleetRetask, handleUndoRetask,
     handleScenarioChange, handleVariantChange, handleRandomizeSeed, handleDemoReset,
     handleExportLog, handleExportKML, handleExportGeoJSON, handleExportAfterAction,
   } = useMissionControls()
@@ -177,6 +180,14 @@ export function ControlBar() {
         <button className="btn warning" onClick={handleAbort} disabled={!ui.isRunning || !canAbort}>
           ⬆ RTB ALL
         </button>
+        <button
+          className="btn primary"
+          onClick={handleFleetRetask}
+          disabled={!scenario || drones.length === 0 || !canRetaskFleet}
+          title={!canRetaskFleet ? 'PIC role required' : 'Apply the Route Advisor fleet plan'}
+        >
+          ⟳ RETASK FLEET
+        </button>
         {lifecycle === 'paused' ? (
           <button className="btn primary" onClick={handleResume} disabled={!canStop}>
             ▶ RESUME
@@ -193,7 +204,7 @@ export function ControlBar() {
         >
           ■ END MISSION
         </button>
-        {lastRouteChange && (
+        {lastRouteChange && lastRouteChange.source !== 'fleet_retask' && (
           <button className="btn" onClick={handleUndoRouteChange} title="Restore the routes from before the latest route change">
             ↶ UNDO ROUTE
           </button>
@@ -243,6 +254,11 @@ export function ControlBar() {
           {ui.isRunning ? '● MISSION ACTIVE' : allLanded ? '● ALL LANDED' : '○ STANDBY'}
         </span>
       </div>
+      <FleetRetaskReview
+        result={latestFleetRetaskResult}
+        undoUntil={fleetRetaskUndo?.undoUntil}
+        onUndo={handleUndoRetask}
+      />
       {showDesigner && <Suspense fallback={null}><CustomMissionHub onClose={() => setShowDesigner(false)} /></Suspense>}
     </div>
   )
