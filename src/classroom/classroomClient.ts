@@ -7,6 +7,10 @@ import { buildGridFrame, parseGridFrame, type GridFrame, type GridFrameInput, ty
 import { buildMissionAssessment, type MissionAssessment } from '@/classroom/missionAssessment'
 import { CLASSROOM_INTERVENTION_ACTOR_PREFIX } from '@/classroom/commandAttribution'
 import {
+  executeInstructorCommand, validateInstructorCommand,
+  type InstructorCommand,
+} from '@/classroom/commandRegistry'
+import {
   GRID_BUFFER_LIMIT_BYTES, PROTOCOL_VERSION, encodeEnvelope, decodeEnvelope, makeClassId,
   acceptsSeq, isSealedPayload,
 } from '@/classroom/protocol'
@@ -40,6 +44,15 @@ export interface RunSubmission {
   student: { displayName: string }
 }
 
+export interface InstructorCommandAck {
+  commandId: string
+  actorId: string
+  ok: boolean
+  code?: string
+  message?: string
+  affectedDroneIds: string[]
+}
+
 let ws: WebSocket | null = null
 let classId: ClassId | null = null
 
@@ -49,6 +62,7 @@ const studentCiphers = new Map<StudentId, SessionCipher>()
 // High-water sealed seq per student — the anti-replay state. Lives beside the ciphers
 // and is dropped with them, so a rejoining student (new studentId, new key) starts clean.
 const lastSeqByStudent = new Map<StudentId, number>()
+const outCommandSeqByStudent = new Map<StudentId, number>()
 // Server-minted proof that this tab created the class. Held only in memory: it is the
 // one credential that can re-point a live room at a different key, so it never touches
 // storage and never leaves this module except back to the relay that issued it.
@@ -64,6 +78,7 @@ let displayName = ''
 // Monotonic across grid/focus/run for this student session. The instructor keeps ONE
 // high-water mark per student, so every message this tab sends must advance it.
 let outSeq = 0
+let lastCommandSeq: number | undefined
 let gridTimer: ReturnType<typeof setInterval> | null = null
 let focusTimer: ReturnType<typeof setInterval> | null = null
 let unsubscribeRun: (() => void) | null = null
@@ -168,6 +183,7 @@ function openSealed<T>(from: StudentId, cipher: SessionCipher, sealed: Sealed): 
 function forgetStudent(studentId: StudentId): void {
   studentCiphers.delete(studentId)
   lastSeqByStudent.delete(studentId)
+  outCommandSeqByStudent.delete(studentId)
 }
 
 function handleInstructorMessage(raw: string): void {
@@ -225,6 +241,17 @@ function handleInstructorMessage(raw: string): void {
       })
       break
     }
+    case 'student.ack': {
+      const cipher = msg.from ? studentCiphers.get(msg.from) : undefined
+      if (!cipher || !msg.from) return
+      const ack = openSealed<InstructorCommandAck>(msg.from, cipher, msg.sealed)
+      if (!isInstructorCommandAck(ack)) return
+      const pending = store.commands.some((command) => command.studentId === msg.from
+        && command.commandId === ack.commandId && command.status === 'pending')
+      if (!pending) return
+      store.addCommandAck({ ...ack, studentId: msg.from, receivedAt: Date.now() })
+      break
+    }
     case 'student.gone':
       forgetStudent(msg.from)
       store.removeStudent(msg.from)
@@ -246,8 +273,14 @@ export function closeClass(): void {
 
 // ── Student ───────────────────────────────────────────────────────────────────
 
-export function joinClass(id: ClassId, name: string): void {
+export function joinClass(id: ClassId, name: string, remoteControlConsent: boolean): void {
   teardown()
+  if (!remoteControlConsent) {
+    const store = useClassroomStore.getState()
+    store.reset()
+    store.setStatus('error', 'remote-control-consent-required')
+    return
+  }
   classId = id
   displayName = name
   outSeq = 0
@@ -289,6 +322,9 @@ function handleStudentMessage(raw: string): void {
       store.setBeingFocused(false)
       stopFocusPublisher()
       break
+    case 'command':
+      handleStudentCommand(msg.sealed)
+      break
     case 'class.closed':
       store.setStatus('closed')
       teardown()
@@ -301,9 +337,9 @@ function handleStudentMessage(raw: string): void {
 // eavesdropper necessarily carries its original seq and the instructor drops it.
 // Single counter for the whole session across grid/focus/run: the instructor keeps one
 // high-water mark per student, so every send must advance it. See SealedPayload.
-function sealOutgoing(cipher: SessionCipher, body: unknown): Sealed {
-  outSeq += 1
-  const payload: SealedPayload<unknown> = { seq: outSeq, body }
+function sealOutgoing(cipher: SessionCipher, body: unknown, sequence?: number): Sealed {
+  if (sequence === undefined) outSeq += 1
+  const payload: SealedPayload<unknown> = { seq: sequence ?? outSeq, body }
   return cipher.seal(payload)
 }
 
@@ -371,6 +407,142 @@ function currentGridInput(): GridFrameInput {
   }
 }
 
+// The single instructor-command decrypt door. Unknown plaintext is rejected only
+// after authentication and sequence enforcement, then acknowledged as a failure.
+function handleStudentCommand(sealed: Sealed): void {
+  if (!studentCipher || !classId) return
+  const store = useClassroomStore.getState()
+  let payload: SealedPayload<unknown>
+  try {
+    payload = studentCipher.open<SealedPayload<unknown>>(sealed)
+  } catch {
+    store.noteCommandReject()
+    return
+  }
+  if (!isSealedPayload(payload) || !acceptsSeq(lastCommandSeq, payload.seq)) {
+    store.noteCommandReject()
+    return
+  }
+  lastCommandSeq = payload.seq
+
+  const checked = validateInstructorCommand(payload.body)
+  if (!checked.ok) {
+    store.noteCommandReject()
+    sendCommandAck({
+      commandId: commandIdFrom(payload.body),
+      actorId: `${CLASSROOM_INTERVENTION_ACTOR_PREFIX}${classId}`,
+      ok: false,
+      code: checked.code,
+      message: checked.message,
+      affectedDroneIds: [],
+    })
+    return
+  }
+
+  const execution = executeInstructorCommand(checked.command, { actorSessionId: classId })
+  const actorId = `${CLASSROOM_INTERVENTION_ACTOR_PREFIX}${classId}`
+  const ack: InstructorCommandAck = execution.ok
+    ? {
+        commandId: execution.commandId,
+        actorId,
+        ok: true,
+        affectedDroneIds: execution.affectedDroneIds,
+      }
+    : {
+        commandId: execution.commandId,
+        actorId,
+        ok: false,
+        code: execution.code,
+        message: execution.message,
+        affectedDroneIds: [],
+      }
+
+  if (execution.ok) {
+    const executedAt = Date.now()
+    const intervention = {
+      commandId: execution.commandId,
+      command: checked.command,
+      actorId,
+      label: commandLabel(checked.command),
+      executedAt,
+    }
+    store.addIntervention(intervention)
+    store.showTakeover({ ...intervention, expiresAt: executedAt + 3_000 })
+  } else {
+    store.noteCommandReject()
+  }
+  sendCommandAck(ack)
+}
+
+function sendCommandAck(ack: InstructorCommandAck): void {
+  if (!studentCipher || !classId) return
+  send({ v: PROTOCOL_VERSION, type: 'student.ack', classId, sealed: sealOutgoing(studentCipher, ack) })
+}
+
+function commandIdFrom(value: unknown): string {
+  if (!value || typeof value !== 'object') return 'unknown'
+  const commandId = (value as { commandId?: unknown }).commandId
+  return typeof commandId === 'string' && commandId ? commandId : 'unknown'
+}
+
+function commandLabel(command: InstructorCommand): string {
+  const value = command as unknown as Record<string, unknown>
+  const fleetCommand = ['rtb_all', 'hold_all', 'retask_fleet', 'undo_retask'].includes(command.kind)
+  const subject = typeof value.droneId === 'string'
+    ? value.droneId.toUpperCase()
+    : fleetCommand ? 'FLEET' : 'SESSION'
+  return `${subject} → ${command.kind.replaceAll('_', ' ').toUpperCase()}`
+}
+
+function isInstructorCommandAck(value: unknown): value is InstructorCommandAck {
+  if (!value || typeof value !== 'object') return false
+  const ack = value as Partial<InstructorCommandAck>
+  return typeof ack.commandId === 'string'
+    && typeof ack.actorId === 'string'
+    && typeof ack.ok === 'boolean'
+    && Array.isArray(ack.affectedDroneIds)
+    && ack.affectedDroneIds.every((id) => typeof id === 'string')
+    && (ack.code === undefined || typeof ack.code === 'string')
+    && (ack.message === undefined || typeof ack.message === 'string')
+}
+
+// Each recipient has a distinct E2EE key, so a class-wide command is expanded into
+// one sealed envelope per roster member instead of broadcasting one unusable blob.
+export function sendCommand(studentId: StudentId | null, command: InstructorCommand): StudentId[] {
+  if (!classId || !instructorToken || !ws || ws.readyState !== WebSocket.OPEN) return []
+  const recipients = studentId === null
+    ? useClassroomStore.getState().roster.map((entry) => entry.studentId)
+    : [studentId]
+  const sent: StudentId[] = []
+  const issuedAt = Date.now()
+  const actorId = `${CLASSROOM_INTERVENTION_ACTOR_PREFIX}${classId}`
+
+  for (const recipient of recipients) {
+    const cipher = studentCiphers.get(recipient)
+    if (!cipher) continue
+    const seq = (outCommandSeqByStudent.get(recipient) ?? 0) + 1
+    send({
+      v: PROTOCOL_VERSION,
+      type: 'class.command',
+      classId,
+      studentId: recipient,
+      instructorToken,
+      sealed: sealOutgoing(cipher, command, seq),
+    })
+    outCommandSeqByStudent.set(recipient, seq)
+    useClassroomStore.getState().addCommand({
+      commandId: command.commandId,
+      studentId: recipient,
+      command,
+      actorId,
+      issuedAt,
+      status: 'pending',
+    })
+    sent.push(recipient)
+  }
+  return sent
+}
+
 function currentAssessment(
   isFinal = false,
   session?: MissionReplaySession,
@@ -432,10 +604,12 @@ export function teardown(): void {
   }
   studentCiphers.clear()
   lastSeqByStudent.clear()
+  outCommandSeqByStudent.clear()
   studentCipher = null
   instructorKeys = null
   instructorToken = null
   studentKeys = null
   classId = null
   outSeq = 0
+  lastCommandSeq = undefined
 }
