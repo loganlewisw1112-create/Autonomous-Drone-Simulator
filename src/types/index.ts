@@ -98,6 +98,7 @@ export interface Geofence {
   maxAltitudeFt: number
   type: 'no_fly' | 'restricted'
   bypassForMission?: boolean  // task force authorization — zone visible on map but never triggers RTB
+  lifeCritical?: boolean      // breach risks people or occupied critical infrastructure
 }
 
 export interface GeofenceBreachInfo {
@@ -422,6 +423,25 @@ export interface LaunchBayStatus {
   effectiveCapacityDrones?: number
 }
 
+export type MissionObjectiveKind =
+  | 'contact_resolution'
+  | 'sector_coverage'
+  | 'tasking_compliance'
+  | 'containment'
+  | 'fleet_recovery'
+
+/** Mission definition shared by every simulator shell. Runtime scoring stays outside this type. */
+export interface MissionObjective {
+  id: string
+  kind: MissionObjectiveKind
+  label: string
+  weight: number
+  /** Completion target expressed as a 0..1 ratio. Sector coverage defaults to 0.80. */
+  target?: number
+  /** Optional source ids narrow a declared objective to contacts, tasks, or operational features. */
+  sourceIds?: string[]
+}
+
 export type LaunchDoctrineRejectCode =
   | 'missing_route'
   | 'missing_recovery'
@@ -644,6 +664,7 @@ export interface ScenarioConfig {
   dispatchTimeline?: DispatchTimelineEntry[]
   droneRouteBriefs?: Record<string, DroneRouteBrief>
   operationalFeatures?: OperationalFeature[]
+  missionObjectives?: MissionObjective[]
   weatherProfile?: ScenarioWeatherProfile
   // ── Custom-mission authoring (designer) ──
   // When true, enhanceScenarioForOperations preserves `authoredRoutes` as the

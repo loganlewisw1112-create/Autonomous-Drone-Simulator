@@ -61,6 +61,7 @@ const CAPABILITY_MATRIX: Record<string, string> = {
   'telemetry & evidence chain': 'components/TelemetryPanel',
   'dispatch feed': 'components/MissionStatusFeed',
   'fleet retask review': 'components/FleetRetaskReview',
+  'mission objective progress': 'components/MissionProgress',
   'preflight checklist': 'components/PreflightChecklist',
   'launch bay planning': 'components/LaunchBayPlanner',
   'mission replay': 'components/ReplayPanel',
