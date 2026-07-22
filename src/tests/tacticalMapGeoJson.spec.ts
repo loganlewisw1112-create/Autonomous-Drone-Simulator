@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { buildSuggestedRouteFeatures } from '@/components/TacticalMap'
 import { buildConflictFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
-import type { DroneState, Waypoint } from '@/types'
+import type { DroneState, RouteSuggestion, Waypoint } from '@/types'
 
 const baseDrone: DroneState = {
   id: 'uav-01',
@@ -65,4 +66,74 @@ describe('TacticalMap GeoJSON builders', () => {
       },
     ])
   })
+
+  it('builds one proposal line per valid route across multiple drones', () => {
+    const features = buildSuggestedRouteFeatures([
+      suggestion('suggestion-a', 'uav-01', 'urgent', [
+        waypoint('a1', 37.7908, -122.3933),
+        waypoint('a2', 37.8058, -122.3565),
+      ]),
+      suggestion('suggestion-b', 'uav-02', 'routine', [
+        waypoint('b1', 37.8000, -122.3800),
+        waypoint('b2', 37.8100, -122.3700),
+        waypoint('b3', 37.8200, -122.3600),
+      ]),
+    ])
+
+    expect(features).toEqual([
+      {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: [[-122.3933, 37.7908], [-122.3565, 37.8058]] },
+        properties: { droneId: 'uav-01', priority: 'urgent', suggestionId: 'suggestion-a' },
+      },
+      {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: [[-122.38, 37.8], [-122.37, 37.81], [-122.36, 37.82]] },
+        properties: { droneId: 'uav-02', priority: 'routine', suggestionId: 'suggestion-b' },
+      },
+    ])
+  })
+
+  it('renders proposals without selected-drone context and excludes invalid short routes', () => {
+    const features = buildSuggestedRouteFeatures([
+      suggestion('valid', 'uav-03', 'critical', [
+        waypoint('c1', 37.79, -122.39),
+        waypoint('c2', 37.80, -122.38),
+      ]),
+      suggestion('short', 'uav-01', 'advisory', [waypoint('short-1', 37.79, -122.39)]),
+      suggestion('invalid', 'uav-02', 'routine', [
+        waypoint('invalid-1', 37.79, -122.39),
+        waypoint('invalid-2', Number.NaN, -122.38),
+      ]),
+    ])
+
+    expect(features).toHaveLength(1)
+    expect(features[0].properties).toEqual({
+      droneId: 'uav-03', priority: 'critical', suggestionId: 'valid',
+    })
+  })
 })
+
+function suggestion(
+  id: string,
+  droneId: string,
+  priority: RouteSuggestion['priority'],
+  route: Waypoint[],
+): RouteSuggestion {
+  return {
+    id,
+    droneId,
+    source: 'TACTICAL ADVISOR',
+    priority,
+    title: id,
+    rationale: 'test',
+    riskLevel: priority,
+    route,
+    requiresApproval: true,
+    createdAtSec: 1,
+  }
+}
+
+function waypoint(id: string, lat: number, lng: number): Waypoint {
+  return { id, position: { lat, lng }, altitudeFt: 120 }
+}

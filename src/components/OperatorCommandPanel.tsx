@@ -206,7 +206,7 @@ export function OperatorCommandPanel() {
 
       {suggestions.length > 0 && (
         <div className="operator-suggestions">
-          <div className="mission-feed-label">PENDING ROUTE SUGGESTIONS</div>
+          <div className="mission-feed-label">ROUTE ADVISOR · PENDING DECISION SUPPORT</div>
           {suggestions.map((suggestion) => (
             <div key={suggestion.id} className={`operator-suggestion suggestion-${suggestion.priority}`}>
               <div className="operator-suggestion-title">{suggestion.title}</div>

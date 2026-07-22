@@ -94,7 +94,33 @@ describe('mission status feed builder', () => {
       events: [event('operator_command', 'uav-01', 100, { command: 'deep_scan' })],
     })
 
-    expect(feed.some((entry) => entry.category === 'operator_task' && entry.message.includes('deep scan'))).toBe(true)
+    expect(feed).toContainEqual(expect.objectContaining({
+      source: 'OPERATOR',
+      category: 'operator_task',
+      message: 'UAV-01 received operator command: deep scan.',
+    }))
+  })
+
+  it('narrates fleet retasks as Route Advisor decision support', () => {
+    const feed = buildMissionStatusFeed({
+      scenario,
+      elapsedSec: 130,
+      drones: [drone],
+      thermalDetections: [],
+      events: [event('operator_command', 'uav-01', 100, {
+        command: 'set_route',
+        source: 'fleet_retask',
+        tacticalAction: 'deep_scan',
+        objectiveId: 'contact-alpha',
+      })],
+    })
+
+    expect(feed).toContainEqual(expect.objectContaining({
+      source: 'ROUTE ADVISOR',
+      category: 'operator_task',
+      message: 'UAV-01 Route Advisor decision support: deep scan for objective contact-alpha.',
+    }))
+    expect(feed.some((entry) => entry.message.includes('received operator command'))).toBe(false)
   })
 
   it('names Rio Grande roadside recharge stations in derived recharge updates', () => {
