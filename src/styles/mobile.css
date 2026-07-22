@@ -374,6 +374,34 @@
   font: 14px var(--font-mono);
 }
 .mobile-status-line { color: var(--text-secondary); font: 12px var(--font-mono); line-height: 1.45; }
+.fleet-retask-review {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 68, 255, 0.5);
+  border-radius: 8px;
+  background: rgba(28, 12, 32, 0.94);
+  color: var(--text-secondary);
+  font: 11px var(--font-mono);
+}
+.fleet-retask-review__main { display: flex; flex-wrap: wrap; gap: 5px 8px; align-items: center; }
+.fleet-retask-review__main strong { width: 100%; color: #ff88ff; letter-spacing: .7px; }
+.fleet-retask-review__counts { color: var(--text-primary); }
+.fleet-retask-review__message { width: 100%; color: var(--accent-yellow); line-height: 1.4; }
+.fleet-retask-review__details { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; color: var(--accent-yellow); list-style: none; }
+.fleet-retask-review__details b { color: var(--text-primary); }
+.fleet-retask-review__undo {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #ff88ff;
+  border-radius: 8px;
+  background: rgba(255, 68, 255, 0.08);
+  color: #ff88ff;
+  font: 700 12px var(--font-mono);
+}
+.fleet-retask-review__undo-error { color: var(--accent-red); font-weight: 700; }
+.fleet-retask-review--compact { padding: 8px; }
 .mobile-evidence-summary { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font: 11px var(--font-mono); }
 .mobile-evidence-summary span:last-child { grid-column: 1 / -1; color: var(--text-secondary); }
 .evidence-ok { color: var(--accent-green); }

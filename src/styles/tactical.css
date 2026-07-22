@@ -398,6 +398,12 @@ html, body, #root {
   flex-direction: column;
 }
 
+.control-dock {
+  grid-column: 1 / -1;
+  position: relative;
+  min-width: 0;
+}
+
 .control-bar {
   grid-column: 1 / -1;
   background: var(--bg-panel-alt);
@@ -406,6 +412,65 @@ html, body, #root {
   align-items: center;
   padding: 0 16px;
   gap: 8px;
+}
+
+.fleet-retask-review {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 5px 12px;
+  border-top: 1px solid rgba(255, 68, 255, 0.45);
+  background: rgba(28, 12, 32, 0.96);
+  color: var(--text-secondary);
+  font: 10px var(--font-mono);
+}
+
+.fleet-retask-review__main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.fleet-retask-review__main strong { color: #ff88ff; letter-spacing: 0.08em; }
+.fleet-retask-review__counts { color: var(--text-primary); }
+.fleet-retask-review__message { color: var(--accent-yellow); }
+
+.fleet-retask-review__details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0;
+  color: var(--accent-yellow);
+  list-style: none;
+}
+
+.fleet-retask-review__details b { color: var(--text-primary); }
+
+.fleet-retask-review__undo {
+  min-height: 24px;
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid #ff88ff;
+  border-radius: 3px;
+  background: transparent;
+  color: #ff88ff;
+  font: 700 10px var(--font-mono);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.fleet-retask-review__undo:hover { background: rgba(255, 68, 255, 0.12); }
+.fleet-retask-review__undo-error { color: var(--accent-red); font-weight: 700; }
+
+.control-dock > .fleet-retask-review {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  z-index: 210;
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────────── */
