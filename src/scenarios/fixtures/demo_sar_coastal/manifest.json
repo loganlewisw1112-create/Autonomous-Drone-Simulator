@@ -1,0 +1,18 @@
+{
+  "scenarioId": "demo_sar_coastal",
+  "area": {
+    "lat": 37.7695,
+    "lng": -122.5103
+  },
+  "realDate": "2024-07-16",
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=37.7695&longitude=-122.5103&start_date=2024-07-16&end_date=2024-07-16&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "e72466efd0005cc78514fd718e6775b7e3709818d7f79dfb7e680d6df317d60d"
+    }
+  ]
+}

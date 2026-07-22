@@ -3,6 +3,7 @@ import { startSimLoop, stopTicking, initFleet } from '@/sim/SimulationLoop'
 import { getScenarioById } from '@/scenarios/registry'
 import { compileCustomMission } from '@/components/designer/designerValidation'
 import { buildWeatherState } from '@/sim/weather/weatherEngine'
+import { observedWeatherFor } from '@/scenarios/observedWeather'
 import { buildAutoLaunchBayPlan } from '@/sim/mission/launchBayPlanning'
 import { PREFLIGHT_CHECKLIST } from '@/sim/mission/preflightChecklist'
 import type { ClassConfig } from '@/classroom/protocol'
@@ -30,7 +31,7 @@ export function loadClassMission(config: ClassConfig): LoadResult {
   // student in the class flies byte-identical conditions from the shared seed.
   store.setScenarioVariant(config.variant)
   if (scenario.weatherProfile) {
-    store.setWeatherState(buildWeatherState(scenario.weatherProfile, config.variant))
+    store.setWeatherState(buildWeatherState(scenario.weatherProfile, config.variant, observedWeatherFor(scenario.id)))
   }
   initFleet()
 

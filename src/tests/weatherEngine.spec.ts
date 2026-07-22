@@ -49,6 +49,19 @@ describe('weatherEngine', () => {
     expect(a.batteryDrainMultiplier).toBe(b.batteryDrainMultiplier)
   })
 
+  it('observed weather (WP-2) drives the baseline; omitting it is bit-identical', () => {
+    const observed = { windKts: 59.2, gustKts: 110.8, tempF: 77 } // real Hurricane Ian ERA5 peak
+    const withObs = buildWeatherState(COASTAL_PROFILE, BASE_VARIANT, observed)
+    const without = buildWeatherState(COASTAL_PROFILE, BASE_VARIANT)
+    // severity 0 → no perturbation → the observed baseline shows through
+    expect(withObs.windKts).toBeCloseTo(59.2, 1)
+    expect(withObs.gustKts).toBeCloseTo(110.8, 1)
+    expect(withObs.tempF).toBe(77)
+    // no fixture → the profile baseline, unchanged from prior behaviour
+    expect(without.windKts).toBe(12)
+    expect(without).toEqual(buildWeatherState(COASTAL_PROFILE, BASE_VARIANT))
+  })
+
   it('different seeds produce different states across a range', () => {
     const results = new Set<string>()
     for (let seed = 1; seed <= 20; seed++) {

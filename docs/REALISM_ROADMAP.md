@@ -37,8 +37,9 @@ formats and byte budgets closed.
 |---|---|---|
 | WP-1 platform specs | **DONE** | Physics were already sourced; thermal sensor specs added this pass (`platformCatalog.ts`). |
 | WP-5 thermal geometry | **PARTIAL** | Johnson §18.1 math shipped + tested (`thermalRange.ts`); LOS/contrast gating awaits WP-4. |
-| WP-0 fixture pipeline | **BLOCKED here** | Needs live network authoring (dev CLI hitting USGS/Overture/Open-Meteo/FAA). Not runnable in this environment. |
-| WP-2/3/4/7/8/9 | **GATED on WP-0/WP-4** | Real geodata + the terrain keystone; no honest offline path. |
+| WP-0 fixture pipeline | **BUILT (weather)** | `tools/fixtures/` CLI (`npm run fixtures`) fetches real geodata at authoring time and freezes it with a provenance manifest (source URL, date, licence, SHA-256). Network egress verified in this environment. Weather source (Open-Meteo ERA5) live; terrain/airspace/etc. fetchers extend the same framework. |
+| WP-2 weather | **DONE (incident scenarios)** | Real ERA5 baselines frozen + wired: `buildWeatherState` takes an optional observed baseline the seeded dials perturb around. Fort Myers now carries Ian's real 59kt/110kt. Applied to incident scenarios only, not the demo tutorial. |
+| WP-3/4/7/8/9/12 | **UNBLOCKED on data, gated on WP-4 effort** | Geodata IS fetchable (terrain tile fetch verified). The remaining blocker is WP-4's size — the keystone OcclusionService is a multi-day build, and 5/7/8/9 sit behind it. WP-12's OpenSky source needs auth/an alt. |
 | WP-6/10/11 | **MODULE DONE** | Pure, tested, deterministic modules shipped: `sensors/sweepWidth.ts` (POD), `weather/dryden.ts` (turbulence), `drone/battery.ts` (discharge curve). Change no live behaviour yet — live wiring into the loop is the deferred, determinism-sensitive step (WP-5 pattern). |
 | Coordinator consumer for WP-9 | **LANDED** | Classroom build ships; a NIST-scored lane now has a comparison table to report into. |
 

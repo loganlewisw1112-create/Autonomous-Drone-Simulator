@@ -463,6 +463,17 @@ export type WeatherHazard =
   | 'canyon_gusts'
   | 'rf_shadow'
 
+// Real observed weather frozen from a fixture (REALISM_ROADMAP WP-2). When a scenario has one,
+// these values become the baseline that the seeded variant dials perturb around. Sourced from
+// Open-Meteo ERA5 at authoring time; visibility/ceiling are absent from ERA5 so they stay from
+// the profile. A scenario with no fixture is unaffected (bit-identical to prior behaviour).
+export interface ObservedWeather {
+  windKts: number
+  gustKts: number
+  tempF: number
+  cloudCoverPct?: number
+}
+
 export interface ScenarioWeatherProfile {
   locationTag: WeatherLocationTag
   baseConditions: {
