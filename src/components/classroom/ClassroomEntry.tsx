@@ -4,6 +4,7 @@ import { useClassroomStore } from '@/classroom/classroomStore'
 import { JoinGate } from '@/components/classroom/JoinGate'
 import { ClassSetup } from '@/components/classroom/ClassSetup'
 import { CoordinatorConsole } from '@/components/classroom/CoordinatorConsole'
+import { MissionScorecard } from '@/components/classroom/MissionScorecard'
 import './classroom.css'
 
 // Single lazy entry for the whole classroom feature. main.tsx renders this ONLY
@@ -38,6 +39,7 @@ function StudentLive() {
     <>
       <div className="cls-banner">CLASS {classId} · streaming{beingFocused ? ' · instructor watching' : ''}</div>
       <App />
+      <MissionScorecard />
     </>
   )
 }

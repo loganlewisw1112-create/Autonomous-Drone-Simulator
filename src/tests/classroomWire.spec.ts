@@ -4,6 +4,7 @@ import { buildGridFrame, parseGridFrame, type GridFrame } from '@/classroom/grid
 import { encodeEnvelope, decodeEnvelope, isSealedPayload, PROTOCOL_VERSION } from '@/classroom/protocol'
 import type { SealedPayload } from '@/classroom/protocol'
 import type { DroneState } from '@/types'
+import type { MissionAssessment } from '@/classroom/missionAssessment'
 
 const CLASS_ID = 'B2CD3F'
 
@@ -14,6 +15,18 @@ function drone(id: string, over: Partial<DroneState> = {}): DroneState {
     missionState: 'navigate', currentWaypointIndex: 1,
     conflictFlag: false, geofenceBreachFlag: false, bvlosFlag: false, sortieCount: 0, ...over,
   }
+}
+
+const assessment: MissionAssessment = {
+  progressPercent: 58,
+  objectives: [],
+  lifeSafety: { status: 'pass', severity: 'none', cap: 100, findings: [] },
+  tier1: 39,
+  tier2: 28,
+  uncappedTotal: 67,
+  total: 67,
+  band: 'D',
+  interventions: [],
 }
 
 // The full wire path a grid frame travels, with no socket: student seals → wrap in
@@ -31,6 +44,7 @@ describe('classroom end-to-end wire path', () => {
       elapsedSec: 130, status: 1,
       drones: [drone('alpha', { batteryPct: 8 }), drone('bravo', { geofenceBreachFlag: true })],
       thermalContactCount: 1, eventCount: 4,
+      assessment,
     })
 
     // Student side: seal + envelope + serialize.
@@ -47,6 +61,7 @@ describe('classroom end-to-end wire path', () => {
     if (env.type !== 'student.grid') throw new Error('unreachable')
     const received = parseGridFrame(iCipher.open<GridFrame>(env.sealed))
     expect(received).toEqual(frame)
+    expect(received).toMatchObject({ p: 58, b: 'D', sc: 67 })
   })
 
   it('carries the replay counter under the auth tag, not on the envelope', () => {

@@ -4,8 +4,10 @@ import { join } from 'node:path'
 import { generateKeyPair, SessionCipher } from '@/classroom/sessionCrypto'
 import { buildGridFrame, type GridFrame } from '@/classroom/gridFrame'
 import { useClassroomStore } from '@/classroom/classroomStore'
+import { getDefaultWeatherState } from '@/sim/weather/weatherEngine'
 import type { ClassConfig, ClassId, Sealed } from '@/classroom/protocol'
-import type { DroneState } from '@/types'
+import type { DroneState, FullMissionFrame } from '@/types'
+import type { MissionAssessment } from '@/classroom/missionAssessment'
 
 // Anti-replay + integrity reporting, driven through the REAL instructor message
 // handler in classroomClient with a fake socket — no network, no port. Build plan §2.3
@@ -36,6 +38,33 @@ function drone(id: string, over: Partial<DroneState> = {}): DroneState {
 
 function frameAt(elapsedSec: number): GridFrame {
   return buildGridFrame({ elapsedSec, status: 1, drones: [drone('alpha')], thermalContactCount: 0, eventCount: 0 })
+}
+
+function assessment(total = 82): MissionAssessment {
+  return {
+    progressPercent: 75,
+    objectives: [],
+    lifeSafety: { status: 'pass', severity: 'none', cap: 100, findings: [] },
+    tier1: 52,
+    tier2: 30,
+    uncappedTotal: total,
+    total,
+    band: total >= 80 ? 'B' : total >= 70 ? 'C' : total >= 60 ? 'D' : 'F',
+    interventions: [],
+  }
+}
+
+function fullFrameAt(elapsedSec: number): FullMissionFrame {
+  return {
+    tick: elapsedSec * 20,
+    elapsedSec,
+    drones: [drone('alpha')],
+    thermalContacts: [],
+    groundUnits: [],
+    recoveryTeams: [],
+    weatherState: getDefaultWeatherState(7),
+    activeEventIds: [],
+  }
 }
 
 interface WireEnvelope { v: 1; type: string; classId: ClassId; from?: string; sealed?: Sealed; [k: string]: unknown }
@@ -103,7 +132,7 @@ function sealedEnvelope(type: string, classId: ClassId, cipher: SessionCipher, s
 }
 
 function runBody(displayName: string, durationSec: number) {
-  return { v: 1, summary: { durationSec }, student: { displayName } }
+  return { v: 1, summary: { durationSec }, assessment: assessment(durationSec >= 900 ? 92 : 68), student: { displayName } }
 }
 
 describe('classroom anti-replay', () => {
@@ -147,6 +176,7 @@ describe('classroom anti-replay', () => {
     const after = useClassroomStore.getState().runs
     expect(after).toHaveLength(1)
     expect(after[0].summary.durationSec).toBe(900)
+    expect(after[0].assessment.total).toBe(92)
 
     // addRun replaces by studentId, so an un-checked replay would silently downgrade a
     // graded result back to the earlier attempt.
@@ -155,6 +185,24 @@ describe('classroom anti-replay', () => {
     expect(final).toHaveLength(1)
     expect(final[0].summary.durationSec).toBe(900)
     expect(useClassroomStore.getState().integrity.replayRejects).toBe(1)
+  })
+
+  it('stores the focused full frame and its narrative assessment atomically', () => {
+    const { classId, sock, cipher } = liveClassWithStudent()
+    useClassroomStore.getState().setFocused(STUDENT_ID)
+
+    sock.deliver(sealedEnvelope('student.focus', classId, cipher, 1, {
+      frame: fullFrameAt(45),
+      assessment: assessment(78),
+    }))
+
+    const focused = useClassroomStore.getState()
+    expect(focused.focusFrame?.elapsedSec).toBe(45)
+    expect(focused.focusAssessment).toMatchObject({ total: 78, band: 'C' })
+
+    sock.deliver({ v: 1, type: 'student.gone', classId, from: STUDENT_ID })
+    expect(useClassroomStore.getState().focusFrame).toBeNull()
+    expect(useClassroomStore.getState().focusAssessment).toBeNull()
   })
 
   it('rejects a payload with no sealed counter at all', () => {
@@ -307,6 +355,14 @@ describe('classroom instructor re-bind', () => {
 })
 
 describe('classroom publisher sequencing', () => {
+  it('derives assessment from the live store for grid, focus, and final run publishers', () => {
+    const src = readFileSync(join(process.cwd(), 'src/classroom/classroomClient.ts'), 'utf8')
+
+    expect(src).toMatch(/function currentGridInput\([\s\S]*?assessment: currentAssessment\(\)/)
+    expect(src).toMatch(/function currentFocusFrame\([\s\S]*?assessment = currentAssessment\(\)/)
+    expect(src).toMatch(/subscribeRunSubmission\([\s\S]*?currentAssessment\(true, session, summary\.chainVerified\)/)
+  })
+
   it('seals every outgoing student payload through the sequenced helper', () => {
     const src = readFileSync(join(process.cwd(), 'src/classroom/classroomClient.ts'), 'utf8')
     // A direct cipher.seal() anywhere else would put an unsequenced payload on the wire

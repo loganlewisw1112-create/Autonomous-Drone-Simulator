@@ -174,3 +174,85 @@
   font-family: var(--font-mono, monospace);
   pointer-events: none;
 }
+
+/* Classroom-only scorecard. It is mounted beside App by ClassroomEntry, so the
+   ordinary desktop and mobile shells never import this teaching surface. */
+.cls-scorecard {
+  position: fixed;
+  top: 42px;
+  right: 12px;
+  z-index: 9998;
+  width: min(320px, calc(100vw - 24px));
+  max-height: calc(100dvh - 58px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid var(--border, #26303f);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-secondary, #131a24) 94%, transparent);
+  color: var(--text-primary, #e6ecf3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  font: 11px/1.35 var(--font-mono, monospace);
+}
+
+.cls-scorecard-header,
+.cls-scorecard-progress-row,
+.cls-scorecard-safety,
+.cls-scorecard-tiers span,
+.cls-scorecard-objectives li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cls-scorecard-header {
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border, #26303f);
+  color: var(--text-dim, #8a94a6);
+}
+.cls-scorecard-header strong { color: var(--accent, #39d98a); font-size: 15px; }
+
+.cls-scorecard-progress-row { margin-top: 8px; }
+.cls-scorecard progress { width: 100%; height: 7px; accent-color: var(--accent, #39d98a); }
+
+.cls-scorecard-safety {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  flex-wrap: wrap;
+}
+.cls-scorecard-safety.pass { color: #75e6a3; background: rgba(57, 217, 138, 0.08); }
+.cls-scorecard-safety.minor { color: #ffc766; background: rgba(255, 176, 32, 0.08); }
+.cls-scorecard-safety.major,
+.cls-scorecard-safety.critical { color: #ff8080; background: rgba(255, 77, 77, 0.1); }
+.cls-scorecard-safety > span:last-child { flex-basis: 100%; font-size: 10px; }
+
+.cls-scorecard-tiers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+.cls-scorecard-tiers span { padding: 5px 6px; background: var(--bg-primary, #0a0e14); border-radius: 4px; }
+
+.cls-scorecard-details { margin-top: 8px; }
+.cls-scorecard-details summary { color: var(--text-dim, #8a94a6); cursor: pointer; }
+.cls-scorecard-objectives { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; }
+.cls-scorecard-objectives li { padding-bottom: 3px; border-bottom: 1px solid var(--border, #26303f); }
+.cls-scorecard-findings p { display: grid; gap: 2px; margin: 7px 0 0; }
+.cls-scorecard-findings .minor { color: #ffc766; }
+.cls-scorecard-findings .major,
+.cls-scorecard-findings .critical { color: #ff8080; }
+.cls-scorecard-findings span { color: var(--text-dim, #8a94a6); }
+.cls-scorecard-interventions { margin: 8px 0 0; color: var(--text-dim, #8a94a6); }
+
+@media (max-width: 720px) {
+  .cls-scorecard {
+    top: 40px;
+    right: 8px;
+    width: min(300px, calc(100vw - 16px));
+    max-height: 38dvh;
+  }
+}
