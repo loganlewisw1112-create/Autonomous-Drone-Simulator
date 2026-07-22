@@ -21,6 +21,7 @@ describe('<ControlBar />', () => {
       drones: [],
       weatherState: getDefaultWeatherState(scenario.seed),
       launchPlan: null,
+      lastRouteChange: null,
       operatorRole: 'pic',
       ui: { ...useDroneStore.getState().ui, isRunning: false },
     })
@@ -55,5 +56,17 @@ describe('<ControlBar />', () => {
   it('shows the BAY PLAN REQUIRED hint before a plan is confirmed', () => {
     render(<ControlBar />)
     expect(screen.getByText('⚠ BAY PLAN REQUIRED')).toBeInTheDocument()
+  })
+
+  it('shows one-click route undo only when a route change is available', () => {
+    render(<ControlBar />)
+    expect(screen.queryByRole('button', { name: '↶ UNDO ROUTE' })).not.toBeInTheDocument()
+
+    cleanup()
+    useDroneStore.setState({
+      lastRouteChange: { scenarioId: scenario.id, changedAt: 1, previous: {} },
+    })
+    render(<ControlBar />)
+    expect(screen.getByRole('button', { name: '↶ UNDO ROUTE' })).toBeEnabled()
   })
 })

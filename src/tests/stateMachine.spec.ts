@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { getNextCommand } from '@/sim/mission/MissionManager'
+import { getMissionSafetyOverride, getNextCommand } from '@/sim/mission/MissionManager'
 import { createDroneState } from '@/sim/drone/DroneEntity'
-import type { MissionManagerState } from '@/sim/mission/MissionManager'
-import type { Waypoint } from '@/types'
+import type { MissionManagerState, MissionSafetyContext, MissionSafetyOverride } from '@/sim/mission/MissionManager'
+import type { DroneState, Waypoint } from '@/types'
 
 const BASE_POS = { lat: 37.7695, lng: -122.4862 }
 
@@ -159,5 +159,90 @@ describe('MissionManager state machine', () => {
       { ...makeMM(), weatherForceRtb: true },
     )
     expect(nextState).toBe('return_to_base')
+  })
+
+  it('keeps the reusable safety decision exactly aligned with state-machine thresholds', () => {
+    const awayPos = { lat: 37.7750, lng: -122.4900 }
+    const baseDrone = createDroneState('uav-01', 'UAV-01', '#00d4ff', awayPos, 120)
+    const cases: Array<{
+      label: string
+      patch: Partial<DroneState>
+      context: MissionSafetyContext
+      expectedReason: MissionSafetyOverride['reason'] | null
+      expectedState: DroneState['missionState']
+    }> = [
+      {
+        label: 'critical battery is strictly below 8 percent',
+        patch: { missionState: 'navigate', batteryPct: 7.99 },
+        context: { batteryReservePct: 0 },
+        expectedReason: 'critical_battery',
+        expectedState: 'emergency',
+      },
+      {
+        label: '8 percent is not critical or below an 8 percent reserve',
+        patch: { missionState: 'navigate', batteryPct: 8 },
+        context: { batteryReservePct: 8 },
+        expectedReason: null,
+        expectedState: 'navigate',
+      },
+      {
+        label: 'reserve is strictly below the configured percentage',
+        patch: { missionState: 'navigate', batteryPct: 24.99 },
+        context: { batteryReservePct: 25 },
+        expectedReason: 'battery_reserve',
+        expectedState: 'return_to_base',
+      },
+      {
+        label: 'the reserve boundary remains flyable',
+        patch: { missionState: 'navigate', batteryPct: 25 },
+        context: { batteryReservePct: 25 },
+        expectedReason: null,
+        expectedState: 'navigate',
+      },
+      {
+        label: 'geofence breach forces return',
+        patch: { missionState: 'navigate', geofenceBreachFlag: true },
+        context: {},
+        expectedReason: 'geofence_breach',
+        expectedState: 'return_to_base',
+      },
+      {
+        label: 'weather forces return',
+        patch: { missionState: 'navigate' },
+        context: { weatherForceRtb: true },
+        expectedReason: 'weather',
+        expectedState: 'return_to_base',
+      },
+      {
+        label: 'hover is exempt from reserve return',
+        patch: { missionState: 'hover', batteryPct: 20, hoverStartSec: 0 },
+        context: { batteryReservePct: 25 },
+        expectedReason: null,
+        expectedState: 'navigate',
+      },
+      {
+        label: 'hover is not exempt from weather return',
+        patch: { missionState: 'hover', hoverStartSec: 0 },
+        context: { weatherForceRtb: true },
+        expectedReason: 'weather',
+        expectedState: 'return_to_base',
+      },
+      {
+        label: 'landed is exempt from critical battery',
+        patch: { missionState: 'landed', batteryPct: 1 },
+        context: {},
+        expectedReason: null,
+        expectedState: 'landed',
+      },
+    ]
+
+    for (const testCase of cases) {
+      const drone = { ...baseDrone, ...testCase.patch }
+      const safetyOverride = getMissionSafetyOverride(drone, testCase.context)
+      const result = getNextCommand(drone, { ...makeMM(), ...testCase.context })
+
+      expect(safetyOverride?.reason ?? null, testCase.label).toBe(testCase.expectedReason)
+      expect(result.nextState, testCase.label).toBe(testCase.expectedState)
+    }
   })
 })

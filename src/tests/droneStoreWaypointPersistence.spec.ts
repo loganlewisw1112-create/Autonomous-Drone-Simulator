@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
-import { useDroneStore } from '@/store/droneStore'
+import { createDroneState } from '@/sim/drone/DroneEntity'
+import { isRetaskable, useDroneStore } from '@/store/droneStore'
 import { loadSavedDroneWaypointRoute } from '@/sim/mission/waypointPersistence'
-import type { RouteSuggestion, ScenarioVariantConfig, Waypoint } from '@/types'
+import type { MissionState, RouteSuggestion, ScenarioVariantConfig, Waypoint } from '@/types'
 
 const VARIANT: ScenarioVariantConfig = {
   seed: 1337,
@@ -16,6 +17,14 @@ const VARIANT: ScenarioVariantConfig = {
 }
 
 const scenario = ALL_SCENARIOS.find((item) => item.id === 'demo_perimeter') ?? ALL_SCENARIOS[0]
+const allMissionStates: MissionState[] = [
+  'idle', 'preflight', 'launch', 'navigate', 'sar_grid', 'hover', 'inspect', 'thermal_hold',
+  'route_complete_loiter', 'avoid', 'return_to_base', 'emergency', 'landed', 'recharge',
+  'remote_landed', 'stranded', 'recovery_requested', 'recovery_enroute', 'recovered', 'unrecoverable_sim',
+]
+const protectedStates = allMissionStates.filter((state) => (
+  !['navigate', 'sar_grid', 'hover', 'route_complete_loiter'].includes(state)
+))
 
 describe('drone store waypoint autosave', () => {
   let storage: Storage
@@ -97,6 +106,27 @@ describe('drone store waypoint autosave', () => {
     expect(ok).toBe(false)
     expect(loadSavedDroneWaypointRoute(storage, scenario.id, VARIANT, 'uav-01')).toBeNull()
     expect(useDroneStore.getState().routeSaveStatuses['uav-01']).toBeUndefined()
+  })
+
+  it('uses an explicit retaskable-state allowlist', () => {
+    const allowed = new Set<MissionState>(['navigate', 'sar_grid', 'hover', 'route_complete_loiter'])
+    const start = scenario.launchSites?.['uav-01']?.position ?? scenario.perDroneStartPositions?.['uav-01'] ?? scenario.startPosition
+
+    for (const missionState of allMissionStates) {
+      const drone = { ...createDroneState('uav-01', 'UAV-01', '#00d4ff', start), missionState }
+      expect(isRetaskable(drone), missionState).toBe(allowed.has(missionState))
+    }
+  })
+
+  it.each(protectedStates)('saves a route draft without interrupting protected state %s', (missionState) => {
+    const start = scenario.launchSites?.['uav-01']?.position ?? scenario.perDroneStartPositions?.['uav-01'] ?? scenario.startPosition
+    const drone = { ...createDroneState('uav-01', 'UAV-01', '#00d4ff', start), missionState }
+    const route = useDroneStore.getState().droneWaypoints['uav-01']
+    useDroneStore.setState({ drones: [drone] })
+
+    expect(useDroneStore.getState().setDroneRoute('uav-01', route)).toBe(true)
+    expect(useDroneStore.getState().drones[0]?.missionState).toBe(missionState)
+    expect(loadSavedDroneWaypointRoute(storage, scenario.id, VARIANT, 'uav-01')).toMatchObject({ route })
   })
 })
 

@@ -22,6 +22,7 @@ export interface RouteAuditFinding {
 export interface AuditScenarioOptions {
   routes?: Record<string, Waypoint[]>
   includeRtb?: boolean
+  startPositions?: Record<string, LatLng>
 }
 
 interface RoutePoint {
@@ -127,7 +128,7 @@ export function auditScenarioRoutes(scenario: ScenarioConfig, options: AuditScen
 
   for (let i = 0; i < scenario.droneCount; i++) {
     const droneId = droneIdForIndex(i)
-    const start = defaultDroneStartPosition(scenario, i)
+    const start = options.startPositions?.[droneId] ?? defaultDroneStartPosition(scenario, i)
     const rechargeStations = scenario.perDroneRechargeStations?.[droneId] ?? []
     const base = scenario.recoverySites?.[droneId]?.position ?? rechargeStations[rechargeStations.length - 1] ?? scenario.startPosition
     const route = routes[droneId] ?? []

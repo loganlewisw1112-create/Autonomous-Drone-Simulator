@@ -20,6 +20,16 @@ interface SaveDroneWaypointRouteInput {
   now?: number
 }
 
+interface SaveFleetWaypointRoutesInput {
+  storage?: Storage
+  scenarioId: string
+  scenarioVariant: ScenarioVariantConfig
+  routes: Record<string, Waypoint[]>
+  removedDroneIds?: string[]
+  source: WaypointSaveSource
+  now?: number
+}
+
 interface RestoreSavedWaypointRoutesInput {
   storage?: Storage
   scenarioId: string
@@ -31,6 +41,11 @@ interface RestoreSavedWaypointRoutesInput {
 export interface SaveDroneWaypointRouteResult {
   ok: boolean
   status: WaypointSaveStatus
+}
+
+export interface SaveFleetWaypointRoutesResult {
+  ok: boolean
+  statuses: Record<string, WaypointSaveStatus>
 }
 
 export interface RestoreSavedWaypointRoutesResult {
@@ -46,10 +61,36 @@ export function storageKeyForWaypointPlan(
 }
 
 export function saveDroneWaypointRoute(input: SaveDroneWaypointRouteInput): SaveDroneWaypointRouteResult {
+  const result = saveFleetWaypointRoutes({
+    storage: input.storage,
+    scenarioId: input.scenarioId,
+    scenarioVariant: input.scenarioVariant,
+    routes: { [input.droneId]: input.route },
+    source: input.source,
+    now: input.now,
+  })
+  return {
+    ok: result.ok,
+    status: result.statuses[input.droneId],
+  }
+}
+
+/**
+ * Writes a multi-drone waypoint change with one storage mutation. The route map
+ * may be paired with removals so undo can restore an originally-absent route
+ * without leaving an empty draft behind.
+ */
+export function saveFleetWaypointRoutes(input: SaveFleetWaypointRoutesInput): SaveFleetWaypointRoutesResult {
   const updatedAt = input.now ?? Date.now()
+  const routeEntries = Object.entries(input.routes)
+  const routeIds = new Set(routeEntries.map(([droneId]) => droneId))
+  const removedDroneIds = [...new Set(input.removedDroneIds ?? [])].filter((droneId) => !routeIds.has(droneId))
+  const affectedDroneIds = [...routeIds, ...removedDroneIds]
+  if (affectedDroneIds.length === 0) return { ok: true, statuses: {} }
+
   const storage = resolveStorage(input.storage)
   if (!storage) {
-    return failedSave(input.source, updatedAt, 'Browser storage unavailable')
+    return failedFleetSave(affectedDroneIds, routeIds, input.source, updatedAt, 'Browser storage unavailable')
   }
 
   const key = storageKeyForWaypointPlan(input.scenarioId, input.scenarioVariant)
@@ -62,25 +103,34 @@ export function saveDroneWaypointRoute(input: SaveDroneWaypointRouteInput): Save
     routes: {},
   }
 
-  plan.routes[input.droneId] = {
-    schemaVersion: SCHEMA_VERSION,
-    scenarioId: input.scenarioId,
-    scenarioVariant: cloneScenarioVariant(input.scenarioVariant),
-    droneId: input.droneId,
-    route: cloneRoute(input.route),
-    updatedAt,
-    source: input.source,
-  }
+  removedDroneIds.forEach((droneId) => delete plan.routes[droneId])
+  routeEntries.forEach(([droneId, route]) => {
+    plan.routes[droneId] = {
+      schemaVersion: SCHEMA_VERSION,
+      scenarioId: input.scenarioId,
+      scenarioVariant: cloneScenarioVariant(input.scenarioVariant),
+      droneId,
+      route: cloneRoute(route),
+      updatedAt,
+      source: input.source,
+    }
+  })
   plan.updatedAt = updatedAt
 
   try {
-    storage.setItem(key, JSON.stringify(plan))
+    if (Object.keys(plan.routes).length === 0) storage.removeItem(key)
+    else storage.setItem(key, JSON.stringify(plan))
     return {
       ok: true,
-      status: { state: 'autosaved', updatedAt, source: input.source },
+      statuses: Object.fromEntries(affectedDroneIds.map((droneId) => [
+        droneId,
+        routeIds.has(droneId)
+          ? { state: 'autosaved' as const, updatedAt, source: input.source }
+          : { state: 'cleared' as const, updatedAt, message: 'Draft cleared' },
+      ])),
     }
   } catch {
-    return failedSave(input.source, updatedAt, 'Waypoint draft save failed')
+    return failedFleetSave(affectedDroneIds, routeIds, input.source, updatedAt, 'Waypoint draft save failed')
   }
 }
 
@@ -169,14 +219,24 @@ export function restoreSavedWaypointRoutes(input: RestoreSavedWaypointRoutesInpu
   return { routes, statuses }
 }
 
-function failedSave(
+function failedFleetSave(
+  droneIds: string[],
+  routeIds: Set<string>,
   source: WaypointSaveSource,
   updatedAt: number,
   message: string,
-): SaveDroneWaypointRouteResult {
+): SaveFleetWaypointRoutesResult {
   return {
     ok: false,
-    status: { state: 'failed', updatedAt, source, message },
+    statuses: Object.fromEntries(droneIds.map((droneId) => [
+      droneId,
+      {
+        state: 'failed' as const,
+        updatedAt,
+        ...(routeIds.has(droneId) ? { source } : {}),
+        message,
+      },
+    ])),
   }
 }
 
@@ -293,6 +353,7 @@ function isWaypointSaveSource(value: unknown): value is WaypointSaveSource {
     || value === 'manual_save'
     || value === 'command_route'
     || value === 'route_suggestion'
+    || value === 'route_undo'
 }
 
 function cloneRoutes(routes: Record<string, Waypoint[]>): Record<string, Waypoint[]> {

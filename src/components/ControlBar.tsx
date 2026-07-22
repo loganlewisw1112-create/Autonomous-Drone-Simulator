@@ -13,10 +13,10 @@ const CustomMissionHub = lazy(() => import('@/components/designer/CustomMissionH
 
 export function ControlBar() {
   const {
-    ui, scenario, events, drones, lifecycle, operatorRole, weatherState, scenarioVariant, investorDemo,
+    ui, scenario, events, drones, lifecycle, operatorRole, weatherState, scenarioVariant, investorDemo, lastRouteChange,
     setSimSpeed, setOperatorRole, setInvestorDemoEnabled,
     exportStatus, canStart, canAbort, canStop, launchReady, allLanded,
-    handleStart, handleAbort, handlePause, handleResume, handleEndMission,
+    handleStart, handleAbort, handlePause, handleResume, handleEndMission, handleUndoRouteChange,
     handleScenarioChange, handleVariantChange, handleRandomizeSeed, handleDemoReset,
     handleExportLog, handleExportKML, handleExportGeoJSON, handleExportAfterAction,
   } = useMissionControls()
@@ -193,6 +193,11 @@ export function ControlBar() {
         >
           ■ END MISSION
         </button>
+        {lastRouteChange && (
+          <button className="btn" onClick={handleUndoRouteChange} title="Restore the routes from before the latest route change">
+            ↶ UNDO ROUTE
+          </button>
+        )}
 
         <div className="control-divider" />
 
