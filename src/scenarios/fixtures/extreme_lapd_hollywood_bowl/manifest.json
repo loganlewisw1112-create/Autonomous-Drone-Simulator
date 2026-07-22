@@ -1,0 +1,31 @@
+{
+  "scenarioId": "extreme_lapd_hollywood_bowl",
+  "area": {
+    "lat": 34.1118,
+    "lng": -118.3375,
+    "aoBbox": [
+      -118.357075,
+      34.096525,
+      -118.319175,
+      34.128825
+    ]
+  },
+  "realDate": "2024-08-17",
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "airspace.json",
+      "source": "FAA UAS Facility Map (UASFM) V5 — UAS Data Delivery System",
+      "url": "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/FAA_UAS_FacilityMap_Data_V5/FeatureServer/0/query?where=1%3D1&geometry=%7B%22xmin%22%3A-118.357075%2C%22ymin%22%3A34.096525%2C%22xmax%22%3A-118.319175%2C%22ymax%22%3A34.128825%2C%22spatialReference%22%3A%7B%22wkid%22%3A4326%7D%7D&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects&outFields=OBJECTID%2CCEILING%2CUNIT%2CMAP_EFF%2CAPT1_NAME%2CAPT1_ICAO%2CAIRSPACE_1&returnGeometry=true&resultRecordCount=1000&resultOffset=0&f=geojson",
+      "license": "US Government public domain (17 U.S.C. §105) — FAA UAS Facility Map, UAS Data Delivery System",
+      "sha256": "1803a682def6101dc53114d5ffa0d610cfd94ed753b64f14bfdbeb344a0b2274"
+    },
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=34.1118&longitude=-118.3375&start_date=2024-08-17&end_date=2024-08-17&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "1933112f3d4dd7fd8c6ad2d805d74e118f21902e0b1f65967a64a17f4c5ca926"
+    }
+  ]
+}

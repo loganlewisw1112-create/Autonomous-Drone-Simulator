@@ -41,22 +41,34 @@ async function main() {
     await mkdir(dir, { recursive: true })
     await writeFile(new URL('weather.json', dir), weatherJson)
 
+    // Merge provenance rather than replacing it. A scenario's fixture set is produced by more
+    // than one fetcher (weather here, airspace and terrain by their own tools), and each run
+    // regenerates only what it fetched. Overwriting `sources` wholesale silently deleted the
+    // other fetchers' entries — which is worse than a missing fixture, because the file stays
+    // on disk with its provenance gone and nothing fails. Entries are keyed by `fixture`:
+    // this run's weather entry replaces the previous weather entry, everything else is kept.
+    const manifestUrl = new URL('manifest.json', dir)
+    const previous = await readFile(manifestUrl, 'utf8').then(JSON.parse).catch(() => null)
+
+    const weatherSource = {
+      fixture: 'weather.json',
+      source: 'Open-Meteo ERA5 archive',
+      url: weather.url,
+      license: weather.license,
+      sha256: sha256(weatherJson),
+    }
+    const kept = (previous?.sources ?? []).filter((s) => s.fixture !== 'weather.json')
+
     const manifest = {
       scenarioId: scn.id,
-      area: { lat: scn.lat, lng: scn.lng },
+      // Preserve an AO envelope recorded by another fetcher; weather is a point query and
+      // does not derive one.
+      area: { lat: scn.lat, lng: scn.lng, ...(previous?.area?.aoBbox ? { aoBbox: previous.area.aoBbox } : {}) },
       realDate: scn.realDate,
       generatedAt: new Date().toISOString().slice(0, 10),
-      sources: [
-        {
-          fixture: 'weather.json',
-          source: 'Open-Meteo ERA5 archive',
-          url: weather.url,
-          license: weather.license,
-          sha256: sha256(weatherJson),
-        },
-      ],
+      sources: [...kept, weatherSource].sort((a, b) => a.fixture.localeCompare(b.fixture)),
     }
-    await writeFile(new URL('manifest.json', dir), JSON.stringify(manifest, null, 2) + '\n')
+    await writeFile(manifestUrl, JSON.stringify(manifest, null, 2) + '\n')
     console.log(`wind ${weather.observed.windKts}kt gust ${weather.observed.gustKts}kt temp ${weather.observed.tempF}°F ✓`)
   }
   console.log(`\nWrote ${targets.length} fixture set(s) under src/scenarios/fixtures/. Commit them; src/ imports, never fetches.`)

@@ -1,0 +1,31 @@
+{
+  "scenarioId": "extreme_atf_oakland_stash",
+  "area": {
+    "lat": 37.7385,
+    "lng": -122.1935,
+    "aoBbox": [
+      -122.213589,
+      37.723975,
+      -122.174761,
+      37.756625
+    ]
+  },
+  "realDate": "2024-10-03",
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "airspace.json",
+      "source": "FAA UAS Facility Map (UASFM) V5 — UAS Data Delivery System",
+      "url": "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/FAA_UAS_FacilityMap_Data_V5/FeatureServer/0/query?where=1%3D1&geometry=%7B%22xmin%22%3A-122.213589%2C%22ymin%22%3A37.723975%2C%22xmax%22%3A-122.174761%2C%22ymax%22%3A37.756625%2C%22spatialReference%22%3A%7B%22wkid%22%3A4326%7D%7D&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects&outFields=OBJECTID%2CCEILING%2CUNIT%2CMAP_EFF%2CAPT1_NAME%2CAPT1_ICAO%2CAIRSPACE_1&returnGeometry=true&resultRecordCount=1000&resultOffset=0&f=geojson",
+      "license": "US Government public domain (17 U.S.C. §105) — FAA UAS Facility Map, UAS Data Delivery System",
+      "sha256": "61d6b35f33070ad1f25238d26d08c94c0d19db0b77d9a7d0b895a8d98a4c0a9d"
+    },
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=37.7385&longitude=-122.1935&start_date=2024-10-03&end_date=2024-10-03&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "e5c0a3e87c4784c09a56609683545d5920681f1ca8e6e3234f059fdce165b297"
+    }
+  ]
+}

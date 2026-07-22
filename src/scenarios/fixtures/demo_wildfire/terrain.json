@@ -1,0 +1,50 @@
+{
+  "format": "terrarium",
+  "note": "elevation_m = (R * 256 + G + B / 256) - 32768; rows are linear in Web-Mercator Y, not latitude",
+  "width": 664,
+  "height": 665,
+  "zoom": 14,
+  "tileSize": 256,
+  "mercatorPixelOrigin": {
+    "x": 672642,
+    "y": 1619026
+  },
+  "sourceTiles": {
+    "x0": 2627,
+    "y0": 6324,
+    "cols": 4,
+    "rows": 3
+  },
+  "bounds": {
+    "west": -122.26667404174805,
+    "south": 37.87627614583519,
+    "east": -122.20968246459961,
+    "north": 37.92131575419902
+  },
+  "requestedBbox": {
+    "west": -122.26666010159904,
+    "south": 37.876342220625226,
+    "east": -122.20973989840097,
+    "north": 37.92125777937478
+  },
+  "metersPerPixel": 7.54,
+  "verticalQuantumM": 0.25,
+  "verticalDatum": "source vertical datum as published by the contributing programme (NAVD88 over CONUS); not re-levelled",
+  "surface": "dtm-approx",
+  "surfaceNote": "Bare-earth DTM over the conterminous US (USGS 3DEP/NED). Terrain Tiles are a global blend: elsewhere and in CONUS gaps the same grid may carry SRTM/GMTED2010, which are not certified bare earth. Structures are NOT in this surface — they enter separately as footprints (§4.2/§4.4).",
+  "elevationRangeM": {
+    "min": 77.75,
+    "max": 580.75
+  },
+  "scenarioId": "demo_wildfire",
+  "payload": "terrain.png",
+  "source": "AWS Open Data — Terrain Tiles (Tilezen/Mapzen joerd), Terrarium RGB encoding",
+  "sourceUrlTemplate": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+  "sourceNote": "Tilezen data-sources: 3DEP (formerly NED) at 10 m across the conterminous US; SRTM/GMTED2010 elsewhere and in gaps.",
+  "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+  "attribution": "United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.",
+  "retrievedAt": "2026-07-22",
+  "tileCount": 12,
+  "pngBytes": 290263,
+  "pngSha256": "1379458b15bc74b3672dbc423b43fff9a70481932b254a1ca2f656d4dbfe8f3a"
+}

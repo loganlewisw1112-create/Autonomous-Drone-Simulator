@@ -1,0 +1,7 @@
+{
+  "windKts": 17.2,
+  "gustKts": 28,
+  "tempF": 79,
+  "cloudCoverPct": 100,
+  "aggregation": "daily peak wind/gust, mean temperature; visibility not in ERA5"
+}

@@ -52,14 +52,31 @@ export interface TaskRanges {
 }
 
 /**
+ * Effective focal length for a payload: the published figure when the manufacturer gives one,
+ * otherwise derived from the published horizontal FOV and the detector geometry. Null when
+ * neither is published — never guessed.
+ *
+ * Both routes are sourced data. Skydio and Teal publish EFL directly; Parrot publishes only a
+ * 50° HFOV. The two agree where they overlap: 640 px × 12 µm at f = 13.6 mm gives 31.5° HFOV
+ * against Teal's published 32°, so the derivation reproduces the manufacturers' own numbers.
+ */
+export function effectiveFocalLengthMm(sensor: ThermalSensorSpec | null): number | null {
+  if (!sensor || sensor.pixelPitchUm == null) return null
+  if (sensor.focalLengthMm != null) return sensor.focalLengthMm
+  if (sensor.hfovDeg == null) return null
+  return focalLengthFromHfov(sensor.hfovDeg, sensor.resolutionPx[0], sensor.pixelPitchUm)
+}
+
+/**
  * Detection/recognition/identification ranges for a platform's integrated thermal
  * payload against a target of size `targetSizeM`. Returns null when the payload's
- * pixel pitch or focal length is not published (never guessed) — the honest signal
+ * pixel pitch and optics are not published (never guessed) — the honest signal
  * that this platform's range cannot yet be computed.
  */
 export function platformTaskRanges(sensor: ThermalSensorSpec | null, targetSizeM: number): TaskRanges | null {
-  if (!sensor || sensor.pixelPitchUm == null || sensor.focalLengthMm == null) return null
-  const base = { targetSizeM, focalLengthMm: sensor.focalLengthMm, pixelPitchUm: sensor.pixelPitchUm }
+  const focalLengthMm = effectiveFocalLengthMm(sensor)
+  if (!sensor || sensor.pixelPitchUm == null || focalLengthMm == null) return null
+  const base = { targetSizeM, focalLengthMm, pixelPitchUm: sensor.pixelPitchUm }
   return {
     detectionM: rangeForPixels({ ...base, pixelsRequired: JOHNSON_PIXELS.detection }),
     recognitionM: rangeForPixels({ ...base, pixelsRequired: JOHNSON_PIXELS.recognition }),

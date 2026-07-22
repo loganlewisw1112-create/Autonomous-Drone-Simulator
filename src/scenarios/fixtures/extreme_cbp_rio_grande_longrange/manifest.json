@@ -1,0 +1,31 @@
+{
+  "scenarioId": "extreme_cbp_rio_grande_longrange",
+  "area": {
+    "lat": 26.5655,
+    "lng": -99.1195,
+    "aoBbox": [
+      -99.160044,
+      26.204525,
+      -98.284606,
+      26.608475
+    ]
+  },
+  "realDate": "2024-04-11",
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "airspace.json",
+      "source": "FAA UAS Facility Map (UASFM) V5 — UAS Data Delivery System",
+      "url": "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/FAA_UAS_FacilityMap_Data_V5/FeatureServer/0/query?where=1%3D1&geometry=%7B%22xmin%22%3A-99.160044%2C%22ymin%22%3A26.204525%2C%22xmax%22%3A-98.284606%2C%22ymax%22%3A26.608475%2C%22spatialReference%22%3A%7B%22wkid%22%3A4326%7D%7D&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects&outFields=OBJECTID%2CCEILING%2CUNIT%2CMAP_EFF%2CAPT1_NAME%2CAPT1_ICAO%2CAIRSPACE_1&returnGeometry=true&resultRecordCount=1000&resultOffset=0&f=geojson",
+      "license": "US Government public domain (17 U.S.C. §105) — FAA UAS Facility Map, UAS Data Delivery System",
+      "sha256": "da3daa69adee1072af1b777e4212b9c16ed833431a7314e5e13715c743a7bb73"
+    },
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=26.5655&longitude=-99.1195&start_date=2024-04-11&end_date=2024-04-11&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "1512b0c96ff3b540413e5ed9c88a9e2d6b9e8551fca1849d6c6c0ff40bb2d932"
+    }
+  ]
+}

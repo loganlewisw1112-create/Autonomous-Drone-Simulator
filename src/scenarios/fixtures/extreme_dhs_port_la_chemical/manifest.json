@@ -1,0 +1,31 @@
+{
+  "scenarioId": "extreme_dhs_port_la_chemical",
+  "area": {
+    "lat": 33.7321,
+    "lng": -118.2699,
+    "aoBbox": [
+      -118.292703,
+      33.717325,
+      -118.251297,
+      33.749975
+    ]
+  },
+  "realDate": "2024-09-12",
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "airspace.json",
+      "source": "FAA UAS Facility Map (UASFM) V5 — UAS Data Delivery System",
+      "url": "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/FAA_UAS_FacilityMap_Data_V5/FeatureServer/0/query?where=1%3D1&geometry=%7B%22xmin%22%3A-118.292703%2C%22ymin%22%3A33.717325%2C%22xmax%22%3A-118.251297%2C%22ymax%22%3A33.749975%2C%22spatialReference%22%3A%7B%22wkid%22%3A4326%7D%7D&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects&outFields=OBJECTID%2CCEILING%2CUNIT%2CMAP_EFF%2CAPT1_NAME%2CAPT1_ICAO%2CAIRSPACE_1&returnGeometry=true&resultRecordCount=1000&resultOffset=0&f=geojson",
+      "license": "US Government public domain (17 U.S.C. §105) — FAA UAS Facility Map, UAS Data Delivery System",
+      "sha256": "44cf24f22fdbfb0764470a08b74c11141330d655dcaa97bdad3daac9df5c3e54"
+    },
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=33.7321&longitude=-118.2699&start_date=2024-09-12&end_date=2024-09-12&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "2740751f6aea37046e2f38b46e6a5cc5f84511e199e4fc24fc8b85023d657fdd"
+    }
+  ]
+}
