@@ -4,12 +4,14 @@ import { useClassroomStore } from '@/classroom/classroomStore'
 import { loadClassMission } from '@/classroom/classroomMission'
 import { generateKeyPair, SessionCipher, type KeyPair } from '@/classroom/sessionCrypto'
 import { buildGridFrame, parseGridFrame, type GridFrame, type GridFrameInput, type GridStatus } from '@/classroom/gridFrame'
+import { buildMissionAssessment, type MissionAssessment } from '@/classroom/missionAssessment'
+import { CLASSROOM_INTERVENTION_ACTOR_PREFIX } from '@/classroom/commandAttribution'
 import {
   GRID_BUFFER_LIMIT_BYTES, PROTOCOL_VERSION, encodeEnvelope, decodeEnvelope, makeClassId,
   acceptsSeq, isSealedPayload,
 } from '@/classroom/protocol'
 import type { ClassConfig, ClassId, Envelope, Sealed, SealedPayload, StudentId } from '@/classroom/protocol'
-import type { FullMissionFrame } from '@/types'
+import type { FullMissionFrame, MissionReplaySession } from '@/types'
 
 // WebSocket lifecycle + the Tier-A/Tier-B publishers. Subscribes to droneStore
 // from OUTSIDE (exactly as initRunRecorder does) and is never imported by any
@@ -17,7 +19,6 @@ import type { FullMissionFrame } from '@/types'
 // runs per tab. All crypto keys live here, never in a store.
 
 const RUN_SUBMISSION_V = 1
-
 // Console noise budget for integrity failures. The store counter is the UI's source of
 // truth; the console gets one aggregated line per window, never one per frame.
 const INTEGRITY_LOG_INTERVAL_MS = 10_000
@@ -27,9 +28,15 @@ const INTEGRITY_LOG_INTERVAL_MS = 10_000
 const INSTRUCTOR_RECONNECT_MS = 2_000
 const INSTRUCTOR_RECONNECT_TRIES = 10
 
-interface RunSubmission {
+export interface ClassroomFocusFrame {
+  frame: FullMissionFrame
+  assessment: MissionAssessment
+}
+
+export interface RunSubmission {
   v: 1
   summary: ReturnType<typeof buildRunSummary>
+  assessment: MissionAssessment
   student: { displayName: string }
 }
 
@@ -201,15 +208,21 @@ function handleInstructorMessage(raw: string): void {
       if (!msg.from || msg.from !== store.focusedStudentId) return
       const cipher = studentCiphers.get(msg.from)
       if (!cipher) return
-      const frame = openSealed<FullMissionFrame>(msg.from, cipher, msg.sealed)
-      if (frame) store.setFocusFrame(frame)
+      const focused = openSealed<ClassroomFocusFrame>(msg.from, cipher, msg.sealed)
+      if (focused) store.setFocusFrame(focused.frame, focused.assessment)
       break
     }
     case 'student.run': {
       const cipher = msg.from ? studentCiphers.get(msg.from) : undefined
       if (!cipher || !msg.from) return
       const sub = openSealed<RunSubmission>(msg.from, cipher, msg.sealed)
-      if (sub) store.addRun({ studentId: msg.from, displayName: sub.student.displayName, summary: sub.summary, receivedAt: Date.now() })
+      if (sub) store.addRun({
+        studentId: msg.from,
+        displayName: sub.student.displayName,
+        summary: sub.summary,
+        assessment: sub.assessment,
+        receivedAt: Date.now(),
+      })
       break
     }
     case 'student.gone':
@@ -313,7 +326,9 @@ function startFocusPublisher(): void {
   focusTimer = setInterval(() => {
     if (!studentCipher || !ws || ws.readyState !== WebSocket.OPEN || !classId) return
     if (ws.bufferedAmount > GRID_BUFFER_LIMIT_BYTES) return
-    send({ v: PROTOCOL_VERSION, type: 'student.focus', classId, sealed: sealOutgoing(studentCipher, currentFullFrame()) })
+    const focused = currentFocusFrame()
+    if (!focused) return
+    send({ v: PROTOCOL_VERSION, type: 'student.focus', classId, sealed: sealOutgoing(studentCipher, focused) })
   }, 333)
 }
 
@@ -324,7 +339,15 @@ function subscribeRunSubmission(): void {
     (s) => s.replaySession,
     (session, prev) => {
       if (!session || session === prev || !studentCipher || !classId) return
-      const submission: RunSubmission = { v: RUN_SUBMISSION_V, summary: buildRunSummary(session), student: { displayName } }
+      const summary = buildRunSummary(session)
+      const assessment = currentAssessment(true, session, summary.chainVerified)
+      if (!assessment) return
+      const submission: RunSubmission = {
+        v: RUN_SUBMISSION_V,
+        summary,
+        assessment,
+        student: { displayName },
+      }
       send({ v: PROTOCOL_VERSION, type: 'student.run', classId, sealed: sealOutgoing(studentCipher, submission) })
     },
   )
@@ -344,7 +367,31 @@ function currentGridInput(): GridFrameInput {
     drones: s.drones,
     thermalContactCount: s.thermalContacts.length,
     eventCount: s.events.length,
+    assessment: currentAssessment() ?? undefined,
   }
+}
+
+function currentAssessment(
+  isFinal = false,
+  session?: MissionReplaySession,
+  evidenceVerified?: boolean,
+): MissionAssessment | null {
+  const s = useDroneStore.getState()
+  if (!s.scenario) return null
+  const finalFrame = session?.frames[session.frames.length - 1]
+  return buildMissionAssessment({
+    scenario: s.scenario,
+    drones: session?.finalDrones ?? s.drones,
+    thermalContacts: session?.finalThermalContacts ?? s.thermalContacts,
+    groundUnits: session?.finalGroundUnits ?? s.groundUnits,
+    events: session?.events ?? s.events,
+    metrics: session?.metrics ?? s.metrics,
+    positionHistory: s.positionHistory,
+    elapsedSec: finalFrame?.elapsedSec ?? s.elapsedSec,
+    interventionActorPrefix: CLASSROOM_INTERVENTION_ACTOR_PREFIX,
+    isFinal,
+    evidenceVerified,
+  })
 }
 
 // Tier-B frame: reuse the exact FullMissionFrame the sim loop already assembled
@@ -358,6 +405,11 @@ function currentFullFrame(): FullMissionFrame {
     thermalContacts: s.thermalContacts, groundUnits: s.groundUnits, recoveryTeams: s.recoveryTeams,
     weatherState: s.weatherState, activeEventIds: [],
   }
+}
+
+function currentFocusFrame(): ClassroomFocusFrame | null {
+  const assessment = currentAssessment()
+  return assessment ? { frame: currentFullFrame(), assessment } : null
 }
 
 // ── Teardown ────────────────────────────────────────────────────────────────

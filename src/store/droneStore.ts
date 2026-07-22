@@ -188,6 +188,7 @@ interface DroneStore {
   // Events / chain of custody
   events: MissionEvent[]
   lastHash: string
+  commandActorId: string | null
 
   // Telemetry history for charts (droneId → rolling buffer)
   telemetryHistory: Record<string, TelemetryPoint[]>
@@ -268,6 +269,8 @@ interface DroneStore {
   setDrones: (drones: DroneState[]) => void
   updateDrone: (id: string, patch: Partial<DroneState>) => void
   emitEvent: (input: EmitEventInput) => void
+  /** Runs a synchronous command with an explicit evidence actor, then restores the prior actor. */
+  withCommandActor: <T>(actorId: string, command: () => T) => T
   addTelemetryPoint: (droneId: string, point: TelemetryPoint) => void
   addPositionSample: (droneId: string, pos: LatLng) => void
   addReplayFrame: (frame: FullMissionFrame) => void
@@ -338,6 +341,7 @@ export const useDroneStore = create<DroneStore>()(
         get().emitEvent({
           eventType: 'operator_command',
           droneId,
+          operatorId: get().commandActorId ?? undefined,
           role: get().operatorRole,
           payload: { command, ...payload },
         })
@@ -456,6 +460,7 @@ export const useDroneStore = create<DroneStore>()(
         elapsedSec: 0,
         events: [],
         lastHash: '0'.repeat(64),
+        commandActorId: null,
         telemetryHistory: {},
         droneWaypoints: {},
         thermalContacts: [],
@@ -538,6 +543,16 @@ export const useDroneStore = create<DroneStore>()(
             const event: MissionEvent = { ...partial, hash }
             return { events: [...s.events, event], lastHash: hash }
           }),
+
+        withCommandActor: (actorId, command) => {
+          const previous = get().commandActorId
+          set({ commandActorId: actorId })
+          try {
+            return command()
+          } finally {
+            set({ commandActorId: previous })
+          }
+        },
 
         addTelemetryPoint: (droneId, point) =>
           set((s) => {
@@ -888,6 +903,7 @@ export const useDroneStore = create<DroneStore>()(
             elapsedSec: 0,
             events: [],
             lastHash: '0'.repeat(64),
+            commandActorId: null,
             telemetryHistory: {},
             droneWaypoints: {},
             thermalContacts: [],
@@ -1507,6 +1523,7 @@ export const useDroneStore = create<DroneStore>()(
             // Route editing is a live-map mode; a reset must not leave it latched.
             ui: { ...s.ui, routeEditMode: false },
             tick: 0, elapsedSec: 0, events: [], lastHash: '0'.repeat(64),
+            commandActorId: null,
             telemetryHistory: {}, droneWaypoints: {}, thermalContacts: [],
             selectedThermalId: null, groundUnits: [], recoveryTeams: [],
             routeSuggestions: [], routeCommandError: null, routeSaveStatuses: {}, lastRouteChange: null,

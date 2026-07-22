@@ -3,6 +3,7 @@ import type { FullMissionFrame } from '@/types'
 import type { StoredRunSummary } from '@/account/types'
 import type { ClassConfig, ClassId, RosterEntry, StudentId } from '@/classroom/protocol'
 import type { GridFrame } from '@/classroom/gridFrame'
+import type { MissionAssessment } from '@/classroom/missionAssessment'
 
 // Instructor- and student-side view state for the classroom. Deliberately holds
 // only serializable UI state and the LATEST frame per student — never frame
@@ -18,6 +19,7 @@ export interface ClassRunResult {
   studentId: StudentId
   displayName: string
   summary: StoredRunSummary
+  assessment: MissionAssessment
   receivedAt: number
 }
 
@@ -44,6 +46,7 @@ interface ClassroomStore {
   frames: Record<StudentId, GridFrame> // latest grid frame per student only
   focusedStudentId: StudentId | null
   focusFrame: FullMissionFrame | null
+  focusAssessment: MissionAssessment | null
   runs: ClassRunResult[]
   integrity: IntegrityCounters
 
@@ -58,7 +61,7 @@ interface ClassroomStore {
   setFrame: (studentId: StudentId, frame: GridFrame) => void
   removeStudent: (studentId: StudentId) => void
   setFocused: (studentId: StudentId | null) => void
-  setFocusFrame: (frame: FullMissionFrame | null) => void
+  setFocusFrame: (frame: FullMissionFrame | null, assessment?: MissionAssessment | null) => void
   setBeingFocused: (focused: boolean) => void
   addRun: (run: ClassRunResult) => void
   noteIntegrityFailure: (kind: 'decrypt' | 'replay') => void
@@ -75,6 +78,7 @@ const initial = {
   frames: {} as Record<StudentId, GridFrame>,
   focusedStudentId: null,
   focusFrame: null,
+  focusAssessment: null,
   runs: [] as ClassRunResult[],
   integrity: { decryptFailures: 0, replayRejects: 0, lastAt: null } as IntegrityCounters,
   studentId: null,
@@ -106,18 +110,20 @@ export const useClassroomStore = create<ClassroomStore>((set) => ({
     delete frames[studentId]
     const focusedStudentId = s.focusedStudentId === studentId ? null : s.focusedStudentId
     const focusFrame = s.focusedStudentId === studentId ? null : s.focusFrame
+    const focusAssessment = s.focusedStudentId === studentId ? null : s.focusAssessment
     return {
       roster: s.roster.filter((r) => r.studentId !== studentId),
-      frames, focusedStudentId, focusFrame,
+      frames, focusedStudentId, focusFrame, focusAssessment,
     }
   }),
 
   setFocused: (studentId) => set((s) => ({
     focusedStudentId: studentId,
-    focusFrame: studentId === null ? null : s.focusFrame,
+    focusFrame: studentId !== null && studentId === s.focusedStudentId ? s.focusFrame : null,
+    focusAssessment: studentId !== null && studentId === s.focusedStudentId ? s.focusAssessment : null,
   })),
 
-  setFocusFrame: (frame) => set({ focusFrame: frame }),
+  setFocusFrame: (frame, assessment = null) => set({ focusFrame: frame, focusAssessment: assessment }),
 
   setBeingFocused: (focused) => set({ beingFocused: focused }),
 
