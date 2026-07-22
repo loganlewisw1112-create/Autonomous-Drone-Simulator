@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { getScenarioOptions } from '@/scenarios/registry'
 import { startClass } from '@/classroom/classroomClient'
 import { useClassroomStore } from '@/classroom/classroomStore'
@@ -22,7 +23,7 @@ export function ClassSetup() {
   const scenario = options.find((o) => o.id === scenarioId)?.config
   const [seed, setSeed] = useState(scenario?.seed ?? 1)
   const [graded, setGraded] = useState(true)
-  const status = useClassroomStore((s) => s.status)
+  const { status, error } = useClassroomStore(useShallow((s) => ({ status: s.status, error: s.error })))
 
   function pick(id: string) {
     setScenarioId(id)
@@ -72,7 +73,9 @@ export function ClassSetup() {
 
         {status === 'error' && (
           <div style={{ color: '#ff8080', fontSize: 12 }}>
-            Could not reach the classroom relay. Is the server running on this machine?
+            {error === 'not-instructor' ? 'That code is already running on this relay. Reroll and create again.'
+              : error === 'server-full' ? 'This relay is already hosting its maximum number of classes.'
+                : 'Could not reach the classroom relay. Is the server running on this machine?'}
           </div>
         )}
         <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>

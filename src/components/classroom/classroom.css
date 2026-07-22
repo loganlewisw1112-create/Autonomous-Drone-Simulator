@@ -27,6 +27,20 @@
   color: var(--accent, #39d98a);
 }
 
+/* Integrity badge — undecryptable or replayed frames. Amber, not red: it is a
+   diagnostic (usually a student on the wrong code), not a mission alert. */
+.cls-integrity {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  cursor: help;
+  background: rgba(255, 176, 32, 0.14);
+  color: #ffc766;
+  border: 1px solid #ffb020;
+}
+
 .cls-alert-strip {
   display: flex;
   gap: 8px;

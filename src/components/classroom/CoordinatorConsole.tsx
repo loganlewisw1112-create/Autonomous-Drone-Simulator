@@ -48,6 +48,9 @@ export function CoordinatorConsole() {
     classId: s.classId, config: s.config, roster: s.roster,
     frames: s.frames, focusedStudentId: s.focusedStudentId,
   })))
+  // Plain field read, not a constructed object — the reference only changes when a
+  // frame is actually rejected, so no useShallow is needed here.
+  const integrity = useClassroomStore((s) => s.integrity)
   const [rightPane, setRightPane] = useState<'results' | 'focus'>('results')
 
   // Shared static backdrop + bbox, computed once per class. Every tile blits this one
@@ -78,6 +81,7 @@ export function CoordinatorConsole() {
   }, [roster, frames])
 
   const alerting = sorted.filter((r) => frames[r.studentId] && alertSeverity(frames[r.studentId].a) !== 'none')
+  const rejected = integrity.decryptFailures + integrity.replayRejects
 
   function focus(studentId: string) {
     focusStudent(studentId)
@@ -94,6 +98,17 @@ export function CoordinatorConsole() {
         <span className="cls-code" title="Read this code aloud">{classId}</span>
         <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{scenarioName}</span>
         <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 'auto' }}>{roster.length} joined</span>
+        {/* A rejected frame is the only visible symptom of a wrong key, a tampered
+            payload or a replay. Silence here used to be indistinguishable from a
+            dropped wifi link, so the count is on screen whenever it is non-zero. */}
+        {rejected > 0 && (
+          <span
+            className="cls-integrity"
+            title={`${integrity.decryptFailures} frame(s) would not decrypt, ${integrity.replayRejects} repeated a sequence number. Check every student joined THIS class code.`}
+          >
+            ⚠ {rejected} rejected
+          </span>
+        )}
         <button className="cls-btn ghost" style={{ padding: '4px 10px', fontSize: 12 }}
           onClick={() => setRightPane((p) => (p === 'results' ? 'focus' : 'results'))}>
           {rightPane === 'results' ? 'Show focus' : 'Show results'}

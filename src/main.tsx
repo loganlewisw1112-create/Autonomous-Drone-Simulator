@@ -4,6 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import App from './App'
 import { initRunRecorder } from '@/account/runRecorder'
 import { useAuthStore } from '@/store/authStore'
+import { resolveClassroomRoute } from '@/platform/classroomRoute'
 
 initRunRecorder()
 void useAuthStore.getState().restoreRememberedSession()
@@ -13,15 +14,13 @@ void useAuthStore.getState().restoreRememberedSession()
 // so its networking tree-shakes out of the mobile/Windows bundles entirely.
 function resolveRoot() {
   if (import.meta.env.VITE_CLASSROOM_ENABLED === 'true') {
-    const params = new URLSearchParams(location.search)
-    const joinId = params.get('join')
-    const coordinator = params.get('coordinator') === '1'
-    if (joinId || coordinator) {
+    const route = resolveClassroomRoute(location.search, true)
+    if (route.kind === 'classroom') {
       const ClassroomEntry = lazy(() =>
         import('@/components/classroom/ClassroomEntry').then((m) => ({ default: m.ClassroomEntry })))
       return (
         <Suspense fallback={<div style={{ height: '100dvh', background: 'var(--bg-primary)' }} />}>
-          <ClassroomEntry mode={coordinator ? 'instructor' : 'student'} initialClassId={joinId ?? undefined} />
+          <ClassroomEntry mode={route.mode} initialClassId={route.initialClassId} />
         </Suspense>
       )
     }
