@@ -118,7 +118,10 @@ export interface FleetRetaskAssignment extends TacticalCandidate {
 export interface FleetRetaskPlan {
   assignments: FleetRetaskAssignment[]
   candidatesByDrone: Record<string, TacticalCandidate[]>
-  skippedDrones: Array<{ droneId: string; reason: 'not_retaskable' | 'safety_override' }>
+  skippedDrones: Array<{
+    droneId: string
+    reason: 'not_retaskable' | 'critical_battery' | 'battery_reserve' | 'geofence_breach' | 'weather'
+  }>
   unassignedDroneIds: string[]
 }
 
@@ -233,7 +236,7 @@ export function planFleetRetask(situation: MissionSituation): FleetRetaskPlan {
       weatherForceRtb: situation.weatherForceRtb,
     })
     if (safetyOverride) {
-      skippedDrones.push({ droneId: drone.id, reason: 'safety_override' })
+      skippedDrones.push({ droneId: drone.id, reason: safetyOverride.reason })
       candidatesByDrone[drone.id] = []
       continue
     }
