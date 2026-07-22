@@ -27,6 +27,7 @@ export interface MissionManagerState extends MissionSafetyContext {
   maxSorties?: number
   weatherHazard?: string
   launchCommandedSec?: number   // sim-time the launch command was issued (staggered takeoff)
+  baseAvailable?: boolean       // false while a mobile launch/recovery site is relocating
 }
 
 export interface CommandResult {
@@ -221,6 +222,16 @@ export function getNextCommand(drone: DroneState, mm: MissionManagerState): Comm
       targetAltFt = 120
       throttle = 0.9
       if (haversineDistanceM(drone.position, basePosition.position) < ARRIVAL_RADIUS_M) {
+        // A moving command post/deck cannot accept an aircraft until its
+        // declared setup window ends. Hold over the resolved destination and
+        // let the next tick re-evaluate availability; do not land or recharge.
+        if (mm.baseAvailable === false) {
+          return {
+            cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: 120 },
+            nextState: 'return_to_base',
+            nextWaypointIndex: 0,
+          }
+        }
         if (mm.rechargeTimeSec && mm.maxSorties && drone.sortieCount < mm.maxSorties - 1) {
           return {
             cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: 0 },

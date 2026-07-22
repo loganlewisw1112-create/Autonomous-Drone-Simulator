@@ -35,6 +35,18 @@ describe('MissionManager state machine', () => {
     expect(nextState).toBe('return_to_base')
   })
 
+  it('holds at a relocating recovery site until the site becomes available', () => {
+    const drone = createDroneState('uav-01', 'UAV-01', '#00d4ff', BASE_POS, 120)
+    const returning = { ...drone, missionState: 'return_to_base' as const }
+
+    const held = getNextCommand(returning, { ...makeMM(), baseAvailable: false })
+    expect(held.nextState).toBe('return_to_base')
+    expect(held.cmd).toMatchObject({ throttle: 0, targetAltitudeFt: 120 })
+
+    const recovered = getNextCommand(returning, { ...makeMM(), baseAvailable: true })
+    expect(recovered.nextState).toBe('landed')
+  })
+
   it('critical battery triggers emergency', () => {
     const drone = createDroneState('uav-01', 'UAV-01', '#00d4ff', BASE_POS, 120)
     const { nextState } = getNextCommand(

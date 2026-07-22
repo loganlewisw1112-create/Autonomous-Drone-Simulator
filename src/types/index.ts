@@ -135,6 +135,12 @@ export interface LaunchRecoverySite {
   isPrimaryRecovery?: boolean
   capacityDrones?: number   // simultaneous launch slots at this surface (default 2)
   exposure?: LaunchSiteExposure
+  /** Explicit override; mobile command, field ICP, and vessel sites default to mobile. */
+  mobile?: boolean
+  /** Maximum displacement from the authored scenario position. */
+  repositionRadiusM?: number
+  /** Vehicle transit and setup time once a live relocation starts. */
+  repositionTimeSec?: number
   padFootprintM?: number
 }
 
@@ -317,6 +323,7 @@ export type EventType =
   | 'ground_unit_on_scene'
   | 'drone_recovery_requested'
   | 'drone_recovered'
+  | 'launch_site_repositioned'
 
 export interface MissionEvent {
   tick: number
