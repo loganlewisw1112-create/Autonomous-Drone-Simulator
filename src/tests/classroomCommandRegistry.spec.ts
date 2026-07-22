@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { executeInstructorCommand, validateInstructorCommand } from '@/classroom/commandRegistry'
 import { CLASSROOM_INTERVENTION_ACTOR_PREFIX } from '@/classroom/commandAttribution'
 import { useDroneStore } from '@/store/droneStore'
@@ -67,5 +67,48 @@ describe('classroom command registry security boundary', () => {
       code: 'unknown_drone',
     })
     expect(useDroneStore.getState().events).toHaveLength(before)
+  })
+
+  it('normalizes set_route to replace and rejects unknown route modes', () => {
+    const payload = {
+      commandId: 'cmd-route',
+      kind: 'set_route',
+      droneId: 'uav-01',
+      waypoints: [{ id: 'wp-1', position: { lat: 37.78, lng: -122.42 }, altitudeFt: 160 }],
+    }
+
+    expect(validateInstructorCommand(payload)).toMatchObject({
+      ok: true,
+      command: { mode: 'replace' },
+    })
+    expect(validateInstructorCommand({ ...payload, mode: 'append' })).toMatchObject({
+      ok: false,
+      code: 'malformed',
+    })
+  })
+
+  it('passes divert_resume through to the shared route store action', () => {
+    const checked = validateInstructorCommand({
+      commandId: 'cmd-divert',
+      kind: 'set_route',
+      droneId: 'uav-01',
+      mode: 'divert_resume',
+      waypoints: [{ id: 'divert-1', position: { lat: 37.78, lng: -122.42 }, altitudeFt: 160 }],
+    })
+    if (!checked.ok) throw new Error(checked.message)
+    const original = useDroneStore.getState().setDroneRoute
+    const setDroneRoute = vi.fn(() => true)
+    useDroneStore.setState({ setDroneRoute })
+    try {
+      expect(executeInstructorCommand(checked.command, { actorSessionId: '7KX3M2' })).toMatchObject({ ok: true })
+      expect(setDroneRoute).toHaveBeenCalledWith(
+        'uav-01',
+        checked.command.kind === 'set_route' ? checked.command.waypoints : [],
+        'set_route',
+        'divert_resume',
+      )
+    } finally {
+      useDroneStore.setState({ setDroneRoute: original })
+    }
   })
 })
