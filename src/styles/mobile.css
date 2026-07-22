@@ -134,6 +134,12 @@
 .mobile-edge-tab.left { left: env(safe-area-inset-left); border-left: 0; border-radius: 0 8px 8px 0; }
 .mobile-edge-tab.right { right: env(safe-area-inset-right); border-right: 0; border-radius: 8px 0 0 8px; transform: translateY(-50%) rotate(180deg); }
 .mobile-edge-tab[aria-pressed="true"] { background: rgba(0, 212, 255, 0.16); }
+/* iPadOS Safari runs desktop-class WebKit, which composes `writing-mode: vertical-rl`
+   with `rotate(180deg)` differently from iPhone Safari and renders the DATA label
+   upside down. Drop the 180° flip on the tablet tier ONLY — the phone rendering
+   (which is correct) is left untouched — so the label reads the same direction as
+   the working left/FLEET tab. Verify on a physical iPad. */
+.mobile-shell--tablet .mobile-edge-tab.right { transform: translateY(-50%); }
 
 .mobile-drawer-scrim {
   position: absolute;
@@ -273,6 +279,21 @@
   margin: 0;
   overflow: visible;
   border: 0;
+  /* Fill the drawer as a flex column so the dispatch list (below) can own the
+     scroll — same remedy as the fleet roster: pin the brief, flex the list. */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+/* Chain-of-custody log (DATA tab) and the dispatch feed (popup) get the fleet-panel
+   scroll fix: the list flexes to fill its pane and scrolls internally instead of being
+   crushed by a fixed cap. `min-height: 0` is the piece a flex child needs to shrink
+   below its content and actually scroll. Mobile-scoped so desktop overlays are unchanged. */
+.mobile-data-content .event-log { min-height: 0; }
+.mobile-surface-pane .dispatch-feed-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
 }
 
 .mobile-dock {

@@ -10,6 +10,10 @@ coverage/
 *.tsbuildinfo
 .tsbuild-node/
 
+# Classroom relay crash-backups (COORDINATOR_BUILD_PLAN §5). Ciphertext, useless
+# without the instructor key, but it is student work and never belongs in the repo.
+classroom-runs/
+
 # Local agent/workspace artifacts
 .agents/
 .claude/

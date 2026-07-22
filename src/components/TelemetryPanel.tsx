@@ -4,6 +4,7 @@ import { useDroneStore } from '@/store/droneStore'
 import { verifyChain } from '@/utils/chainOfCustody'
 import { encodeDroneTelemetry, formatMAVLinkLine } from '@/utils/mavlink'
 import { buildComplianceState } from '@/sim/demo/complianceEngine'
+import { airspaceCeilingCaption, airspaceForScenario } from '@/sim/mission/airspace'
 import { buildMissionOutcomeSummary } from '@/sim/demo/missionOutcome'
 import { buildUtmAirspaceState } from '@/sim/demo/utmEngine'
 import { platformForDrone, LEGACY_FAA_SPEED_LIMIT_MS } from '@/sim/drone/platformCatalog'
@@ -125,6 +126,9 @@ export function TelemetryPanel() {
     () => activeTab === 'readiness' ? buildUtmAirspaceState({ scenario, drones, elapsedSec }) : null,
     [activeTab, scenario, drones, elapsedSec],
   )
+  // WP-3: the published-ceiling provenance line. Cheap (a static fixture lookup), but keyed off
+  // the scenario so it recomputes only when the scenario changes, like the three above.
+  const ceilingCaption = useMemo(() => airspaceCeilingCaption(airspaceForScenario(scenario?.id)), [scenario?.id])
 
   return (
     <div className="telemetry-panel">
@@ -221,7 +225,13 @@ export function TelemetryPanel() {
               <div className="panel-label">FAA Part 107</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <CompCheck ok={selected.altitudeFt <= 400} label={`ALT ≤ 400ft (${Math.round(selected.altitudeFt)}ft)`} />
-                <CompCheck ok={selected.speedMs <= certifiedSpeedLimitMs(scenario, selected.id) + 0.5} label={`SPD ≤ 57mph (${(selected.speedMs * 2.237).toFixed(1)}mph)`} />
+                {/* The limit is per-airframe (9-20 m/s across the catalog), not the flat Part 107
+                    cap — so the label has to quote the same number the check uses. It previously
+                    read a hardcoded "57mph", which put a ✗ next to a limit the drone was under. */}
+                <CompCheck
+                  ok={selected.speedMs <= certifiedSpeedLimitMs(scenario, selected.id) + 0.5}
+                  label={`SPD ≤ ${Math.round(certifiedSpeedLimitMs(scenario, selected.id) * 2.237)}mph (${(selected.speedMs * 2.237).toFixed(1)}mph)`}
+                />
                 <CompCheck ok={selected.signalDbm > -90} label={`COMMS LINK (${selected.signalDbm}dBm)`} />
               </div>
             </div>
@@ -391,6 +401,13 @@ export function TelemetryPanel() {
             <ReadinessPill label="REMOTE ID" value={compliance.remoteId.status.toUpperCase()} tone={compliance.remoteId.status === 'broadcasting' ? 'good' : 'warn'} />
             <ReadinessPill label="AUTH" value={compliance.airspace.authorization.label} tone={compliance.airspace.authorization.status === 'ready' ? 'good' : 'warn'} />
             <ReadinessPill label="MAX ALT" value={`${Math.round(compliance.airspace.maxObservedAltitudeFt)}ft AGL`} tone={compliance.airspace.maxObservedAltitudeFt <= 400 ? 'good' : 'bad'} />
+            {/* REALISM_ROADMAP WP-3 — real published FAA ceilings, with their edition date.
+                The date is not decoration: the accept criterion is that a stale fixture is
+                visible rather than silently wrong, and this is the panel an operator reads
+                airspace readiness from. Absent for scenarios with no published facility map. */}
+            {ceilingCaption && (
+              <ReadinessPill label="FAA CEILINGS" value={ceilingCaption} tone="good" />
+            )}
             {compliance.waiverFlags.map((flag) => (
               <ReadinessPill key={`${flag.kind}-${flag.label}`} label={flag.kind.replace(/_/g, ' ').toUpperCase()} value={flag.detail} tone={flag.severity === 'critical' ? 'bad' : 'warn'} />
             ))}

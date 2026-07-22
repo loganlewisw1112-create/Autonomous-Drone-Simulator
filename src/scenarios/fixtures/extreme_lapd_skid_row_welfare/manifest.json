@@ -1,0 +1,18 @@
+{
+  "scenarioId": "extreme_lapd_skid_row_welfare",
+  "area": {
+    "lat": 34.0422,
+    "lng": -118.2472
+  },
+  "realDate": "2024-01-16",
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=34.0422&longitude=-118.2472&start_date=2024-01-16&end_date=2024-01-16&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "91f1cc765d80cf73cffde8390aff841c9f779c847ffee6cd42143513319edfaf"
+    }
+  ]
+}

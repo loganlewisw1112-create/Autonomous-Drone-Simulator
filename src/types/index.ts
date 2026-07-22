@@ -463,6 +463,53 @@ export type WeatherHazard =
   | 'canyon_gusts'
   | 'rf_shadow'
 
+// Real observed weather frozen from a fixture (REALISM_ROADMAP WP-2). When a scenario has one,
+// these values become the baseline that the seeded variant dials perturb around. Sourced from
+// Open-Meteo ERA5 at authoring time; visibility/ceiling are absent from ERA5 so they stay from
+// the profile. A scenario with no fixture is unaffected (bit-identical to prior behaviour).
+export interface ObservedWeather {
+  windKts: number
+  gustKts: number
+  tempF: number
+  cloudCoverPct?: number
+}
+
+// Real published FAA UAS Facility Map ceilings frozen from a fixture (REALISM_ROADMAP WP-3).
+//
+// REAL DATA, SIMULATED AUTHORISATION — and the roadmap is emphatic that those are different
+// claims (§WP-3, §17). The grid below is the FAA's published maximum altitude for *automatic*
+// Part 107 authorisation through LAANC; nothing here authorises anything. The simulator's
+// authorisation state stays entirely simulated and the disclaimer in complianceEngine.ts keeps
+// its full "no real FAA, LAANC, USS, or drone broadcast integration" wording.
+//
+// Coverage is partial by design: cells exist only under charted facility maps, so 10 of the 21
+// catalog scenarios have a fixture and the rest genuinely have no published grid. A scenario
+// with no fixture is untouched and behaves bit-identically to pre-WP-3.
+export interface AirspaceCeilingCell {
+  /** Published ceiling for this grid square, feet AGL. 0 means no automatic authorisation here. */
+  ceilingFt: number
+  /**
+   * [west, south, east, north] in degrees — the 30 x 30 arc-second UASFM grid square.
+   * A plain array rather than a 4-tuple because these are imported straight from JSON, where
+   * TypeScript infers `number[]`; the fetcher asserts the length and the axis-aligned shape.
+   */
+  bounds: number[]
+}
+
+export interface ObservedAirspace {
+  source: string
+  /** MAP_EFF — the FAA edition date(s). Surfaced in the UI so a stale fixture is visible (§WP-3). */
+  mapEffective: string
+  unit: string
+  facilities: string[]
+  airspaceClasses: string[]
+  /** [xmin, ymin, xmax, ymax] — the AO envelope the grid was clipped to. */
+  bbox: number[]
+  minCeilingFt: number | null
+  maxCeilingFt: number | null
+  cells: AirspaceCeilingCell[]
+}
+
 export interface ScenarioWeatherProfile {
   locationTag: WeatherLocationTag
   baseConditions: {
@@ -597,7 +644,7 @@ export interface CustomMissionDefinition {
 
 // ─── UI State ──────────────────────────────────────────────────────────────────
 export type SensorMode = 'eo' | 'ir'
-export type SimSpeed = 1 | 5 | 10
+export type SimSpeed = 1 | 5 | 10 | 20
 
 // Operator-toggleable map overlay categories (numbered waypoint nodes, drone
 // tracks, and safety geofences are always shown and are intentionally NOT here).
