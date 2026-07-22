@@ -14,6 +14,21 @@ export type PlatformId =
   | 'freefly_astro_max'
   | 'brinc_lemur_2'
 
+// Published thermal payload spec, sourced per airframe (see provenance below). Fields
+// that a manufacturer does not publish are `null`, never guessed — that is what lets a
+// diligence conversation trace every number. `pixelPitchUm` + `focalLengthMm` feed the
+// Johnson-criteria detection model in `sensors/thermalRange.ts`; `netdMk` gates the
+// object-vs-background contrast term. FLIR's Boson, Boson+, Lepton and Hadron cores all
+// use a 12 µm detector pitch (published), so pitch is known even where focal length
+// (rarely published — manufacturers cite FOV instead) is not.
+export interface ThermalSensorSpec {
+  sensor: string
+  resolutionPx: [number, number]
+  pixelPitchUm: number | null
+  focalLengthMm: number | null
+  netdMk: number | null
+}
+
 export interface DronePlatformSpec {
   id: PlatformId | 'legacy'
   displayName: string
@@ -31,6 +46,8 @@ export interface DronePlatformSpec {
   gustToleranceMs: number
   enduranceMin: number
   enduranceMultiplier: number
+  /** Integrated thermal payload, or `null` when the airframe ships thermal as a modular option. */
+  thermal: ThermalSensorSpec | null
 }
 
 // Regulatory reference: 57 mph (FAA Part 107 max groundspeed) ≈ 25.4 m/s.
@@ -53,6 +70,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 12.8,
     enduranceMin: 40,
     enduranceMultiplier: 1.3333,
+    thermal: { sensor: 'FLIR Boson+', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: null, netdMk: 30 },
   },
   skydio_x10d: {
     id: 'skydio_x10d',
@@ -70,6 +88,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 12.8,
     enduranceMin: 40,
     enduranceMultiplier: 1.3333,
+    thermal: { sensor: 'FLIR Boson+', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: null, netdMk: 30 },
   },
   parrot_anafi_usa: {
     id: 'parrot_anafi_usa',
@@ -87,6 +106,8 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 14.7,
     enduranceMin: 32,
     enduranceMultiplier: 1.0667,
+    // Parrot ANAFI USA: FLIR Boson 320×256, <60 mK (9 Hz microbolometer).
+    thermal: { sensor: 'FLIR Boson', resolutionPx: [320, 256], pixelPitchUm: 12, focalLengthMm: null, netdMk: 60 },
   },
   teal_2: {
     id: 'teal_2',
@@ -104,6 +125,8 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 11.2,
     enduranceMin: 30,
     enduranceMultiplier: 1.0,
+    // Teal 2: FLIR Hadron 640R — 640×512 radiometric thermal core (NETD not published → null).
+    thermal: { sensor: 'FLIR Hadron 640R', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: null, netdMk: null },
   },
   freefly_astro_max: {
     id: 'freefly_astro_max',
@@ -121,6 +144,9 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 10,
     enduranceMin: 39,
     enduranceMultiplier: 1.3,
+    // Freefly Astro Max ships thermal as a modular payload (single/dual thermal, Wiris Pro),
+    // so there is no single integrated sensor to spec.
+    thermal: null,
   },
   brinc_lemur_2: {
     id: 'brinc_lemur_2',
@@ -138,6 +164,8 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 8,
     enduranceMin: 20,
     enduranceMultiplier: 0.6667,
+    // BRINC Lemur 2: FLIR Lepton micro-thermal, 160×120 (7 Hz).
+    thermal: { sensor: 'FLIR Lepton', resolutionPx: [160, 120], pixelPitchUm: 12, focalLengthMm: null, netdMk: null },
   },
 }
 
@@ -160,6 +188,7 @@ export const LEGACY_PLATFORM: DronePlatformSpec = {
   gustToleranceMs: 14,
   enduranceMin: 30,
   enduranceMultiplier: 1,
+  thermal: null,
 }
 
 export function platformForDrone(scenario: ScenarioConfig, droneId: string): DronePlatformSpec {
