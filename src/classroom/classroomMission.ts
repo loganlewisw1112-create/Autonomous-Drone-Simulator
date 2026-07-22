@@ -5,6 +5,7 @@ import { compileCustomMission } from '@/components/designer/designerValidation'
 import { buildWeatherState } from '@/sim/weather/weatherEngine'
 import { observedWeatherFor } from '@/scenarios/observedWeather'
 import { buildAutoLaunchBayPlan } from '@/sim/mission/launchBayPlanning'
+import { buildLaunchSlotsForPlan } from '@/sim/mission/launchPlanGeometry'
 import { PREFLIGHT_CHECKLIST } from '@/sim/mission/preflightChecklist'
 import type { ClassConfig } from '@/classroom/protocol'
 
@@ -45,7 +46,10 @@ export function loadClassMission(config: ClassConfig): LoadResult {
   if (!ready.scenario) return { ok: false, reason: 'scenario failed to load' }
   const plan = buildAutoLaunchBayPlan(ready.scenario, ready.weatherState)
   if (!plan.readyToLaunch) return { ok: false, reason: plan.blockers[0] ?? 'launch plan not ready' }
-  store.setLaunchPlan(plan)
+  const placements = buildLaunchSlotsForPlan(ready.scenario, plan, ready.droneWaypoints)
+  if (!store.applyParkedLaunchPlan(plan, placements)) {
+    return { ok: false, reason: 'fleet is not parked for launch-plan application' }
+  }
 
   store.beginLaunchSequence()
   store.setRunning(true)

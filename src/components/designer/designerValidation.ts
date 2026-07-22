@@ -32,13 +32,20 @@ function stableSeed(id: string): number {
 }
 
 function toSite(site: CustomMissionDefinition['sites'][number]): LaunchRecoverySite {
+  const exposure = ['building_rooftop', 'rooftop', 'police_rooftop', 'vessel', 'helipad'].includes(site.kind)
+    ? 'exposed'
+    : site.kind === 'mobile_command' ? 'semi' : 'sheltered'
+  const capacityDrones = site.capacityDrones ?? 1
   return {
+    id: site.id,
     kind: site.kind,
     label: site.label,
     agency: 'Operator-authored mission',
     position: site.position,
     surfaceNote: 'Operator-verified launch and recovery surface',
-    capacityDrones: site.capacityDrones ?? 1,
+    capacityDrones,
+    exposure,
+    padFootprintM: Math.max(0, capacityDrones - 1) * 35,
   }
 }
 
@@ -47,6 +54,7 @@ export function compileCustomMission(definition: CustomMissionDefinition): Scena
   const recoverySites: Record<string, LaunchRecoverySite> = {}
   const perDroneStartPositions: ScenarioConfig['perDroneStartPositions'] = {}
   const defaultLaunchAssignments: Record<string, string> = {}
+  const defaultRecoveryAssignments: Record<string, string> = {}
 
   for (let index = 0; index < definition.droneCount; index++) {
     const droneId = customDroneId(index)
@@ -55,14 +63,14 @@ export function compileCustomMission(definition: CustomMissionDefinition): Scena
     const launch = definition.sites.find((site) => site.id === launchId)
     const recovery = definition.sites.find((site) => site.id === recoveryId)
     if (launch) {
-      launchSites[droneId] = toSite(launch)
+      launchSites[launch.id] = toSite(launch)
       perDroneStartPositions[droneId] = launch.position
-      // Scenario launch sites are normalized as one keyed site per drone. The
-      // launch plan therefore assigns the drone to that normalized key, while
-      // the saved definition retains the operator's original shared site id.
-      defaultLaunchAssignments[droneId] = droneId
+      defaultLaunchAssignments[droneId] = launch.id
     }
-    if (recovery) recoverySites[droneId] = { ...toSite(recovery), isPrimaryRecovery: true }
+    if (recovery) {
+      recoverySites[recovery.id] = { ...toSite(recovery), isPrimaryRecovery: true }
+      defaultRecoveryAssignments[droneId] = recovery.id
+    }
   }
 
   const firstRoute = definition.routes[customDroneId(0)] ?? []
@@ -73,7 +81,7 @@ export function compileCustomMission(definition: CustomMissionDefinition): Scena
     seed: stableSeed(definition.id),
     droneCount: definition.droneCount,
     missionType: 'waypoint',
-    startPosition: launchSites[customDroneId(0)]?.position ?? definition.center,
+    startPosition: launchSites[defaultLaunchAssignments[customDroneId(0)]]?.position ?? definition.center,
     waypoints: firstRoute,
     perDroneWaypoints: definition.routes,
     geofences: [],
@@ -106,6 +114,7 @@ export function compileCustomMission(definition: CustomMissionDefinition): Scena
     isCustom: true,
     authoredRoutes: definition.routes,
     defaultLaunchAssignments,
+    defaultRecoveryAssignments,
   }
 }
 

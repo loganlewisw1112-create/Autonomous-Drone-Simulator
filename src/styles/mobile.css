@@ -621,6 +621,29 @@
   margin-right: 0 !important;
 }
 
+.mobile-shell .launch-doctrine-planner {
+  display: block;
+  max-height: calc(100dvh - 16px);
+  padding: 14px !important;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-shell .launch-doctrine-header { display: grid; gap: 10px; }
+.mobile-shell .launch-doctrine-coverage { width: 100%; text-align: left; }
+.mobile-shell .launch-doctrine-weather { display: grid; gap: 4px; }
+.mobile-shell .launch-doctrine-site-grid { grid-template-columns: 1fr; }
+.mobile-shell .launch-doctrine-assignment-list { gap: 10px; }
+.mobile-shell .launch-doctrine-assignment { padding: 10px; }
+.mobile-shell .launch-doctrine-assignment-heading { grid-template-columns: 1fr; gap: 7px; }
+.mobile-shell .launch-doctrine-assignment-heading select { width: 100%; min-height: 44px; font-size: 11px; }
+.mobile-shell .launch-doctrine-candidate dl { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.mobile-shell .launch-doctrine-candidate dl > div:last-child { grid-column: 1 / -1; }
+.mobile-shell .launch-doctrine-rejections summary { min-height: 44px; display: flex; align-items: center; }
+.mobile-shell .launch-doctrine-rejections li { grid-template-columns: 1fr; gap: 2px; padding-bottom: 5px; }
+.mobile-shell .launch-doctrine-planner .launch-bay-actions { position: sticky; bottom: -14px; z-index: 2; padding: 10px 0 14px; background: var(--bg-panel); }
+
 /* ── Mission-tab drone quick commands ─────────────────────────────────────────
    Compact "suggested next move" controls surfaced in the MISSION sheet. */
 .mobile-drone-commands { border-bottom: 1px solid var(--border); padding-bottom: 12px; }

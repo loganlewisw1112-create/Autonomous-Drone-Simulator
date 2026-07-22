@@ -895,6 +895,171 @@ html, body, #root {
   text-transform: uppercase;
 }
 
+/* ── Launch doctrine briefing ─────────────────────────────────────────────── */
+.launch-doctrine-planner {
+  width: min(920px, calc(100vw - 32px));
+  max-width: 920px;
+  max-height: calc(100vh - 32px);
+  padding: 18px;
+}
+
+.launch-doctrine-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.launch-doctrine-header p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.launch-doctrine-coverage {
+  display: grid;
+  min-width: 148px;
+  padding: 7px 9px;
+  border: 1px solid var(--accent-blue);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font: 9px var(--font-mono);
+  text-align: right;
+}
+
+.launch-doctrine-coverage strong { color: var(--accent-blue); font-size: 12px; }
+
+.launch-doctrine-weather {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 14px;
+  padding: 7px 10px;
+  border: 1px solid #44ff8844;
+  border-radius: 4px;
+  background: rgba(68, 255, 136, 0.05);
+  color: var(--text-secondary);
+  font: 10px var(--font-mono);
+}
+
+.launch-doctrine-weather[data-hazards="active"] {
+  border-color: #ffaa0055;
+  background: rgba(255, 170, 0, 0.06);
+}
+
+.launch-doctrine-weather strong { color: var(--accent-green); }
+.launch-doctrine-weather[data-hazards="active"] strong { color: var(--accent-yellow); }
+
+.launch-doctrine-sites,
+.launch-doctrine-assignments { margin-bottom: 14px; }
+
+.launch-doctrine-sites > h2,
+.launch-doctrine-assignments > h2,
+.launch-doctrine-blockers > h2 {
+  margin: 0 0 6px;
+  color: var(--accent-blue);
+  font: 700 10px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.launch-doctrine-site-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 7px;
+}
+
+.launch-doctrine-site {
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  font-family: var(--font-mono);
+}
+
+.launch-doctrine-site > div { display: flex; justify-content: space-between; gap: 8px; font-size: 9px; }
+.launch-doctrine-site h3 { margin: 5px 0 2px; color: var(--text-primary); font-size: 10px; }
+.launch-doctrine-site p { margin: 0; color: var(--text-dim); font-size: 8px; }
+.launch-doctrine-site small { display: block; margin-top: 4px; color: var(--accent-red); font-size: 8px; }
+.launch-doctrine-site.site-open { border-color: #44ff8844; }
+.launch-doctrine-site.site-open > div strong { color: var(--accent-green); }
+.launch-doctrine-site.site-limited { border-color: #ffaa0055; }
+.launch-doctrine-site.site-limited > div strong { color: var(--accent-yellow); }
+.launch-doctrine-site.site-closed { border-color: #ff444455; }
+.launch-doctrine-site.site-closed > div strong { color: var(--accent-red); }
+
+.launch-doctrine-assignment-list { display: grid; gap: 8px; }
+
+.launch-doctrine-assignment {
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-input);
+}
+
+.launch-doctrine-assignment-heading {
+  display: grid;
+  grid-template-columns: minmax(130px, .7fr) auto minmax(280px, 1.4fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.launch-doctrine-assignment-heading > div { display: grid; }
+.launch-doctrine-assignment-heading strong { color: var(--accent-yellow); font: 700 11px var(--font-mono); }
+.launch-doctrine-assignment-heading span { color: var(--text-secondary); font-size: 9px; }
+.launch-doctrine-assignment-heading label { color: var(--text-dim); font: 9px var(--font-mono); }
+.launch-doctrine-assignment-heading select {
+  min-height: 30px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font: 9px var(--font-mono);
+}
+
+.launch-doctrine-candidate { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--border); }
+.launch-doctrine-candidate.candidate-rejected { border-top-color: #ff444455; }
+.launch-doctrine-candidate dl { display: grid; grid-template-columns: repeat(5, minmax(76px, 1fr)); gap: 6px; margin: 0; }
+.launch-doctrine-candidate dl > div { display: grid; gap: 2px; }
+.launch-doctrine-candidate dt { color: var(--text-dim); font: 8px var(--font-mono); }
+.launch-doctrine-candidate dd { margin: 0; color: var(--text-primary); font: 700 10px var(--font-mono); }
+.launch-doctrine-candidate p { margin: 7px 0 0; color: var(--text-secondary); font-size: 10px; line-height: 1.4; }
+.launch-doctrine-candidate-reasons { margin-top: 5px; color: var(--accent-red); font: 9px var(--font-mono); }
+.launch-doctrine-empty { margin: 8px 0 0; color: var(--accent-yellow); font-size: 10px; }
+
+.launch-doctrine-rejections { margin-top: 7px; color: var(--text-dim); font: 9px var(--font-mono); }
+.launch-doctrine-rejections summary { cursor: pointer; color: var(--accent-red); }
+.launch-doctrine-rejections ul { display: grid; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; }
+.launch-doctrine-rejections li { display: grid; grid-template-columns: minmax(150px, .6fr) 1fr; gap: 8px; }
+.launch-doctrine-rejections li strong { color: var(--text-secondary); }
+.launch-doctrine-rejections li span { color: var(--accent-red); }
+
+.launch-doctrine-blockers,
+.launch-doctrine-ready,
+.launch-doctrine-apply-error,
+.launch-doctrine-disclaimer {
+  margin-bottom: 10px;
+  padding: 7px 10px;
+  border-radius: 4px;
+  font: 9px var(--font-mono);
+}
+
+.launch-doctrine-blockers { border: 1px solid #ff444455; background: rgba(255, 68, 68, 0.06); }
+.launch-doctrine-blockers > h2 { color: var(--accent-red); }
+.launch-doctrine-blockers ul { margin: 0; padding-left: 16px; color: var(--accent-red); }
+.launch-doctrine-ready { border: 1px solid #44ff8844; background: rgba(68, 255, 136, 0.06); color: var(--accent-green); }
+.launch-doctrine-apply-error { border: 1px solid #ff444455; background: rgba(255, 68, 68, 0.06); color: var(--accent-red); }
+.launch-doctrine-disclaimer { background: var(--bg-input); color: var(--text-dim); }
+
+.launch-doctrine-planner .launch-bay-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.launch-doctrine-planner .launch-bay-actions .btn:first-child { margin-right: auto; }
+
 .ops-site-row strong {
   color: var(--text-primary);
   font-size: 10px;

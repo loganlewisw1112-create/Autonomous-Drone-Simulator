@@ -3,8 +3,9 @@ import { suspectSearch, vehiclePursuit, sarCoastal, portPerimeter, wildfireRecon
 import { EXTREME_SCENARIOS } from '@/scenarios/extremeScenarios'
 import { auditScenarioRoutes, buildSafeDroneRoutes, droneIdForIndex, relocatePointOutsideGeofences } from '@/sim/mission/routeAudit'
 import { getWeatherProfile } from '@/sim/weather/weatherEngine'
-import { haversineDistanceM, bearingDeg, offsetLatLng } from '@/utils/geometry'
+import { haversineDistanceM } from '@/utils/geometry'
 import { BAY_SPACING_M } from '@/sim/mission/LaunchCoordinator'
+import { launchSiteForDrone, recoverySiteForDrone } from '@/sim/mission/siteAssignments'
 import type {
   DispatchTimelineCategory,
   DispatchTimelineEntry,
@@ -81,14 +82,16 @@ export function enhanceScenarioForOperations(scenario: ScenarioConfig): Scenario
     perDroneRechargeStations: rechargeStationsByDroneIds ?? perDroneRechargeStations,
   }
 
-  const launchSites = deriveLaunchSites(baseScenario)
-  const recoverySites = deriveRecoverySites(baseScenario, launchSites, stationsById)
+  const launchPool = deriveLaunchSites(baseScenario)
+  const launchSites = launchPool.sites
+  const recoveryPool = deriveRecoverySites(baseScenario, launchSites, launchPool.assignments, stationsById)
+  const recoverySites = recoveryPool.sites
   const perDroneStartPositions: Record<string, LatLng> = {}
 
   for (let i = 0; i < scenario.droneCount; i++) {
     const id = droneIdForIndex(i)
-    const launch = launchSites[id]
-    perDroneStartPositions[id] = launch.position
+    const launch = launchSites[launchPool.assignments[id]]
+    perDroneStartPositions[id] = launch?.position ?? safeStart
   }
 
   const prepared: ScenarioConfig = {
@@ -96,6 +99,8 @@ export function enhanceScenarioForOperations(scenario: ScenarioConfig): Scenario
     perDroneStartPositions,
     launchSites,
     recoverySites,
+    defaultLaunchAssignments: launchPool.assignments,
+    defaultRecoveryAssignments: recoveryPool.assignments,
   }
 
   // Custom missions carry operator-authored routes: honor them verbatim (after a safety
@@ -148,86 +153,94 @@ function deriveWeatherProfile(scenario: ScenarioConfig): ScenarioWeatherProfile 
   return getWeatherProfile(tag)
 }
 
-/** First outbound target for a drone — its first waypoint, else the shared route
- *  start, else the search-area centroid. Used to orient the launch-bay fan. */
-function firstOutboundTarget(scenario: ScenarioConfig, id: string): LatLng | undefined {
-  const wp = scenario.perDroneWaypoints?.[id]?.[0]?.position ?? scenario.waypoints?.[0]?.position
-  if (wp) return wp
-  const area = scenario.searchArea
-  if (area && area.length > 0) {
-    return {
-      lat: area.reduce((s, p) => s + p.lat, 0) / area.length,
-      lng: area.reduce((s, p) => s + p.lng, 0) / area.length,
-    }
-  }
-  return undefined
+interface SitePool {
+  sites: Record<string, LaunchRecoverySite>
+  assignments: Record<string, string>
 }
 
-/** Circular mean of every drone's outbound bearing from the staging point. */
-function meanOutboundBearing(scenario: ScenarioConfig): number {
-  let sx = 0
-  let sy = 0
-  let count = 0
-  for (let i = 0; i < scenario.droneCount; i++) {
-    const target = firstOutboundTarget(scenario, droneIdForIndex(i))
-    if (!target) continue
-    const b = (bearingDeg(scenario.startPosition, target) * Math.PI) / 180
-    sx += Math.cos(b)
-    sy += Math.sin(b)
-    count++
-  }
-  if (count === 0) return 0
-  return ((Math.atan2(sy, sx) * 180) / Math.PI + 360) % 360
+function exposureForKind(kind: LaunchRecoverySite['kind']): LaunchRecoverySite['exposure'] {
+  if (['building_rooftop', 'rooftop', 'police_rooftop', 'vessel', 'helipad'].includes(kind)) return 'exposed'
+  if (kind === 'mobile_command') return 'semi'
+  return 'sheltered'
 }
 
-function deriveLaunchSites(scenario: ScenarioConfig): Record<string, LaunchRecoverySite> {
+function normalizeSite(siteId: string, site: LaunchRecoverySite): LaunchRecoverySite {
+  const capacityDrones = site.capacityDrones ?? 2
+  return {
+    ...site,
+    id: site.id ?? siteId,
+    exposure: site.exposure ?? exposureForKind(site.kind),
+    capacityDrones,
+    padFootprintM: site.padFootprintM ?? Math.max(0, capacityDrones - 1) * BAY_SPACING_M,
+  }
+}
+
+function deriveLaunchSites(scenario: ScenarioConfig): SitePool {
   const sites: Record<string, LaunchRecoverySite> = {}
+  const assignments: Record<string, string> = {}
 
-  // Default launch bays fan out perpendicular to the mean outbound heading so no
-  // two drones share a pad (≥ BAY_SPACING_M apart). Scenarios that author explicit
-  // per-drone launch coords (rooftops, decks) keep them; the fan is only a fallback.
-  const fanAxis = (meanOutboundBearing(scenario) + 90) % 360
-  const n = scenario.droneCount
-
-  for (let i = 0; i < scenario.droneCount; i++) {
-    const id = droneIdForIndex(i)
-    let fallbackPosition = scenario.perDroneStartPositions?.[id]
-    if (!fallbackPosition) {
-      const offsetIndex = i - (n - 1) / 2
-      const dist = Math.abs(offsetIndex) * BAY_SPACING_M
-      const brg = offsetIndex >= 0 ? fanAxis : (fanAxis + 180) % 360
-      fallbackPosition = dist < 0.01 ? scenario.startPosition : offsetLatLng(scenario.startPosition, brg, dist)
+  const authoredEntries = Object.entries(scenario.launchSites ?? {})
+  if (authoredEntries.length > 0) {
+    for (const [recordKey, raw] of authoredEntries) {
+      const siteId = raw.id ?? recordKey
+      sites[siteId] = {
+        ...normalizeSite(siteId, raw),
+        position: relocatePointOutsideGeofences(raw.position, scenario.geofences, 120),
+      }
     }
-    const raw = scenario.launchSites?.[id] ?? defaultLaunchSiteFor(scenario, id, fallbackPosition)
-    sites[id] = {
-      ...raw,
-      position: relocatePointOutsideGeofences(raw.position, scenario.geofences, 120),
+    for (let i = 0; i < scenario.droneCount; i++) {
+      const droneId = droneIdForIndex(i)
+      const requested = scenario.defaultLaunchAssignments?.[droneId]
+      const fallback = scenario.launchSites?.[droneId]?.id ?? (scenario.launchSites?.[droneId] ? droneId : undefined)
+      const siteId = requested && sites[requested] ? requested : fallback
+      if (siteId && sites[siteId]) assignments[droneId] = siteId
     }
+    return { sites, assignments }
   }
 
-  return sites
+  const siteId = `${scenario.id}-launch-primary`
+  const raw = defaultLaunchSiteFor(scenario, siteId, scenario.startPosition)
+  sites[siteId] = normalizeSite(siteId, {
+    ...raw,
+    capacityDrones: scenario.droneCount,
+    padFootprintM: Math.max(0, scenario.droneCount - 1) * BAY_SPACING_M,
+    position: relocatePointOutsideGeofences(raw.position, scenario.geofences, 120),
+  })
+  for (let i = 0; i < scenario.droneCount; i++) {
+    assignments[droneIdForIndex(i)] = siteId
+  }
+
+  return { sites, assignments }
 }
 
 function deriveRecoverySites(
   scenario: ScenarioConfig,
   launchSites: Record<string, LaunchRecoverySite>,
+  launchAssignments: Record<string, string>,
   stationsById: Map<string, RechargeStation>,
-): Record<string, LaunchRecoverySite> {
+): SitePool {
   const sites: Record<string, LaunchRecoverySite> = {}
+  const assignments: Record<string, string> = {}
 
   for (let i = 0; i < scenario.droneCount; i++) {
-    const id = droneIdForIndex(i)
-    const raw = scenario.recoverySites?.[id]
-      ?? recoveryFromRechargeStation(scenario, id, stationsById)
-      ?? recoveryFromLaunchSite(launchSites[id])
-    sites[id] = {
+    const droneId = droneIdForIndex(i)
+    const requested = scenario.defaultRecoveryAssignments?.[droneId]
+    const legacyRaw = scenario.recoverySites?.[droneId]
+    const authoredRaw = requested ? scenario.recoverySites?.[requested] : legacyRaw
+    const raw = authoredRaw
+      ?? recoveryFromRechargeStation(scenario, droneId, stationsById)
+      ?? recoveryFromLaunchSite(launchSites[launchAssignments[droneId]])
+    if (!raw) continue
+    const siteId = raw.id ?? requested ?? legacyRaw?.id ?? (legacyRaw ? droneId : `${launchAssignments[droneId]}-recovery`)
+    sites[siteId] = normalizeSite(siteId, {
       ...raw,
       position: relocatePointOutsideGeofences(raw.position, scenario.geofences, 120),
       isPrimaryRecovery: raw.isPrimaryRecovery ?? true,
-    }
+    })
+    assignments[droneId] = siteId
   }
 
-  return sites
+  return { sites, assignments }
 }
 
 function defaultLaunchSiteFor(scenario: ScenarioConfig, droneId: string, position: LatLng): LaunchRecoverySite {
@@ -236,6 +249,8 @@ function defaultLaunchSiteFor(scenario: ScenarioConfig, droneId: string, positio
 
   if (isCityScenario(scenario)) {
     return {
+      id: droneId,
+      exposure: 'semi',
       kind: 'mobile_command',
       label: `${agency} mobile command — pad ${pad}`,
       agency,
@@ -246,6 +261,8 @@ function defaultLaunchSiteFor(scenario: ScenarioConfig, droneId: string, positio
 
   if (isMaritimeScenario(scenario)) {
     return {
+      id: droneId,
+      exposure: 'exposed',
       kind: 'vessel',
       label: `${agency} vessel deck — pad ${pad}`,
       agency,
@@ -256,6 +273,8 @@ function defaultLaunchSiteFor(scenario: ScenarioConfig, droneId: string, positio
 
   if (scenario.name.toLowerCase().includes('airport')) {
     return {
+      id: droneId,
+      exposure: 'exposed',
       kind: 'helipad',
       label: `${agency} helipad — pad ${pad}`,
       agency,
@@ -265,6 +284,8 @@ function defaultLaunchSiteFor(scenario: ScenarioConfig, droneId: string, positio
   }
 
   return {
+    id: droneId,
+    exposure: 'sheltered',
     kind: 'field_icp',
     label: `${agency} field ICP — pad ${pad}`,
     agency,
@@ -288,6 +309,8 @@ function recoveryFromRechargeStation(
   const label = matchedStation?.label ?? `${agency} forward recovery site`
   const kind = isCityScenario(scenario) ? 'mobile_command' : 'field_icp'
   return {
+    id: `${matchedStation?.id ?? droneId}-recovery`,
+    exposure: exposureForKind(kind),
     kind,
     label: `${label} — primary recovery`,
     agency,
@@ -300,6 +323,7 @@ function recoveryFromRechargeStation(
 function recoveryFromLaunchSite(launchSite: LaunchRecoverySite): LaunchRecoverySite {
   return {
     ...launchSite,
+    id: `${launchSite.id}-recovery`,
     label: `${launchSite.label} (recovery)`,
     surfaceNote: 'RTB recovery lane colocated with the launch surface.',
     isPrimaryRecovery: true,
@@ -428,8 +452,8 @@ function deriveDroneRouteBriefs(scenario: ScenarioConfig, routes: Record<string,
     const altitudes = route.map((wp) => wp.altitudeFt)
     const minAlt = altitudes.length ? Math.min(...altitudes) : 100
     const maxAlt = altitudes.length ? Math.max(...altitudes) : 140
-    const launchSite = scenario.launchSites?.[id]
-    const recoverySite = scenario.recoverySites?.[id]
+    const launchSite = launchSiteForDrone(scenario, id)
+    const recoverySite = recoverySiteForDrone(scenario, id)
 
     briefs[id] = {
       role,

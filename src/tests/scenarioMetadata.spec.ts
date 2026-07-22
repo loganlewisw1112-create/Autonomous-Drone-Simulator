@@ -35,9 +35,16 @@ describe('multiagency scenario metadata', () => {
     for (const scenario of ALL_SCENARIOS) {
       for (let i = 0; i < scenario.droneCount; i++) {
         const id = droneId(i)
-        const launch = scenario.launchSites?.[id]
-        const recovery = scenario.recoverySites?.[id]
+        const launchId = scenario.defaultLaunchAssignments?.[id]
+        const recoveryId = scenario.defaultRecoveryAssignments?.[id]
+        const launch = launchId ? scenario.launchSites?.[launchId] : undefined
+        const recovery = recoveryId ? scenario.recoverySites?.[recoveryId] : undefined
 
+        expect(launchId, `${scenario.id}/${id} launch assignment`).toBeTruthy()
+        expect(recoveryId, `${scenario.id}/${id} recovery assignment`).toBeTruthy()
+        expect(launch?.id, `${scenario.id}/${id} stable launch id`).toBe(launchId)
+        expect(recovery?.id, `${scenario.id}/${id} stable recovery id`).toBe(recoveryId)
+        expect(launch?.exposure, `${scenario.id}/${id} launch exposure`).toMatch(/^(sheltered|semi|exposed)$/)
         expect(launch?.label, `${scenario.id}/${id} launch label`).toBeTruthy()
         expect(launch?.agency, `${scenario.id}/${id} launch agency`).toBeTruthy()
         expect(launch?.surfaceNote, `${scenario.id}/${id} launch surface`).toBeTruthy()
@@ -60,7 +67,8 @@ describe('multiagency scenario metadata', () => {
     for (const scenario of cityScenarios) {
       for (let i = 0; i < scenario.droneCount; i++) {
         const id = droneId(i)
-        const launch = scenario.launchSites?.[id]
+        const launchId = scenario.defaultLaunchAssignments?.[id]
+        const launch = launchId ? scenario.launchSites?.[launchId] : undefined
         expect(launch, `${scenario.id}/${id}`).toBeTruthy()
         if (!launch) continue
 
@@ -77,7 +85,8 @@ describe('multiagency scenario metadata', () => {
     if (!scenario) return
 
     for (const id of ['uav-03', 'uav-04', 'uav-05']) {
-      const launch = scenario.launchSites?.[id]
+      const launchId = scenario.defaultLaunchAssignments?.[id]
+      const launch = launchId ? scenario.launchSites?.[launchId] : undefined
       expect(launch, id).toBeTruthy()
       if (!launch) continue
       expect(launch.label, id).toContain('Jack London Square')

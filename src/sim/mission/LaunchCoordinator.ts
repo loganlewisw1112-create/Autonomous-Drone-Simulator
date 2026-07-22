@@ -39,13 +39,17 @@ interface PlanParams {
   droneIds: string[]
   /** First waypoint position per drone (defines its outbound heading). */
   firstTargets: Record<string, LatLng>
-  /** Scenario-defined launch bays; when every drone has one, the fan is skipped. */
+  /** Scenario-defined launch-bay coordinates. Distinct or ungrouped bays remain exact. */
   explicitBays?: Record<string, LatLng>
+  /** Stable physical-site identity for each explicit bay assignment. */
+  explicitBaySiteIds?: Record<string, string>
+  /** Usable fan-axis width for each physical site. */
+  explicitBayFootprintsM?: Record<string, number>
 }
 
 /** Circular mean of a set of bearings (deg), robust across the 0/360 wrap. */
-function meanBearingDeg(bearings: number[]): number {
-  if (bearings.length === 0) return 0
+function meanBearingDeg(bearings: number[], fallback = 0): number {
+  if (bearings.length === 0) return fallback
   let sx = 0
   let sy = 0
   for (const b of bearings) {
@@ -53,11 +57,28 @@ function meanBearingDeg(bearings: number[]): number {
     sx += Math.cos(r)
     sy += Math.sin(r)
   }
+  if (Math.hypot(sx, sy) < 1e-9) return fallback
   return ((Math.atan2(sy, sx) * 180) / Math.PI + 360) % 360
 }
 
+function orderByBearing(droneIds: string[], bearings: Record<string, number>, mean: number): string[] {
+  return [...droneIds].sort((a, b) => {
+    const da = angleDiffDeg(mean, bearings[a])
+    const db = angleDiffDeg(mean, bearings[b])
+    if (da !== db) return da - db
+    return a.localeCompare(b)
+  })
+}
+
 export function planCoordinatedLaunch(params: PlanParams): Record<string, LaunchSlot> {
-  const { startPosition, droneIds, firstTargets, explicitBays } = params
+  const {
+    startPosition,
+    droneIds,
+    firstTargets,
+    explicitBays,
+    explicitBaySiteIds,
+    explicitBayFootprintsM,
+  } = params
   const result: Record<string, LaunchSlot> = {}
   if (droneIds.length === 0) return result
 
@@ -69,18 +90,57 @@ export function planCoordinatedLaunch(params: PlanParams): Record<string, Launch
     bearings[id] = bearingDeg(origin, target)
   }
 
-  const mean = meanBearingDeg(droneIds.map((id) => bearings[id]))
+  const stableDroneIds = [...droneIds].sort((a, b) => a.localeCompare(b))
+  const mean = meanBearingDeg(droneIds.map((id) => bearings[id]), bearings[stableDroneIds[0]])
   // Fan axis is perpendicular to the mean outbound direction.
   const fanAxis = (mean + 90) % 360
 
   // Order drones left→right across the fan by their signed offset from the mean
   // heading. Adjacent bays then carry adjacent headings, so legs never cross.
-  const ordered = [...droneIds].sort((a, b) => {
-    const da = angleDiffDeg(mean, bearings[a])
-    const db = angleDiffDeg(mean, bearings[b])
-    if (da !== db) return da - db
-    return a.localeCompare(b)   // stable tie-break for determinism
-  })
+  const ordered = orderByBearing(droneIds, bearings, mean)
+
+  // Explicit assignments retain their authored coordinate unless multiple drones
+  // resolve to the same physical site. Shared sites get their own centered fan;
+  // unrelated explicit sites never move.
+  const fannedExplicitBays: Record<string, LatLng> = {}
+  const dronesBySite = new Map<string, string[]>()
+  for (const id of stableDroneIds) {
+    const siteId = explicitBays?.[id] ? explicitBaySiteIds?.[id] : undefined
+    if (!siteId) continue
+    const members = dronesBySite.get(siteId) ?? []
+    members.push(id)
+    dronesBySite.set(siteId, members)
+  }
+
+  for (const siteId of [...dronesBySite.keys()].sort((a, b) => a.localeCompare(b))) {
+    const members = dronesBySite.get(siteId) ?? []
+    if (members.length === 0) continue
+    if (members.length === 1) {
+      fannedExplicitBays[members[0]] = explicitBays![members[0]]
+      continue
+    }
+
+    const center = explicitBays![members[0]]
+    const groupMean = meanBearingDeg(members.map((id) => bearings[id]), bearings[members[0]])
+    const groupFanAxis = (groupMean + 90) % 360
+    const groupOrder = orderByBearing(members, bearings, groupMean)
+    const requiredSpanM = (groupOrder.length - 1) * BAY_SPACING_M
+    // Doctrine rejects a declared footprint shorter than requiredSpanM. The
+    // coordinator never compresses below BAY_SPACING_M; safety wins even if a
+    // blocked plan is inspected before launch.
+    const declaredSpanM = explicitBayFootprintsM?.[siteId]
+    const usableSpanM = Number.isFinite(declaredSpanM) && (declaredSpanM ?? -1) >= 0
+      ? Math.max(requiredSpanM, declaredSpanM!)
+      : requiredSpanM
+    const leadingInsetM = (usableSpanM - requiredSpanM) / 2
+
+    groupOrder.forEach((id, index) => {
+      const signedOffsetM = -usableSpanM / 2 + leadingInsetM + index * BAY_SPACING_M
+      const bearing = signedOffsetM >= 0 ? groupFanAxis : (groupFanAxis + 180) % 360
+      const distanceM = Math.abs(signedOffsetM)
+      fannedExplicitBays[id] = distanceM < 0.01 ? center : offsetLatLng(center, bearing, distanceM)
+    })
+  }
 
   const n = ordered.length
   let cumulativeSec = 0
@@ -88,7 +148,7 @@ export function planCoordinatedLaunch(params: PlanParams): Record<string, Launch
     // Spatial bay: centered fan, ±BAY_SPACING_M steps along the fan axis.
     let bay: LatLng
     if (explicitBays?.[id]) {
-      bay = explicitBays[id]
+      bay = fannedExplicitBays[id] ?? explicitBays[id]
     } else {
       const offsetIndex = k - (n - 1) / 2
       const dist = Math.abs(offsetIndex) * BAY_SPACING_M

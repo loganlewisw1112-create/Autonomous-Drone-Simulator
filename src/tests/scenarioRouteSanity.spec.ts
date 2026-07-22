@@ -118,7 +118,7 @@ describe('coordinated launch planner', () => {
     expect(a).toEqual(b)
   })
 
-  it('honors explicit bays without fanning them', () => {
+  it('preserves distinct or ungrouped explicit bay coordinates exactly', () => {
     const explicitBays: Record<string, LatLng> = {
       'uav-01': { lat: 37.7705, lng: -122.4205 },
       'uav-02': { lat: 37.7706, lng: -122.4204 },
@@ -130,5 +130,56 @@ describe('coordinated launch planner', () => {
     for (const id of droneIds) {
       expect(plan[id].bay).toEqual(explicitBays[id])
     }
+  })
+
+  it('fans shared explicit sites locally while preserving singleton sites', () => {
+    const sharedIds = ['uav-01', 'uav-02', 'uav-03']
+    const sharedCenter = { lat: 37.7705, lng: -122.4205 }
+    const singletonCenter = { lat: 37.7715, lng: -122.4195 }
+    const explicitBays: Record<string, LatLng> = {
+      'uav-01': sharedCenter,
+      'uav-02': sharedCenter,
+      'uav-03': singletonCenter,
+    }
+    const explicitBaySiteIds = {
+      'uav-01': 'shared-rooftop',
+      'uav-02': 'shared-rooftop',
+      'uav-03': 'singleton-pad',
+    }
+    const params = {
+      startPosition,
+      droneIds: sharedIds,
+      firstTargets,
+      explicitBays,
+      explicitBaySiteIds,
+      explicitBayFootprintsM: { 'shared-rooftop': BAY_SPACING_M, 'singleton-pad': 0 },
+    }
+
+    const plan = planCoordinatedLaunch(params)
+    const reversed = planCoordinatedLaunch({ ...params, droneIds: [...sharedIds].reverse() })
+    const sharedDistance = haversineDistanceM(plan['uav-01'].bay, plan['uav-02'].bay)
+    const midpoint = {
+      lat: (plan['uav-01'].bay.lat + plan['uav-02'].bay.lat) / 2,
+      lng: (plan['uav-01'].bay.lng + plan['uav-02'].bay.lng) / 2,
+    }
+
+    expect(sharedDistance).toBeGreaterThanOrEqual(BAY_SPACING_M - 1)
+    expect(haversineDistanceM(midpoint, sharedCenter)).toBeLessThan(0.2)
+    expect(plan['uav-03'].bay).toEqual(singletonCenter)
+    expect(reversed).toEqual(plan)
+  })
+
+  it('never compresses a shared-site fan below the safety spacing', () => {
+    const center = { lat: 37.7705, lng: -122.4205 }
+    const plan = planCoordinatedLaunch({
+      startPosition,
+      droneIds: ['uav-01', 'uav-02'],
+      firstTargets,
+      explicitBays: { 'uav-01': center, 'uav-02': center },
+      explicitBaySiteIds: { 'uav-01': 'short-pad', 'uav-02': 'short-pad' },
+      explicitBayFootprintsM: { 'short-pad': 10 },
+    })
+
+    expect(haversineDistanceM(plan['uav-01'].bay, plan['uav-02'].bay)).toBeGreaterThanOrEqual(BAY_SPACING_M - 1)
   })
 })
