@@ -39,12 +39,14 @@ formats and byte budgets closed.
 | WP-5 thermal geometry | **PARTIAL** | Johnson §18.1 math shipped + tested (`thermalRange.ts`); LOS/contrast gating awaits WP-4. |
 | WP-0 fixture pipeline | **BLOCKED here** | Needs live network authoring (dev CLI hitting USGS/Overture/Open-Meteo/FAA). Not runnable in this environment. |
 | WP-2/3/4/7/8/9 | **GATED on WP-0/WP-4** | Real geodata + the terrain keystone; no honest offline path. |
-| WP-6/10/11 | **OFFLINE-READY** | Pure math (SAR POD, Dryden, battery curve). Executable next without network; deferred this pass to protect determinism. |
+| WP-6/10/11 | **MODULE DONE** | Pure, tested, deterministic modules shipped: `sensors/sweepWidth.ts` (POD), `weather/dryden.ts` (turbulence), `drone/battery.ts` (discharge curve). Change no live behaviour yet — live wiring into the loop is the deferred, determinism-sensitive step (WP-5 pattern). |
 | Coordinator consumer for WP-9 | **LANDED** | Classroom build ships; a NIST-scored lane now has a comparison table to report into. |
 
-**The offline frontier is WP-6/10/11.** They need no fixtures, only care over the sim tick's
-determinism. They are the natural next executable tranche once someone is ready to touch the
-loop; this pass deliberately stopped at WP-1/WP-5-geometry, which touch no live behaviour.
+**The offline frontier WP-6/10/11 now exists as tested math.** They need no fixtures. Each shipped
+as a pure module with its own spec (the WP-5 pattern) so the 480→501 suite stays green and the sim
+tick's determinism is untouched. What remains for each is the *live wiring* — swapping the linear
+battery drain, injecting Dryden gusts into the loop, and reporting POD on the READY tab — each a
+deliberate, separately-verified step because it touches deterministic behaviour.
 
 ---
 
@@ -478,7 +480,13 @@ a fog case asserting LWIR degrades to 50–70 % rather than to zero.
 
 ---
 
-## WP-6 · SAR sweep width and POD `[Tranche C]` `[needs WP-5]`
+## WP-6 · SAR sweep width and POD `[Tranche C]` `[needs WP-5]` — **MODULE DONE**
+
+**Status:** the R_d → W → coverage → POD math ships as pure, tested functions in
+`src/sim/sensors/sweepWidth.ts` (`sweepWidthM`, `coverage`, `podFromCoverage`,
+`probabilityOfDetection`, `cumulativePod`). Anchor reproduces: 10 km track, W=164.5 m, 1 km² →
+coverage 1.645 → POD ≈ 0.807. Remaining: feed it a real R_d from WP-5 and surface per-sector +
+cumulative POD on the READY tab. Rest of this section is the unchanged target.
 
 **Current state.** Detection fires on proximity. READY-tab coverage is a geometric area figure.
 
@@ -659,7 +667,13 @@ features on 20 targets scores as specified.
 
 ---
 
-## WP-10 · Dryden turbulence and wind gradient `[Tranche D]` `[needs WP-2]`
+## WP-10 · Dryden turbulence and wind gradient `[Tranche D]` `[needs WP-2]` — **MODULE DONE**
+
+**Status:** the seeded gust generator ships as pure, tested functions in `src/sim/weather/dryden.ts`
+(`drydenCoefficients`, `drydenSeries`, `lowAltitudeDryden`, `exceedsGustLimit`) — deterministic
+(same seed → identical series), steady-state variance → σ², MIL-F-8785C low-altitude intensity/scale
+vs altitude. Remaining: the altitude wind gradient from WP-2 and the live loop couplings (battery
+burn, station-keeping, wind-limit abort). Rest of this section is the unchanged target.
 
 **Current state:** wind is a scalar with speed-cap and battery-drain multipliers.
 
@@ -693,7 +707,13 @@ approximates the Dryden spectrum.
 
 ---
 
-## WP-11 · Battery discharge curve `[Tranche D]` `[independent]`
+## WP-11 · Battery discharge curve `[Tranche D]` `[independent]` — **MODULE DONE**
+
+**Status:** the discharge model ships as pure, tested functions in `src/sim/drone/battery.ts`
+(`ocvFromSoc` with the low-SoC knee, `terminalVoltage`, `capacityTempMultiplier`, `enduranceMinutes`,
+`reserveSocForVoltage`) — Peukert omitted by design; reproduces published endurance within 5% at
+20 °C for every platform; cold reduces endurance; the voltage-aware reserve fires earlier than a
+linear gate. Remaining: swap it into `DroneEntity`'s live drain. Rest of this section is unchanged.
 
 **Current state:** linear drain with multipliers.
 
