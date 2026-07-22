@@ -13,7 +13,7 @@ const THERMAL_HOLD_MIN_SEC = 10
 // a partial-height drawer, so the map stays visible above it.
 export function DroneQuickCommands() {
   const {
-    scenario, drones, elapsedSec, selectedDroneId, routeCommandError, routeSuggestions,
+    scenario, drones, elapsedSec, selectedDroneId, routeCommandError, routeCommandWarning, routeSuggestions,
     setSelectedDrone, hoverDrone, resumeDrone, returnDroneToBase,
     commandDroneRoute, generateRouteSuggestionsForDrone,
     acceptRouteSuggestion, rejectRouteSuggestion,
@@ -21,6 +21,7 @@ export function DroneQuickCommands() {
     useShallow((s) => ({
       scenario: s.scenario, drones: s.drones, elapsedSec: s.elapsedSec,
       selectedDroneId: s.ui.selectedDroneId, routeCommandError: s.routeCommandError,
+      routeCommandWarning: s.routeCommandWarning,
       routeSuggestions: s.routeSuggestions,
       setSelectedDrone: s.setSelectedDrone, hoverDrone: s.hoverDrone,
       resumeDrone: s.resumeDrone, returnDroneToBase: s.returnDroneToBase,
@@ -107,6 +108,9 @@ export function DroneQuickCommands() {
       {routeCommandError && (
         <span className="mobile-status-line" style={{ color: 'var(--accent-red)' }}>{routeCommandError}</span>
       )}
+      {routeCommandWarning && (
+        <span className="mobile-status-line" style={{ color: 'var(--accent-amber, #ffc766)' }}>{routeCommandWarning.message}</span>
+      )}
 
       {/* SUGGEST output. Without this the button silently mutated state and the
           operator saw nothing — now each proposed move is shown with its rationale
@@ -125,7 +129,8 @@ export function DroneQuickCommands() {
               <div className="mobile-suggestion-title">{s.title}</div>
               <p className="mobile-suggestion-rationale">{s.rationale}</p>
               <div className="mobile-suggestion-actions">
-                <button className="mobile-btn primary" onClick={() => acceptRouteSuggestion(s.id)}>ACCEPT</button>
+                <button className="mobile-btn primary" onClick={() => acceptRouteSuggestion(s.id, 'replace')}>REPLACE</button>
+                <button className="mobile-btn primary" onClick={() => acceptRouteSuggestion(s.id, 'divert_resume')}>DIVERT + RESUME</button>
                 <button className="mobile-btn" onClick={() => rejectRouteSuggestion(s.id)}>DISMISS</button>
               </div>
             </div>

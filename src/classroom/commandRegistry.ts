@@ -1,6 +1,7 @@
 import { CLASSROOM_INTERVENTION_ACTOR_PREFIX } from '@/classroom/commandAttribution'
 import { endMission, startSimLoop, stopTicking } from '@/sim/SimulationLoop'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
+import type { RouteApplicationMode } from '@/sim/mission/routeApplication'
 import { useDroneStore } from '@/store/droneStore'
 import type { LatLng, OperatorRole, OperatorRouteCommand, SimSpeed, Waypoint } from '@/types'
 
@@ -9,6 +10,8 @@ const ROUTE_COMMANDS = [
 ] as const satisfies readonly OperatorRouteCommand[]
 const ROLES = ['pic', 'mission_commander', 'observer'] as const satisfies readonly OperatorRole[]
 const SIM_SPEEDS = [1, 5, 10, 20] as const satisfies readonly SimSpeed[]
+const ROUTE_APPLY_MODES = ['replace', 'divert_resume'] as const satisfies readonly RouteApplicationMode[]
+export type InstructorRouteApplyMode = RouteApplicationMode
 
 interface CommandBase { commandId: string }
 
@@ -16,7 +19,7 @@ export type InstructorCommand =
   | (CommandBase & { kind: 'pause' | 'resume_session' | 'end_mission' | 'restart' | 'rtb_all' | 'hold_all' | 'retask_fleet' | 'undo_retask' })
   | (CommandBase & { kind: 'hover' | 'resume' | 'rtb' | 'remote_land' | 'abort_recovery'; droneId: string })
   | (CommandBase & { kind: 'command_route'; droneId: string; routeCommand: typeof ROUTE_COMMANDS[number]; center?: LatLng })
-  | (CommandBase & { kind: 'set_route'; droneId: string; waypoints: Waypoint[] })
+  | (CommandBase & { kind: 'set_route'; droneId: string; waypoints: Waypoint[]; mode?: InstructorRouteApplyMode })
   | (CommandBase & { kind: 'set_operator_role'; role: OperatorRole })
   | (CommandBase & { kind: 'set_sim_speed'; speed: SimSpeed })
   | (CommandBase & { kind: 'directive'; text: string })
@@ -54,9 +57,19 @@ export function validateInstructorCommand(value: unknown): CommandValidation {
       return { ok: true, command: { ...base, kind: value.kind, droneId: value.droneId, routeCommand: value.routeCommand, ...(value.center ? { center: value.center } : {}) } }
     }
     case 'set_route':
-      return only(value, ['commandId', 'kind', 'droneId', 'waypoints'])
+      return only(value, ['commandId', 'kind', 'droneId', 'waypoints', 'mode'])
         && isId(value.droneId) && isWaypoints(value.waypoints)
-        ? { ok: true, command: { ...base, kind: value.kind, droneId: value.droneId, waypoints: value.waypoints } }
+        && (value.mode === undefined || includes(ROUTE_APPLY_MODES, value.mode))
+        ? {
+            ok: true,
+            command: {
+              ...base,
+              kind: value.kind,
+              droneId: value.droneId,
+              waypoints: value.waypoints,
+              mode: value.mode ?? 'replace',
+            },
+          }
         : invalid('malformed', `Route must contain at most ${MAX_WAYPOINTS_PER_DRONE} valid waypoints.`)
     case 'set_operator_role':
       return only(value, ['commandId', 'kind', 'role']) && includes(ROLES, value.role)
@@ -102,7 +115,7 @@ export function executeInstructorCommand(
         return state.commandDroneRoute(command.droneId, command.routeCommand, command.center)
           ? success(command, [command.droneId]) : failed(command, 'rejected', 'Simulator route guards rejected the command.')
       case 'set_route':
-        return state.setDroneRoute(command.droneId, command.waypoints)
+        return state.setDroneRoute(command.droneId, command.waypoints, 'set_route', command.mode ?? 'replace')
           ? success(command, [command.droneId]) : failed(command, 'rejected', 'Simulator route guards rejected the route.')
       case 'pause':
         if (state.lifecycle !== 'running') return failed(command, 'invalid_state', 'Mission is not running.')

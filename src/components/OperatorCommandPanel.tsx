@@ -33,6 +33,7 @@ export function OperatorCommandPanel() {
     droneWaypoints,
     routeSuggestions,
     routeCommandError,
+    routeCommandWarning,
     routeSaveStatuses,
     ui,
     hoverDrone,
@@ -48,7 +49,8 @@ export function OperatorCommandPanel() {
   } = useDroneStore(
     useShallow((s) => ({
       scenario: s.scenario, elapsedSec: s.elapsedSec, drones: s.drones, droneWaypoints: s.droneWaypoints,
-      routeSuggestions: s.routeSuggestions, routeCommandError: s.routeCommandError, routeSaveStatuses: s.routeSaveStatuses,
+      routeSuggestions: s.routeSuggestions, routeCommandError: s.routeCommandError,
+      routeCommandWarning: s.routeCommandWarning, routeSaveStatuses: s.routeSaveStatuses,
       ui: s.ui, hoverDrone: s.hoverDrone, resumeDrone: s.resumeDrone, returnDroneToBase: s.returnDroneToBase,
       abortRecovery: s.abortRecovery, commandDroneRoute: s.commandDroneRoute,
       generateRouteSuggestionsForDrone: s.generateRouteSuggestionsForDrone,
@@ -180,6 +182,7 @@ export function OperatorCommandPanel() {
       </div>
 
       {routeCommandError && <div className="operator-error">{routeCommandError}</div>}
+      {routeCommandWarning && <div className="operator-warning">{routeCommandWarning.message}</div>}
 
       <div className="operator-route-list">
         <div className="operator-route-header">
@@ -222,8 +225,13 @@ export function OperatorCommandPanel() {
                   + {routeSummary(suggestion.route)}
                 </span>
               </div>
+              <div className="operator-suggestion-mode-help">
+                <span><strong>REPLACE</strong> discards the unfinished active route.</span>
+                <span><strong>DIVERT + RESUME</strong> flies the diversion, then rejoins the next unfinished waypoint.</span>
+              </div>
               <div className="operator-suggestion-actions">
-                <button onClick={() => acceptRouteSuggestion(suggestion.id)}>ACCEPT</button>
+                <button onClick={() => acceptRouteSuggestion(suggestion.id, 'replace')}>REPLACE</button>
+                <button onClick={() => acceptRouteSuggestion(suggestion.id, 'divert_resume')}>DIVERT + RESUME</button>
                 <button onClick={() => rejectRouteSuggestion(suggestion.id)}>REJECT</button>
               </div>
             </div>
