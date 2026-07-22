@@ -490,6 +490,38 @@
   font-weight: 700;
 }
 
+/* Movable launch/recovery stations use a full 44px touch target. Fixed station
+   markers retain the compact desktop visual and expose no placement gesture. */
+.mobile-shell .launch-site-marker--touch {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border-width: 2px;
+  font-size: 12px;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-shell .launch-site-marker--touch.is-repositioning {
+  outline-width: 4px;
+  outline-offset: 2px;
+}
+
+.mobile-shell .site-reposition-review {
+  left: 8px;
+  right: 8px;
+  bottom: calc(env(safe-area-inset-bottom) + 72px);
+  transform: none;
+  width: auto;
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+  border-radius: 10px;
+}
+.mobile-shell .site-reposition-copy strong { font-size: 12px; }
+.mobile-shell .site-reposition-copy span,
+.mobile-shell .site-reposition-copy small { font-size: 11px; }
+.mobile-shell .site-reposition-actions { display: grid; grid-template-columns: 1fr 1fr; }
+.mobile-shell .site-reposition-actions button { min-height: 44px; }
+
 .route-edit-pill {
   position: absolute;
   left: 50%;

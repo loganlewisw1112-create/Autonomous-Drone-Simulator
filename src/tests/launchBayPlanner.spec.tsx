@@ -91,6 +91,7 @@ function loadPlanner(scenario = doctrineScenario()) {
     scenario,
     weatherState: weather,
     launchPlan: null,
+    siteOverrides: {},
     droneWaypoints: { ...scenario.perDroneWaypoints },
     drones: [{ ...parkedDrone, position: { lat: origin.lat - 0.02, lng: origin.lng } }],
     lifecycle: 'preflight',
@@ -150,5 +151,19 @@ describe('<LaunchBayPlanner />', () => {
     expect(stored?.assignmentDetails?.['uav-01']?.rationale).toMatch(/to task.*transit.*reserve margin/i)
     expect(useDroneStore.getState().drones[0].position).toEqual(stored?.assignmentDetails?.['uav-01']?.bay)
     expect(useDroneStore.getState().ui.showLaunchBay).toBe(false)
+  })
+
+  it('scores and parks against a preflight mobile-site override', async () => {
+    const user = userEvent.setup()
+    const moved = { lat: origin.lat + 0.0004, lng: origin.lng + 0.0003 }
+    loadPlanner(doctrineScenario('alternate'))
+    useDroneStore.setState({ siteOverrides: { alternate: moved } })
+    render(<LaunchBayPlanner />)
+
+    expect(await screen.findByLabelText('LAUNCH SITE')).toHaveValue('alternate')
+    await user.click(screen.getByRole('button', { name: '✓ Confirm Launch Plan' }))
+
+    expect(useDroneStore.getState().drones[0].position).toEqual(moved)
+    expect(useDroneStore.getState().launchPlan?.assignmentDetails?.['uav-01']?.launchPosition).toEqual(moved)
   })
 })

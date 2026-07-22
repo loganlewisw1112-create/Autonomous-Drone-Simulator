@@ -12,7 +12,10 @@ import { buildAirspaceReservationFeatures, buildExternalTrafficFeatures, buildUt
 import { useDeviceMode, type DeviceMode } from '@/hooks/useDeviceMode'
 import { buildAppendedWaypoint, canAppend, routeWithoutWaypoint } from '@/components/mapRouteEditing'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/components/designer/designerValidation'
-import type { LatLng, RouteSuggestion, ScenarioConfig } from '@/types'
+import { type SiteRepositionResult } from '@/sim/mission/siteReposition'
+import { isMobileLaunchSite, resolveLaunchSite } from '@/sim/mission/siteResolver'
+import type { LatLng, LaunchRecoverySite, RouteSuggestion, ScenarioConfig } from '@/types'
+import { haversineDistanceM } from '@/utils/geometry'
 
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 const MAP_FALLBACK_MS = 4500
@@ -32,6 +35,58 @@ export interface SuggestedRouteFeature {
     priority: RouteSuggestion['priority']
     suggestionId: string
   }
+}
+
+function signed(value: number, digits = 0): string {
+  const rounded = value.toFixed(digits)
+  return value > 0 ? `+${rounded}` : rounded
+}
+
+export function formatSiteRepositionDelta(preview: SiteRepositionResult): string {
+  const droneCount = preview.affectedDrones.length
+  return [
+    `${signed(preview.distanceToObjectiveDeltaM / 1_000, 1)}km to sector`,
+    `${signed(preview.reserveDeltaPct)}% reserve`,
+    `${droneCount} drone${droneCount === 1 ? '' : 's'} replanned`,
+  ].join(' · ')
+}
+
+export function SiteRepositionReview({
+  siteLabel,
+  preview,
+  onCancel,
+  onConfirm,
+}: {
+  siteLabel: string
+  preview: SiteRepositionResult | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <section
+      className="site-reposition-review"
+      data-testid="site-reposition-review"
+      data-status={preview ? (preview.ok ? 'ready' : 'blocked') : 'placing'}
+      aria-label={`Reposition ${siteLabel}`}
+      aria-live="polite"
+    >
+      <div className="site-reposition-copy">
+        <strong>{siteLabel}</strong>
+        {preview ? (
+          <>
+            <span className="site-reposition-delta">{formatSiteRepositionDelta(preview)}</span>
+            <small>{preview.message}</small>
+          </>
+        ) : (
+          <span>Tap the map or drag the marker to preview a new station position.</span>
+        )}
+      </div>
+      <div className="site-reposition-actions">
+        <button type="button" onClick={onCancel}>CANCEL</button>
+        <button type="button" onClick={onConfirm} disabled={!preview?.ok}>CONFIRM MOVE</button>
+      </div>
+    </section>
+  )
 }
 
 export function buildSuggestedRouteFeatures(
@@ -111,6 +166,57 @@ const DRONE_NODE_SVG = (color: string, state: string): string => {
 
 // States that count as "in the air" for camera follow, HUD display, and next-wp lines
 const FLYING_STATES = new Set(['navigate', 'launch', 'sar_grid', 'return_to_base', 'hover'])
+
+export interface TacticalMapSite {
+  id: string
+  site: LaunchRecoverySite
+  role: 'launch' | 'recovery' | 'launch_recovery'
+}
+
+/**
+ * `mobile: false` is an explicit fixed-site lock. Otherwise the three mobile
+ * station kinds are movable by default, while an authored `mobile: true` can
+ * opt another site kind into the same operator workflow.
+ */
+export function isSiteRepositionable(site: LaunchRecoverySite): boolean {
+  return isMobileLaunchSite(site)
+}
+
+/** Canonicalize launch/recovery pools for one marker per physical site. */
+export function collectTacticalMapSites(
+  scenario: ScenarioConfig,
+  overrides: Record<string, LatLng> = {},
+): TacticalMapSite[] {
+  const sites = new Map<string, TacticalMapSite>()
+  const add = (record: Record<string, LaunchRecoverySite> | undefined, role: 'launch' | 'recovery') => {
+    Object.entries(record ?? {}).forEach(([recordKey, authoredSite]) => {
+      const id = authoredSite.id ?? recordKey
+      const site = resolveLaunchSite(scenario, recordKey, overrides) ?? { ...authoredSite, id }
+      const existing = sites.get(id)
+        ?? [...sites.values()].find((candidate) => haversineDistanceM(candidate.site.position, site.position) <= 1)
+
+      if (!existing) {
+        sites.set(id, { id, site, role })
+        return
+      }
+
+      const movableSite = isSiteRepositionable(existing.site) ? existing.site : site
+      sites.set(existing.id, {
+        ...existing,
+        site: {
+          ...existing.site,
+          mobile: isSiteRepositionable(existing.site) || isSiteRepositionable(site),
+          repositionRadiusM: movableSite.repositionRadiusM,
+          repositionTimeSec: movableSite.repositionTimeSec,
+        },
+        role: existing.role === role ? role : 'launch_recovery',
+      })
+    })
+  }
+  add(scenario.launchSites, 'launch')
+  add(scenario.recoverySites, 'recovery')
+  return [...sites.values()].sort((a, b) => a.id.localeCompare(b.id))
+}
 
 // ── WS7: camera envelope fit ────────────────────────────────────────────────
 // [[minLng, minLat], [maxLng, maxLat]] — the LngLatBoundsLike tuple shape MapLibre's
@@ -197,6 +303,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   const baseMkrRef        = useRef<maplibregl.Marker | null>(null)
   const hudDivsRef        = useRef<Map<string, HTMLDivElement>>(new Map())
   const routeEditMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map())
+  const siteMarkersRef     = useRef<Map<string, maplibregl.Marker>>(new Map())
   const groundUnitMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map())
   // Live drone data written by Effect 7, consumed by rAF loop for DOM updates
   const droneDataRef      = useRef<Map<string, { headingDeg: number; missionState: string; color: string; hasAlert: boolean; label: string; altitudeFt: number; speedMs: number; isFlying: boolean }>>(new Map())
@@ -217,7 +324,9 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   const [lockedDroneId, setLockedDroneId] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
   const [mapMode,  setMapMode]  = useState<MapMode>('remote')
+  const [siteMove, setSiteMove] = useState<{ siteId: string; preview: SiteRepositionResult | null } | null>(null)
   const lastRecenterRequestRef = useRef(recenterRequest)
+  const siteMoveActiveRef = useRef(false)
 
   // Drives the scenario-envelope fit padding/zoom-cap split (WS7) — desktop vs. the
   // mobile shell's top bar / bottom dock / safe-area chrome. Read via a ref (below) inside
@@ -229,12 +338,13 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   // assumed reserved chrome bands. Desktop keeps its historical values — LAW.1.
   const badgeInset = mapBadgeInsets(deviceMode)
 
-  const { drones, scenario, thermalContacts, positionHistory, ui, droneWaypoints, routeSuggestions, selectedThermalId, selectThermal, groundUnits, recoveryTeams, toggleLayer } = useDroneStore(
+  const { drones, scenario, thermalContacts, positionHistory, ui, droneWaypoints, routeSuggestions, selectedThermalId, selectThermal, groundUnits, recoveryTeams, toggleLayer, siteOverrides } = useDroneStore(
     useShallow((s) => ({
       drones: s.drones, scenario: s.scenario, thermalContacts: s.thermalContacts, positionHistory: s.positionHistory,
       ui: s.ui, droneWaypoints: s.droneWaypoints, routeSuggestions: s.routeSuggestions,
       selectedThermalId: s.selectedThermalId, selectThermal: s.selectThermal,
       groundUnits: s.groundUnits, recoveryTeams: s.recoveryTeams, toggleLayer: s.toggleLayer,
+      siteOverrides: s.siteOverrides,
     })),
   )
 
@@ -268,6 +378,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   useEffect(() => { latestScenarioRef.current = scenario },          [scenario])
   useEffect(() => { latestSuggestionsRef.current = routeSuggestions }, [routeSuggestions])
   useEffect(() => { latestDeviceModeRef.current = deviceMode },          [deviceMode])
+  useEffect(() => { siteMoveActiveRef.current = siteMove !== null }, [siteMove])
 
   // ── GeoJSON interval: all setData() calls at 10fps ────────────────────────
   // Decouples map rendering from the 20fps physics tick.
@@ -358,6 +469,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     // satisfies react-hooks/exhaustive-deps' ref-in-cleanup rule.
     const hudDivsAtSetup = hudDivsRef.current
     const routeEditMarkersAtSetup = routeEditMarkersRef.current
+    const siteMarkersAtSetup = siteMarkersRef.current
     const groundUnitMarkersAtSetup = groundUnitMarkersRef.current
 
     mapStyleLoadedRef.current = false
@@ -595,6 +707,8 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       hudDivsAtSetup.clear()
       routeEditMarkersAtSetup.forEach((m) => m.remove())
       routeEditMarkersAtSetup.clear()
+      siteMarkersAtSetup.forEach((m) => m.remove())
+      siteMarkersAtSetup.clear()
       groundUnitMarkersAtSetup.forEach((m) => m.remove())
       groundUnitMarkersAtSetup.clear()
       if (fallbackTimer) window.clearTimeout(fallbackTimer)
@@ -776,17 +890,94 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         }
       }
 
-      const baseEl = document.createElement('div')
-      baseEl.innerHTML = `<div style="width:14px;height:14px;background:#fff;border:2px solid #ffaa00;border-radius:3px;"></div>`
-      baseMkrRef.current = new maplibregl.Marker({ element: baseEl })
-        .setLngLat([scenario.startPosition.lng, scenario.startPosition.lat])
-        .setPopup(new maplibregl.Popup({ offset: 16 }).setText('BASE'))
-        .addTo(map)
+      // Legacy scenarios without authored launch/recovery pools keep the single
+      // base marker. Site-aware scenarios are rendered by the reposition effect.
+      if (collectTacticalMapSites(scenario).length === 0) {
+        const baseEl = document.createElement('div')
+        baseEl.innerHTML = `<div style="width:14px;height:14px;background:#fff;border:2px solid #ffaa00;border-radius:3px;"></div>`
+        baseMkrRef.current = new maplibregl.Marker({ element: baseEl })
+          .setLngLat([scenario.startPosition.lng, scenario.startPosition.lat])
+          .setPopup(new maplibregl.Popup({ offset: 16 }).setText('BASE'))
+          .addTo(map)
+      }
     }
 
     if (mapStyleLoadedRef.current) setup()
     else map.once('load', setup)
   }, [scenario])
+
+  // ── Effect 2a: Launch/recovery site markers and reposition affordances ────
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapStyleLoadedRef.current || !scenario) return
+
+    siteMarkersRef.current.forEach((marker) => marker.remove())
+    siteMarkersRef.current.clear()
+
+    collectTacticalMapSites(scenario, siteOverrides).forEach(({ id, site, role }) => {
+      const movable = isSiteRepositionable(site)
+      const touchAffordance = deviceMode !== 'desktop' && movable
+      const el = document.createElement('button')
+      el.type = 'button'
+      el.className = [
+        'launch-site-marker',
+        `launch-site-marker--${role}`,
+        movable ? 'launch-site-marker--movable' : 'launch-site-marker--fixed',
+        touchAffordance ? 'launch-site-marker--touch' : '',
+      ].filter(Boolean).join(' ')
+      el.dataset.siteId = id
+      el.dataset.label = site.label
+      el.textContent = role === 'launch_recovery' ? '↕' : role === 'launch' ? 'L' : 'R'
+      el.setAttribute('aria-label', movable
+        ? `${site.label} movable ${role.replace('_', ' ')} site`
+        : `${site.label} fixed ${role.replace('_', ' ')} site`)
+      if (!movable) {
+        el.disabled = true
+        el.title = `${site.label} · fixed site`
+      } else if (deviceMode === 'desktop') {
+        el.title = `${site.label} · drag to reposition`
+      } else {
+        el.title = `${site.label} · tap to reposition`
+        el.addEventListener('click', (event) => {
+          event.stopPropagation()
+          setSiteMove({ siteId: id, preview: null })
+        })
+      }
+
+      const marker = new maplibregl.Marker({
+        element: el,
+        draggable: deviceMode === 'desktop' && movable,
+      })
+        .setLngLat([site.position.lng, site.position.lat])
+        .setPopup(new maplibregl.Popup({ offset: 22 }).setText(`${site.label} · ${role.replace('_', ' ')}`))
+        .addTo(map)
+
+      if (deviceMode === 'desktop' && movable) {
+        marker.on('dragstart', () => setSiteMove({ siteId: id, preview: null }))
+        marker.on('dragend', () => {
+          const requested = marker.getLngLat()
+          const preview = useDroneStore.getState().previewSiteReposition(id, {
+            lat: requested.lat,
+            lng: requested.lng,
+          })
+          marker.setLngLat([preview.position.lng, preview.position.lat])
+          setSiteMove({ siteId: id, preview })
+        })
+      }
+
+      siteMarkersRef.current.set(id, marker)
+    })
+  }, [deviceMode, mapReady, scenario, siteOverrides])
+
+  useEffect(() => {
+    siteMarkersRef.current.forEach((marker, id) => {
+      marker.getElement().classList.toggle('is-repositioning', siteMove?.siteId === id)
+    })
+  }, [siteMove])
+
+  useEffect(() => {
+    setSiteMove(null)
+  }, [scenario?.id])
 
   // ── Effect 2b: Sensor-mode + layer-toggle visibility ───────────────────────
   // EO = daylight planning view (routes, relays, gates, traffic).
@@ -1163,6 +1354,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     if (!touchEditing || !selectedId) return
 
     const handleMapClick = (event: maplibregl.MapMouseEvent) => {
+      if (siteMoveActiveRef.current) return
       const store = useDroneStore.getState()
       const route = store.droneWaypoints[selectedId] ?? []
       if (!canAppend(route)) return
@@ -1179,6 +1371,25 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       map.doubleClickZoom.enable()
     }
   }, [touchEditing, ui.selectedDroneId, mapReady])
+
+  // Mobile site repositioning follows the route editor's tap-to-place
+  // convention: tap a movable marker, then tap the desired map position.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapStyleLoadedRef.current || deviceMode === 'desktop' || !siteMove) return
+
+    const handleSitePlacement = (event: maplibregl.MapMouseEvent) => {
+      const preview = useDroneStore.getState().previewSiteReposition(siteMove.siteId, {
+        lat: event.lngLat.lat,
+        lng: event.lngLat.lng,
+      })
+      siteMarkersRef.current.get(siteMove.siteId)?.setLngLat([preview.position.lng, preview.position.lat])
+      setSiteMove({ siteId: siteMove.siteId, preview })
+    }
+
+    map.on('click', handleSitePlacement)
+    return () => { map.off('click', handleSitePlacement) }
+  }, [deviceMode, mapReady, siteMove])
 
   // ── Effect 8: Draggable route-edit markers for selected drone ─────────────
   useEffect(() => {
@@ -1222,6 +1433,28 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     })
   }, [ui.selectedDroneId, droneWaypoints, mapReady, touchEditing])
 
+  const activeSite = scenario && siteMove
+    ? collectTacticalMapSites(scenario, siteOverrides).find((candidate) => candidate.id === siteMove.siteId)
+    : undefined
+
+  const cancelSiteReposition = () => {
+    if (activeSite) {
+      siteMarkersRef.current.get(activeSite.id)
+        ?.setLngLat([activeSite.site.position.lng, activeSite.site.position.lat])
+    }
+    setSiteMove(null)
+  }
+
+  const handleRepositionSite = () => {
+    if (!siteMove?.preview?.ok) return
+    const result = useDroneStore.getState().repositionLaunchSite(
+      siteMove.siteId,
+      siteMove.preview.position,
+    )
+    if (result.ok) setSiteMove(null)
+    else setSiteMove({ siteId: siteMove.siteId, preview: result })
+  }
+
   return (
     <div className={`map-area${ui.sensorMode === 'ir' ? ' ir-active' : ''}`}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
@@ -1253,6 +1486,15 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
 
       {chromeSlots === 'inline' && <MissionStatusFeed />}
       {chromeSlots === 'inline' && <OperatorCommandPanel />}
+
+      {siteMove && activeSite && (
+        <SiteRepositionReview
+          siteLabel={activeSite.site.label}
+          preview={siteMove.preview}
+          onCancel={cancelSiteReposition}
+          onConfirm={handleRepositionSite}
+        />
+      )}
 
       {/* Remove-waypoint confirmation. Lives here rather than in MobileShell so the
           pending selection stays local to the map that raised it. */}

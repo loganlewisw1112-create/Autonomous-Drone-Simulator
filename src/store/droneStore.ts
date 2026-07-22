@@ -7,6 +7,7 @@ import { batteryReservePctForDrone } from '@/sim/mission/rechargeStations'
 import { isRetaskable } from '@/sim/mission/retaskPolicy'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
 import { buildMissionSituation, planFleetRetask } from '@/sim/mission/tacticalAdvisor'
+import { assessSiteReposition, type SiteRepositionResult } from '@/sim/mission/siteReposition'
 import { clearAllSavedWaypointPlans, clearSavedDroneWaypointRoute, saveDroneWaypointRoute, saveFleetWaypointRoutes } from '@/sim/mission/waypointPersistence'
 import { hashEvent } from '@/utils/chainOfCustody'
 import { getActiveOperator } from '@/store/authStore'
@@ -57,6 +58,17 @@ const MAX_FLEET_RETASK_HISTORY = 20
 export interface ParkedLaunchPlacement {
   bay: LatLng
   scheduledLaunchSec: number
+}
+
+export interface SiteRelocationState {
+  siteId: string
+  affectedSiteIds: string[]
+  from: LatLng
+  to: LatLng
+  startedAtSec: number
+  availableAtSec: number
+  affectedDroneIds: string[]
+  reserveDeltaPct: number
 }
 export { isRetaskable } from '@/sim/mission/retaskPolicy'
 
@@ -237,6 +249,11 @@ interface DroneStore {
   // Launch bay planning
   launchPlan: LaunchBayPlan | null
 
+  // Runtime-only station positions. ScenarioConfig remains immutable so a
+  // replay/reset can always recover the authored launch and recovery geometry.
+  siteOverrides: Record<string, LatLng>
+  siteRelocations: Record<string, SiteRelocationState>
+
   // Sim-time (elapsedSec) at which the launch command was issued. Combined with
   // each drone's scheduledLaunchSec this drives the staggered "hive-mind" takeoff.
   launchCommandedSec: number | null
@@ -272,6 +289,8 @@ interface DroneStore {
   setScenarioVariant: (variant: ScenarioVariantConfig) => void
   setLaunchPlan: (plan: LaunchBayPlan) => void
   applyParkedLaunchPlan: (plan: LaunchBayPlan, placements: Record<string, ParkedLaunchPlacement>) => boolean
+  previewSiteReposition: (siteId: string, requested: LatLng) => SiteRepositionResult
+  repositionLaunchSite: (siteId: string, requested: LatLng) => SiteRepositionResult
   setScenario: (scenario: ScenarioConfig) => void
   setOperatorRole: (role: OperatorRole) => void
   setLifecycle: (lifecycle: MissionLifecycleState) => void
@@ -473,6 +492,8 @@ export const useDroneStore = create<DroneStore>()(
         weatherState: getDefaultWeatherState(1337),
         scenarioVariant: DEFAULT_VARIANT,
         launchPlan: null,
+        siteOverrides: {},
+        siteRelocations: {},
         launchCommandedSec: null,
         mapReady: false,
         ui: {
@@ -724,6 +745,111 @@ export const useDroneStore = create<DroneStore>()(
           return applied
         },
 
+        previewSiteReposition: (siteId, requested) => {
+          const state = get()
+          if (!state.scenario) return unavailableSiteReposition(siteId, requested, 'No active scenario')
+          const assessed = assessSiteReposition({
+            scenario: state.scenario,
+            siteId,
+            requestedPosition: requested,
+            overrides: state.siteOverrides,
+            drones: state.drones,
+            launchAssignments: state.launchPlan?.assignments ?? state.scenario.defaultLaunchAssignments,
+            recoveryAssignments: state.scenario.defaultRecoveryAssignments,
+            weather: state.weatherState,
+          })
+          return withRuntimeRepositionTiming(assessed, state.lifecycle)
+        },
+
+        repositionLaunchSite: (siteId, requested) => {
+          let result: SiteRepositionResult | null = null
+          set((state) => {
+            if (!state.scenario) {
+              result = unavailableSiteReposition(siteId, requested, 'No active scenario')
+              return {}
+            }
+
+            const assessed = withRuntimeRepositionTiming(assessSiteReposition({
+              scenario: state.scenario,
+              siteId,
+              requestedPosition: requested,
+              overrides: state.siteOverrides,
+              drones: state.drones,
+              launchAssignments: state.launchPlan?.assignments ?? state.scenario.defaultLaunchAssignments,
+              recoveryAssignments: state.scenario.defaultRecoveryAssignments,
+              weather: state.weatherState,
+            }), state.lifecycle)
+            result = assessed
+            if (!assessed.ok) return {}
+
+            const relocation: SiteRelocationState = {
+              siteId: assessed.siteId,
+              affectedSiteIds: [...assessed.affectedSiteIds],
+              from: { ...assessed.from },
+              to: { ...assessed.position },
+              startedAtSec: state.elapsedSec,
+              availableAtSec: state.elapsedSec + assessed.repositionTimeSec,
+              affectedDroneIds: [...assessed.affectedDrones],
+              reserveDeltaPct: assessed.reserveDeltaPct,
+            }
+            const siteRelocations = { ...state.siteRelocations }
+            assessed.affectedSiteIds.forEach((affectedSiteId) => {
+              siteRelocations[affectedSiteId] = relocation
+            })
+
+            const partial = {
+              tick: state.tick,
+              timestamp: Date.now(),
+              droneId: 'system',
+              operatorId: getActiveOperator().operatorId,
+              role: state.operatorRole,
+              eventType: 'launch_site_repositioned' as EventType,
+              payload: {
+                siteId: assessed.siteId,
+                from: assessed.from,
+                to: assessed.position,
+                affected: assessed.affectedDrones,
+                reserveDeltaPct: assessed.reserveDeltaPct,
+                repositionTimeSec: assessed.repositionTimeSec,
+              },
+              prevHash: state.lastHash,
+            }
+            const hash = hashEvent(state.lastHash, partial)
+            const event: MissionEvent = { ...partial, hash }
+
+            return {
+              siteOverrides: { ...state.siteOverrides, ...assessed.overridePatch },
+              siteRelocations,
+              events: [...state.events, event],
+              lastHash: hash,
+              latestFleetRetaskPlan: null,
+              latestFleetRetaskResult: null,
+              fleetRetaskCache: null,
+              fleetRetaskUndo: null,
+              lastRouteChange: state.lastRouteChange?.source === 'fleet_retask' ? null : state.lastRouteChange,
+            }
+          })
+
+          const applied = result ?? unavailableSiteReposition(siteId, requested, 'Site reposition was not applied')
+          const nextState = get()
+          if (applied.ok && (nextState.lifecycle === 'running' || nextState.lifecycle === 'paused') && nextState.scenario) {
+            const situation = buildMissionSituation({
+              scenario: nextState.scenario,
+              drones: nextState.drones,
+              droneWaypoints: nextState.droneWaypoints,
+              tick: nextState.tick,
+              elapsedSec: nextState.elapsedSec,
+              unresolvedContacts: nextState.thermalContacts,
+              groundUnits: nextState.groundUnits,
+              weather: nextState.weatherState,
+              positionHistory: nextState.positionHistory,
+              siteOverrides: nextState.siteOverrides,
+            })
+            set({ latestFleetRetaskPlan: planFleetRetask(situation) })
+          }
+          return applied
+        },
+
         setOperatorRole: (role) => set({ operatorRole: role }),
 
         setLifecycle: (lifecycle) => set({ lifecycle }),
@@ -782,6 +908,8 @@ export const useDroneStore = create<DroneStore>()(
             replayIndex: 0,
             replayFrames: [],
             launchPlan: null,
+            siteOverrides: {},
+            siteRelocations: {},
             lifecycle: 'idle',
             ui: {
               ...s.ui,
@@ -961,6 +1089,7 @@ export const useDroneStore = create<DroneStore>()(
             groundUnits: state.groundUnits,
             weather: state.weatherState,
             positionHistory: state.positionHistory,
+            siteOverrides: state.siteOverrides,
           })
           const situationHash = hashMissionSituation(situation)
           const cached = state.fleetRetaskCache
@@ -1306,6 +1435,8 @@ export const useDroneStore = create<DroneStore>()(
 
         setScenario: (scenario) => set({
           scenario,
+          siteOverrides: {},
+          siteRelocations: {},
           lastRouteChange: null,
           latestFleetRetaskPlan: null,
           latestFleetRetaskResult: null,
@@ -1383,7 +1514,7 @@ export const useDroneStore = create<DroneStore>()(
             fleetRetaskCache: null, fleetRetaskHistory: [],
             fleetRetaskUndo: null,
             positionHistory: {}, replaySession: null, replayIndex: 0, replayFrames: [],
-            launchPlan: null, launchCommandedSec: null, lifecycle: 'idle',
+            launchPlan: null, siteOverrides: {}, siteRelocations: {}, launchCommandedSec: null, lifecycle: 'idle',
             metrics: {
               totalFlightDistanceM: 0, waypointsReached: 0, conflictsDetected: 0,
               thermalContacts: 0, geofenceBreaches: 0, rtbTriggers: 0,
@@ -1401,6 +1532,36 @@ function cloneWaypointRoute(route: Waypoint[]): Waypoint[] {
     ...waypoint,
     position: { ...waypoint.position },
   }))
+}
+
+function unavailableSiteReposition(siteId: string, requested: LatLng, reason: string): SiteRepositionResult {
+  return {
+    ok: false,
+    siteId,
+    from: { ...requested },
+    requestedPosition: { ...requested },
+    position: { ...requested },
+    clamped: false,
+    distanceFromOriginM: 0,
+    distanceToObjectiveDeltaM: 0,
+    reserveDeltaPct: 0,
+    affectedDrones: [],
+    affectedSiteIds: [],
+    overridePatch: {},
+    repositionTimeSec: 0,
+    blockers: [reason],
+    reason,
+    message: reason,
+  }
+}
+
+function withRuntimeRepositionTiming(
+  result: SiteRepositionResult,
+  lifecycle: MissionLifecycleState,
+): SiteRepositionResult {
+  return lifecycle === 'running' || lifecycle === 'paused'
+    ? result
+    : { ...result, repositionTimeSec: 0 }
 }
 
 function cloneWaypointRoutes(routes: Record<string, Waypoint[]>): Record<string, Waypoint[]> {

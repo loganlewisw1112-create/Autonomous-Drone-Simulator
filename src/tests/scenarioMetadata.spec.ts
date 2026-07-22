@@ -60,6 +60,19 @@ describe('multiagency scenario metadata', () => {
     }
   })
 
+  it('gives every mobile catalog site a bounded relocation radius and setup time', () => {
+    const mobileSites = ALL_SCENARIOS.flatMap((scenario) => [
+      ...Object.values(scenario.launchSites ?? {}),
+      ...Object.values(scenario.recoverySites ?? {}),
+    ]).filter((site) => site.mobile)
+
+    expect(mobileSites.length).toBeGreaterThan(0)
+    for (const site of mobileSites) {
+      expect(site.repositionRadiusM, site.id).toBeGreaterThan(0)
+      expect(site.repositionTimeSec, site.id).toBeGreaterThan(0)
+    }
+  })
+
   it('keeps city scenario launch sites on named rooftops or command units, never generic water points', () => {
     const cityScenarios = ALL_SCENARIOS.filter((scenario) => isCityScenario(scenario.name, scenario.description))
     expect(cityScenarios.length).toBeGreaterThan(0)

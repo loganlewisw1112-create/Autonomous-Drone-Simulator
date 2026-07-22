@@ -1,3 +1,4 @@
+import { resolveLaunchSite, type SiteOverrides } from '@/sim/mission/siteResolver'
 import type { LaunchRecoverySite, ScenarioConfig } from '@/types'
 
 export function launchSiteIdForDrone(scenario: ScenarioConfig, droneId: string): string | undefined {
@@ -12,12 +13,20 @@ export function recoverySiteIdForDrone(scenario: ScenarioConfig, droneId: string
   return scenario.recoverySites?.[droneId] ? droneId : undefined
 }
 
-export function launchSiteForDrone(scenario: ScenarioConfig, droneId: string): LaunchRecoverySite | undefined {
+export function launchSiteForDrone(
+  scenario: ScenarioConfig,
+  droneId: string,
+  overrides: Readonly<SiteOverrides> = {},
+): LaunchRecoverySite | undefined {
   const siteId = launchSiteIdForDrone(scenario, droneId)
-  return siteId ? scenario.launchSites?.[siteId] : undefined
+  return siteId ? resolveLaunchSite(scenario, siteId, overrides) : undefined
 }
 
-export function recoverySiteForDrone(scenario: ScenarioConfig, droneId: string): LaunchRecoverySite | undefined {
+export function recoverySiteForDrone(
+  scenario: ScenarioConfig,
+  droneId: string,
+  overrides: Readonly<SiteOverrides> = {},
+): LaunchRecoverySite | undefined {
   const siteId = recoverySiteIdForDrone(scenario, droneId)
-  return siteId ? scenario.recoverySites?.[siteId] : undefined
+  return siteId ? resolveLaunchSite(scenario, siteId, overrides) : undefined
 }

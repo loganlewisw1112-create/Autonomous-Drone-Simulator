@@ -8,6 +8,8 @@ import { buildSafeDroneRoutes } from '@/sim/mission/routeAudit'
 import { validateOperatorRoute } from '@/sim/mission/operatorRoutes'
 import { restoreSavedWaypointRoutes } from '@/sim/mission/waypointPersistence'
 import { buildLaunchSlotsForPlan } from '@/sim/mission/launchPlanGeometry'
+import { resolveLaunchSite } from '@/sim/mission/siteResolver'
+import { recoverySiteIdForDrone } from '@/sim/mission/siteAssignments'
 import {
   batteryProfileForDrone,
   batteryReservePctForDrone,
@@ -58,7 +60,10 @@ export function tick() {
   const stepsPerFrame = store.ui.simSpeed
 
   for (let i = 0; i < stepsPerFrame; i++) {
-    const { drones, scenario, tick: currentTick, elapsedSec, weatherState, launchCommandedSec } = useDroneStore.getState()
+    const {
+      drones, scenario, tick: currentTick, elapsedSec, weatherState, launchCommandedSec,
+      siteOverrides, siteRelocations,
+    } = useDroneStore.getState()
     if (!scenario) break
 
     const { droneWaypoints } = useDroneStore.getState()
@@ -75,12 +80,17 @@ export function tick() {
         sortieCount: stationSortieCount,
         currentWaypointIndex: drone.currentWaypointIndex,
       })
-      const basePos = selectedRechargeStation?.position ?? scenario.recoverySites?.[drone.id]?.position ?? scenario.startPosition
+      const recoverySiteId = recoverySiteIdForDrone(scenario, drone.id)
+      const recoverySite = recoverySiteId
+        ? resolveLaunchSite(scenario, recoverySiteId, siteOverrides)
+        : undefined
+      const basePos = selectedRechargeStation?.position ?? recoverySite?.position ?? scenario.startPosition
+      const recoveryRelocation = recoverySiteId ? siteRelocations[recoverySiteId] : undefined
       const baseWaypoint: Waypoint = {
         id: `base-${drone.sortieCount}`,
         position: basePos,
         altitudeFt: 0,
-        label: selectedRechargeStation?.station.label ?? scenario.recoverySites?.[drone.id]?.label ?? 'Base',
+        label: selectedRechargeStation?.station.label ?? recoverySite?.label ?? 'Base',
       }
       const batteryProfile = batteryProfileForDrone(scenario, drone.id)
       // Apply weather battery drain multiplier
@@ -98,6 +108,9 @@ export function tick() {
         weatherForceRtb: isWeatherForceRtb(weatherState),
         weatherHazard: weatherState.activeHazards[0],
         launchCommandedSec: launchCommandedSec ?? undefined,
+        baseAvailable: selectedRechargeStation !== null
+          || recoveryRelocation === undefined
+          || elapsedSec >= recoveryRelocation.availableAtSec,
       }
 
       const { cmd: rawCmd, nextState, nextWaypointIndex, hoverStartSec, rechargeStartSec, sortieResumeWpIdx } = getNextCommand(drone, mm)
