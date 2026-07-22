@@ -87,6 +87,7 @@ const ACTION_HANDLERS = [
   'handleVariantChange',
   'handleRandomizeSeed',
   'handleDemoReset',
+  'handleUndoRouteChange',
   'handleExportLog',
   'handleExportKML',
   'handleExportGeoJSON',

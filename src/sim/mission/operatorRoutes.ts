@@ -15,6 +15,7 @@ export interface OperatorCommandRouteInput {
   droneId: string
   center?: LatLng
   altitudeFt?: number
+  fromPosition?: LatLng
 }
 
 export interface RouteSuggestionInput {
@@ -25,14 +26,20 @@ export interface RouteSuggestionInput {
   warnings: readonly string[]
   sortieCount?: number
   currentWaypointIndex?: number
+  fromPosition?: LatLng
 }
 
 export function validateOperatorRoute(
   scenario: ScenarioConfig,
   droneId: string,
   route: Waypoint[],
+  fromPosition?: LatLng,
 ): OperatorRouteValidation {
-  const findings = auditScenarioRoutes(scenario, { routes: { [droneId]: route }, includeRtb: false })
+  const findings = auditScenarioRoutes(scenario, {
+    routes: { [droneId]: route },
+    includeRtb: false,
+    startPositions: fromPosition ? { [droneId]: fromPosition } : undefined,
+  })
     .filter((finding) => finding.droneId === droneId)
 
   return {
@@ -96,7 +103,7 @@ export function buildOperatorCommandRoute(input: OperatorCommandRouteInput): Way
   }
 
   const droneIndex = Math.max(0, Number(input.droneId.slice(-2)) - 1)
-  const start = defaultDroneStartPosition(input.scenario, droneIndex)
+  const start = input.fromPosition ?? defaultDroneStartPosition(input.scenario, droneIndex)
   return buildSafeRouteFromWaypoints(input.scenario, input.droneId, start, draft)
 }
 
@@ -114,7 +121,7 @@ export function buildRouteSuggestions(input: RouteSuggestionInput): RouteSuggest
       title: 'Thermal follow-up scan',
       rationale: 'Thermal cue requires a tight scan box and ground-team vector check before the contact ages out.',
       priority: 'urgent',
-      route: buildOperatorCommandRoute({ command: 'deep_scan', scenario: input.scenario, droneId: input.droneId, center }),
+      route: buildOperatorCommandRoute({ command: 'deep_scan', scenario: input.scenario, droneId: input.droneId, center, fromPosition: input.fromPosition }),
     }))
   }
 
@@ -126,7 +133,7 @@ export function buildRouteSuggestions(input: RouteSuggestionInput): RouteSuggest
       title: 'Relay reposition',
       rationale: 'Signal degradation detected; move selected drone to a high standoff relay point with line-of-sight coverage.',
       priority: 'advisory',
-      route: buildOperatorCommandRoute({ command: 'standoff_observe', scenario: input.scenario, droneId: input.droneId, center: firstRelayCue(input.scenario), altitudeFt: 220 }),
+      route: buildOperatorCommandRoute({ command: 'standoff_observe', scenario: input.scenario, droneId: input.droneId, center: firstRelayCue(input.scenario), altitudeFt: 220, fromPosition: input.fromPosition }),
     }))
   }
 
@@ -139,7 +146,7 @@ export function buildRouteSuggestions(input: RouteSuggestionInput): RouteSuggest
       title: 'Safer reroute',
       rationale: 'Route audit flagged a safety risk; use a detoured route around active geofence and hazard zones.',
       priority: 'critical',
-      route: buildSafeRouteFromWaypoints(input.scenario, input.droneId, firstOperationalCue(input.scenario), route),
+      route: buildSafeRouteFromWaypoints(input.scenario, input.droneId, input.fromPosition ?? firstOperationalCue(input.scenario), route),
     }))
   }
 
@@ -155,7 +162,7 @@ export function buildRouteSuggestions(input: RouteSuggestionInput): RouteSuggest
       const route = buildSafeRouteFromWaypoints(
         input.scenario,
         input.droneId,
-        defaultDroneStartPosition(input.scenario, droneIndex),
+        input.fromPosition ?? defaultDroneStartPosition(input.scenario, droneIndex),
         [{
           id: `${input.droneId}-${selection.station.id}`,
           label: `Forward Recharge: ${selection.station.label}`,
@@ -184,11 +191,11 @@ export function buildRouteSuggestions(input: RouteSuggestionInput): RouteSuggest
       title: 'Sector sweep refinement',
       rationale: 'No active hazard; tighten the selected drone route around the most relevant operational feature.',
       priority: 'routine',
-      route: buildOperatorCommandRoute({ command: 'street_sweep', scenario: input.scenario, droneId: input.droneId }),
+      route: buildOperatorCommandRoute({ command: 'street_sweep', scenario: input.scenario, droneId: input.droneId, fromPosition: input.fromPosition }),
     }))
   }
 
-  return suggestions.filter((suggestion) => validateOperatorRoute(input.scenario, input.droneId, suggestion.route).accepted)
+  return suggestions.filter((suggestion) => validateOperatorRoute(input.scenario, input.droneId, suggestion.route, input.fromPosition).accepted)
 }
 
 function makeSuggestion(args: {
