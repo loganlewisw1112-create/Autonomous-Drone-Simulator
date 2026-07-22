@@ -1,4 +1,5 @@
 import type { DroneState, MissionState } from '@/types'
+import type { AssessmentBand, MissionAssessment } from '@/classroom/missionAssessment'
 
 // Tier-A "grid frame": the ~400 B packed snapshot every student publishes at 1 Hz.
 // Objects are flattened to fixed-length tuples and lat/lng to integers ×1e5 (~1.1 m,
@@ -29,12 +30,16 @@ export const Alert = {
   RECOVERY_NEEDED: 1 << 9,
   STALLED: 1 << 10,
   IDLE: 1 << 11,
+  LIFE_SAFETY_VIOLATION: 1 << 12,
+  OFF_RUBRIC: 1 << 13,
 } as const
 
 export const CRIT_MASK =
   Alert.GEOFENCE_BREACH | Alert.COMMS_LOST | Alert.BATTERY_CRIT | Alert.EMERGENCY | Alert.CONFLICT | Alert.RECOVERY_NEEDED
+  | Alert.LIFE_SAFETY_VIOLATION
 export const WARN_MASK =
   Alert.COMMS_DEGRADED | Alert.BATTERY_LOW | Alert.RTB | Alert.STALLED | Alert.IDLE | Alert.THERMAL_NEW
+  | Alert.OFF_RUBRIC
 
 export type AlertSeverity = 'none' | 'warn' | 'crit'
 
@@ -75,6 +80,9 @@ export interface GridFrame {
   a: number // alert bitfield (whole-fleet)
   th: number // thermal contact count
   ev: number // event count
+  p?: number // assessment progress percent (omitted only for legacy peers)
+  b?: AssessmentBand // rubric band
+  sc?: number // rubric total
 }
 
 // Per-drone alert derivation from a live snapshot. STALLED/IDLE need timing history
@@ -103,11 +111,14 @@ export interface GridFrameInput {
   eventCount: number
   newThermalContact?: boolean // set the frame a thermal is first detected
   extraAlerts?: number // STALLED / IDLE the publisher computes from history
+  assessment?: Pick<MissionAssessment, 'progressPercent' | 'band' | 'total' | 'lifeSafety'>
 }
 
 export function buildGridFrame(input: GridFrameInput): GridFrame {
   let a = input.extraAlerts ?? 0
   if (input.newThermalContact) a |= Alert.THERMAL_NEW
+  if (input.assessment?.lifeSafety.status === 'fail') a |= Alert.LIFE_SAFETY_VIOLATION
+  if (input.assessment && (input.assessment.band === 'D' || input.assessment.band === 'F')) a |= Alert.OFF_RUBRIC
   const d: DroneTuple[] = input.drones.map((drone) => {
     a |= droneAlerts(drone)
     return [
@@ -119,7 +130,21 @@ export function buildGridFrame(input: GridFrameInput): GridFrame {
       stateToCode(drone.missionState),
     ]
   })
-  return { t: Math.round(input.elapsedSec), st: input.status, d, a, th: input.thermalContactCount, ev: input.eventCount }
+  return {
+    t: Math.round(input.elapsedSec),
+    st: input.status,
+    d,
+    a,
+    th: input.thermalContactCount,
+    ev: input.eventCount,
+    ...(input.assessment
+      ? {
+          p: Math.max(0, Math.min(100, Math.round(input.assessment.progressPercent))),
+          b: input.assessment.band,
+          sc: Math.max(0, Math.min(100, Math.round(input.assessment.total))),
+        }
+      : {}),
+  }
 }
 
 // Decoded single drone for the tile renderer.
@@ -162,5 +187,8 @@ export function parseGridFrame(value: unknown): GridFrame {
       throw new Error('gridFrame: bad drone tuple')
     }
   }
+  if (f.p !== undefined && (!Number.isFinite(f.p) || f.p < 0 || f.p > 100)) throw new Error('gridFrame: bad progress')
+  if (f.sc !== undefined && (!Number.isFinite(f.sc) || f.sc < 0 || f.sc > 100)) throw new Error('gridFrame: bad score')
+  if (f.b !== undefined && !(['A', 'B', 'C', 'D', 'F'] as const).includes(f.b)) throw new Error('gridFrame: bad band')
   return f
 }

@@ -5,6 +5,7 @@ import {
   frameActiveDroneCount, frameLowestBattery,
 } from '@/classroom/gridFrame'
 import type { DroneState, MissionState } from '@/types'
+import type { MissionAssessment } from '@/classroom/missionAssessment'
 
 function drone(over: Partial<DroneState> = {}): DroneState {
   return {
@@ -13,6 +14,21 @@ function drone(over: Partial<DroneState> = {}): DroneState {
     altitudeFt: 200, headingDeg: 90, speedMs: 12, batteryPct: 88, signalDbm: -55,
     missionState: 'navigate', currentWaypointIndex: 0,
     conflictFlag: false, geofenceBreachFlag: false, bvlosFlag: false, sortieCount: 0,
+    ...over,
+  }
+}
+
+function assessment(over: Partial<MissionAssessment> = {}): MissionAssessment {
+  return {
+    progressPercent: 64,
+    objectives: [],
+    lifeSafety: { status: 'pass', severity: 'none', cap: 100, findings: [] },
+    tier1: 42,
+    tier2: 30,
+    uncappedTotal: 72,
+    total: 72,
+    band: 'C',
+    interventions: [],
     ...over,
   }
 }
@@ -38,6 +54,20 @@ describe('grid frame packing', () => {
     expect(d.id).toBe('x')
     expect(d.lat).toBeCloseTo(37.7749, 4)
     expect(d.lng).toBeCloseTo(-122.4194, 4)
+  })
+
+  it('packs compact assessment fields into the classroom-only frame', () => {
+    const frame = buildGridFrame({
+      elapsedSec: 10,
+      status: 1,
+      drones: [drone()],
+      thermalContactCount: 0,
+      eventCount: 0,
+      assessment: assessment({ progressPercent: 63.6, total: 71.6, band: 'C' }),
+    })
+
+    expect(frame).toMatchObject({ p: 64, b: 'C', sc: 72 })
+    expect(parseGridFrame(JSON.parse(JSON.stringify(frame)))).toEqual(frame)
   })
 
   it('state codes are a stable bijection over every MissionState', () => {
@@ -84,6 +114,36 @@ describe('alert bitfield', () => {
 
     expect(alertSeverity(Alert.GEOFENCE_BREACH | Alert.BATTERY_LOW)).toBe('crit')
     expect(alertSeverity(0)).toBe('none')
+  })
+
+  it('promotes life-safety failures to critical and off-rubric bands to warning', () => {
+    const failed = buildGridFrame({
+      elapsedSec: 1,
+      status: 1,
+      drones: [drone()],
+      thermalContactCount: 0,
+      eventCount: 0,
+      assessment: assessment({
+        total: 39,
+        band: 'F',
+        lifeSafety: { status: 'fail', severity: 'critical', cap: 39, findings: [] },
+      }),
+    })
+    expect(failed.a & Alert.LIFE_SAFETY_VIOLATION).toBeTruthy()
+    expect(failed.a & Alert.OFF_RUBRIC).toBeTruthy()
+    expect(alertSeverity(failed.a)).toBe('crit')
+
+    const offRubric = buildGridFrame({
+      elapsedSec: 1,
+      status: 1,
+      drones: [drone()],
+      thermalContactCount: 0,
+      eventCount: 0,
+      assessment: assessment({ total: 65, band: 'D' }),
+    })
+    expect(offRubric.a & Alert.LIFE_SAFETY_VIOLATION).toBeFalsy()
+    expect(offRubric.a & Alert.OFF_RUBRIC).toBeTruthy()
+    expect(alertSeverity(offRubric.a)).toBe('warn')
   })
 })
 
