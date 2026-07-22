@@ -6,6 +6,11 @@ import { getMissionSafetyOverride } from '@/sim/mission/MissionManager'
 import { batteryReservePctForDrone } from '@/sim/mission/rechargeStations'
 import { isRetaskable } from '@/sim/mission/retaskPolicy'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
+import {
+  applyRouteApplication,
+  type RouteApplicationMode,
+  type RouteApplicationWarning,
+} from '@/sim/mission/routeApplication'
 import { buildMissionSituation, planFleetRetask } from '@/sim/mission/tacticalAdvisor'
 import { assessSiteReposition, type SiteRepositionResult } from '@/sim/mission/siteReposition'
 import { clearAllSavedWaypointPlans, clearSavedDroneWaypointRoute, saveDroneWaypointRoute, saveFleetWaypointRoutes } from '@/sim/mission/waypointPersistence'
@@ -212,6 +217,7 @@ interface DroneStore {
   // Operator retasking
   routeSuggestions: RouteSuggestion[]
   routeCommandError: string | null
+  routeCommandWarning: RouteApplicationWarning | null
   routeSaveStatuses: Record<string, WaypointSaveStatus>
   lastRouteChange: RouteChangeSnapshot | null
   latestFleetRetaskPlan: FleetRetaskPlan | null
@@ -301,7 +307,7 @@ interface DroneStore {
   advanceInvestorDemoChapter: () => void
   resetInvestorDemo: () => void
   updateMetrics: (patch: Partial<MissionMetrics>) => void
-  setDroneRoute: (droneId: string, waypoints: Waypoint[], command?: OperatorRouteCommand) => boolean
+  setDroneRoute: (droneId: string, waypoints: Waypoint[], command?: OperatorRouteCommand, mode?: RouteApplicationMode) => boolean
   moveDroneWaypoint: (droneId: string, waypointId: string, position: LatLng) => boolean
   commandDroneRoute: (droneId: string, command: OperatorRouteCommand, center?: LatLng) => boolean
   hoverDrone: (droneId: string) => void
@@ -310,7 +316,7 @@ interface DroneStore {
   remoteLandDrone: (droneId: string) => void
   abortRecovery: (droneId: string) => void
   generateRouteSuggestionsForDrone: (droneId: string) => void
-  acceptRouteSuggestion: (suggestionId: string) => boolean
+  acceptRouteSuggestion: (suggestionId: string, mode?: RouteApplicationMode) => boolean
   rejectRouteSuggestion: (suggestionId: string) => void
   undoLastRouteChange: () => boolean
   undoFleetRetask: (nowMs?: number) => boolean
@@ -421,34 +427,48 @@ export const useDroneStore = create<DroneStore>()(
         waypoints: Waypoint[],
         command: OperatorRouteCommand = 'set_route',
         saveSource: WaypointSaveSource = 'operator_edit',
+        mode: RouteApplicationMode = 'replace',
       ) => {
         const st = get()
         if (!st.scenario) return false
         const drone = st.drones.find((item) => item.id === droneId)
-        const validation = validateOperatorRoute(st.scenario, droneId, waypoints, drone?.position)
+        const application = applyRouteApplication({
+          mode,
+          incomingRoute: waypoints,
+          currentRoute: st.droneWaypoints[droneId] ?? [],
+          currentWaypointIndex: drone?.currentWaypointIndex,
+        })
+        const validation = validateOperatorRoute(st.scenario, droneId, application.route, drone?.position)
         if (!validation.accepted) {
           set({
             routeCommandError: `${droneId.toUpperCase()} route rejected: ${validation.findings[0]?.geofenceLabel ?? 'route safety violation'}`,
+            routeCommandWarning: null,
           })
           return false
         }
         set((s) => ({
           droneWaypoints: { ...s.droneWaypoints, [droneId]: validation.route },
           routeCommandError: null,
+          routeCommandWarning: application.warning,
           lastRouteChange: snapshotRoutes(s, [droneId]),
           latestFleetRetaskPlan: null,
           latestFleetRetaskResult: null,
           fleetRetaskCache: null,
           fleetRetaskUndo: null,
-          drones: s.drones.map((d) => (
-            d.id === droneId && isRetaskable(d)
-              ? { ...d, currentWaypointIndex: 0, missionState: 'navigate' }
-              : d
-          )),
+          drones: s.drones.map((d) => {
+            if (d.id !== droneId) return d
+            if (isRetaskable(d)) return { ...d, currentWaypointIndex: 0, missionState: 'navigate' }
+            return mode === 'divert_resume' ? { ...d, currentWaypointIndex: 0 } : d
+          }),
         }))
         persistDroneRouteDraft(droneId, validation.route, saveSource)
         recordOperatorCommand(droneId, command, {
+          mode: application.mode,
           waypointCount: validation.route.length,
+          incomingWaypointCount: application.incomingWaypointCount,
+          resumedWaypointCount: application.resumedWaypointCount,
+          droppedWaypointCount: application.droppedWaypointCount,
+          capped: application.capped,
           route: validation.route.map((wp) => ({ id: wp.id, label: wp.label, position: wp.position, altitudeFt: wp.altitudeFt })),
         })
         return true
@@ -470,6 +490,7 @@ export const useDroneStore = create<DroneStore>()(
         scenario: null,
         routeSuggestions: [],
         routeCommandError: null,
+        routeCommandWarning: null,
         routeSaveStatuses: {},
         lastRouteChange: null,
         latestFleetRetaskPlan: null,
@@ -912,6 +933,7 @@ export const useDroneStore = create<DroneStore>()(
             recoveryTeams: [],
             routeSuggestions: [],
             routeCommandError: null,
+            routeCommandWarning: null,
             routeSaveStatuses: {},
             lastRouteChange: null,
             latestFleetRetaskPlan: null,
@@ -959,8 +981,8 @@ export const useDroneStore = create<DroneStore>()(
         updateMetrics: (patch) =>
           set((s) => ({ metrics: { ...s.metrics, ...patch } })),
 
-        setDroneRoute: (droneId, waypoints, command = 'set_route') =>
-          setDroneRouteValidated(droneId, waypoints, command, 'operator_edit'),
+        setDroneRoute: (droneId, waypoints, command = 'set_route', mode = 'replace') =>
+          setDroneRouteValidated(droneId, waypoints, command, 'operator_edit', mode),
 
         moveDroneWaypoint: (droneId, waypointId, position) => {
           const route = get().droneWaypoints[droneId] ?? []
@@ -1063,10 +1085,10 @@ export const useDroneStore = create<DroneStore>()(
           })
         },
 
-        acceptRouteSuggestion: (suggestionId) => {
+        acceptRouteSuggestion: (suggestionId, mode = 'replace') => {
           const suggestion = get().routeSuggestions.find((item) => item.id === suggestionId)
           if (!suggestion) return false
-          const ok = setDroneRouteValidated(suggestion.droneId, suggestion.route, 'set_route', 'route_suggestion')
+          const ok = setDroneRouteValidated(suggestion.droneId, suggestion.route, 'set_route', 'route_suggestion', mode)
           if (ok) {
             set((s) => ({ routeSuggestions: s.routeSuggestions.filter((item) => item.id !== suggestionId) }))
           }
@@ -1302,6 +1324,7 @@ export const useDroneStore = create<DroneStore>()(
               : current.drones,
             lastRouteChange: snapshot,
             routeCommandError: null,
+            routeCommandWarning: null,
             routeSaveStatuses: { ...current.routeSaveStatuses, ...persisted.statuses },
             latestFleetRetaskPlan: plan,
             latestFleetRetaskResult: result,
@@ -1394,6 +1417,7 @@ export const useDroneStore = create<DroneStore>()(
               latestFleetRetaskResult: null,
               fleetRetaskCache: null,
               routeCommandError: null,
+              routeCommandWarning: null,
               routeSaveStatuses: { ...current.routeSaveStatuses, ...persisted.statuses },
             }
           })
@@ -1435,6 +1459,7 @@ export const useDroneStore = create<DroneStore>()(
               droneWaypoints,
               lastRouteChange: null,
               routeCommandError: null,
+              routeCommandWarning: null,
               routeSaveStatuses: { ...s.routeSaveStatuses, ...persisted.statuses },
               // Preserve live position and mission state, including any safety
               // transition raised after the route change.
@@ -1459,6 +1484,8 @@ export const useDroneStore = create<DroneStore>()(
           fleetRetaskCache: null,
           fleetRetaskHistory: [],
           fleetRetaskUndo: null,
+          routeCommandError: null,
+          routeCommandWarning: null,
         }),
 
         incrementTick: () =>
@@ -1526,7 +1553,7 @@ export const useDroneStore = create<DroneStore>()(
             commandActorId: null,
             telemetryHistory: {}, droneWaypoints: {}, thermalContacts: [],
             selectedThermalId: null, groundUnits: [], recoveryTeams: [],
-            routeSuggestions: [], routeCommandError: null, routeSaveStatuses: {}, lastRouteChange: null,
+            routeSuggestions: [], routeCommandError: null, routeCommandWarning: null, routeSaveStatuses: {}, lastRouteChange: null,
             latestFleetRetaskPlan: null, latestFleetRetaskResult: null,
             fleetRetaskCache: null, fleetRetaskHistory: [],
             fleetRetaskUndo: null,
