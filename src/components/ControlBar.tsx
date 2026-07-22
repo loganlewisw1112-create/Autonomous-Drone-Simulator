@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from 'react'
 import { FleetRetaskReview } from '@/components/FleetRetaskReview'
+import { MissionProgress } from '@/components/MissionProgress'
 import { useMissionControls } from '@/hooks/useMissionControls'
 import { useScenarioOptions } from '@/scenarios/registry'
 import type { OperatorRole, SimSpeed, ScenarioVariantConfig } from '@/types'
@@ -242,6 +243,7 @@ export function ControlBar() {
         <div style={{ flex: 1 }} />
 
         {/* Status */}
+        <MissionProgress />
         {scenario && !ui.isRunning && !launchReady && (
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-yellow)' }}>
             ⚠ BAY PLAN REQUIRED

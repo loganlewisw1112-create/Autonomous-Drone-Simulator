@@ -60,6 +60,11 @@ describe('<ControlBar />', () => {
     expect(screen.getByText('⚠ BAY PLAN REQUIRED')).toBeInTheDocument()
   })
 
+  it('surfaces objective-based mission progress', () => {
+    render(<ControlBar />)
+    expect(screen.getByTestId('mission-progress')).toHaveTextContent('TASK 0%')
+  })
+
   it('exposes fleet retask to the PIC and blocks observers', () => {
     render(<ControlBar />)
     expect(screen.getByRole('button', { name: '⟳ RETASK FLEET' })).toBeDisabled()

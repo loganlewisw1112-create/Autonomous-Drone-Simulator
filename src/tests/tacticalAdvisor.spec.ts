@@ -300,6 +300,19 @@ describe('tactical advisor core', () => {
       .toBeGreaterThan(situation.objectives.find((objective) => objective.id === 'contact:old')!.value)
   })
 
+  it('feeds authored mission-objective weight into tactical value', () => {
+    const baseline = buildMissionSituation(situationInput())
+    const weightedScenario = makeScenario()
+    weightedScenario.missionObjectives = [
+      { id: 'life', kind: 'contact_resolution', label: 'Resolve contacts', weight: 9 },
+      { id: 'recover', kind: 'fleet_recovery', label: 'Recover fleet', weight: 1 },
+    ]
+    const weighted = buildMissionSituation(situationInput({ scenario: weightedScenario }))
+
+    expect(weighted.objectives.find((objective) => objective.id === 'contact:contact-a')!.value)
+      .toBeGreaterThan(baseline.objectives.find((objective) => objective.id === 'contact:contact-a')!.value)
+  })
+
   it('applies a documented redundancy penalty under a single dominant objective', () => {
     const scenario = makeScenario()
     scenario.operationalFeatures = []
