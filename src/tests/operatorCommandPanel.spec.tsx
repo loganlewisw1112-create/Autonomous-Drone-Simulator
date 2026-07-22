@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
 import { useDroneStore } from '@/store/droneStore'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
-import type { DroneState } from '@/types'
+import type { DroneState, RouteSuggestion, Waypoint } from '@/types'
 
 const scenario = ALL_SCENARIOS[0]
+const originalAcceptRouteSuggestion = useDroneStore.getState().acceptRouteSuggestion
 
 function makeDrone(id: string, patch: Partial<DroneState> = {}): DroneState {
   return {
@@ -38,7 +39,9 @@ describe('<OperatorCommandPanel />', () => {
       droneWaypoints: {},
       routeSuggestions: [],
       routeCommandError: null,
+      routeCommandWarning: null,
       routeSaveStatuses: {},
+      acceptRouteSuggestion: originalAcceptRouteSuggestion,
       ui: { ...useDroneStore.getState().ui, selectedDroneId: null },
     })
   })
@@ -80,6 +83,19 @@ describe('<OperatorCommandPanel />', () => {
     expect(screen.getByText('UAV-01 route rejected: Test Zone')).toBeInTheDocument()
   })
 
+  it('surfaces route truncation warnings from divert-and-resume', () => {
+    useDroneStore.setState({
+      routeCommandWarning: {
+        code: 'route_capped',
+        limit: 50,
+        droppedWaypointCount: 3,
+        message: 'Route capped at 50 waypoints; 3 omitted.',
+      },
+    })
+    render(<OperatorCommandPanel />)
+    expect(screen.getByText('Route capped at 50 waypoints; 3 omitted.')).toBeInTheDocument()
+  })
+
   it('shows a route diff on pending suggestions — never a silent swap (M2)', () => {
     // Generate real suggestions through the store action so the card renders
     // exactly what production produces.
@@ -93,4 +109,51 @@ describe('<OperatorCommandPanel />', () => {
     expect(diff.textContent).toContain('no saved route')
     expect(diff.textContent).toMatch(/\+ \d+ wp · \d+(\.\d+)? km/)
   })
+
+  it('offers explicit replace and divert-resume decisions with their consequences', async () => {
+    const user = userEvent.setup()
+    const acceptRouteSuggestion = vi.fn(() => true)
+    const activeRoute = [waypoint('active-1', 0), waypoint('active-2', 1)]
+    useDroneStore.setState({
+      droneWaypoints: { 'uav-01': activeRoute },
+      routeSuggestions: [suggestion('suggestion-1')],
+      acceptRouteSuggestion,
+    })
+
+    const view = render(<OperatorCommandPanel />)
+
+    const modeHelp = view.container.querySelector('.operator-suggestion-mode-help')
+    expect(modeHelp).toHaveTextContent('REPLACE discards the unfinished active route.')
+    expect(modeHelp).toHaveTextContent('DIVERT + RESUME flies the diversion, then rejoins the next unfinished waypoint.')
+
+    await user.click(screen.getByRole('button', { name: 'REPLACE' }))
+    await user.click(screen.getByRole('button', { name: 'DIVERT + RESUME' }))
+
+    expect(acceptRouteSuggestion).toHaveBeenNthCalledWith(1, 'suggestion-1', 'replace')
+    expect(acceptRouteSuggestion).toHaveBeenNthCalledWith(2, 'suggestion-1', 'divert_resume')
+  })
 })
+
+function waypoint(id: string, offset: number): Waypoint {
+  return {
+    id,
+    label: id,
+    position: { lat: scenario.startPosition.lat + offset * 0.0001, lng: scenario.startPosition.lng },
+    altitudeFt: 120,
+  }
+}
+
+function suggestion(id: string): RouteSuggestion {
+  return {
+    id,
+    droneId: 'uav-01',
+    source: 'ROUTE ADVISOR',
+    priority: 'routine',
+    title: 'Inspect contact',
+    rationale: 'A new contact needs a closer look.',
+    riskLevel: 'routine',
+    route: [waypoint('divert-1', 2), waypoint('divert-2', 3)],
+    requiresApproval: true,
+    createdAtSec: 10,
+  }
+}
