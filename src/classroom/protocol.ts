@@ -20,7 +20,9 @@ export const PROTOCOL_VERSION = 1 as const
 export const MAX_STUDENTS = limits.MAX_STUDENTS
 export const MAX_CLASSES = limits.MAX_CLASSES
 export const MAX_MESSAGE_BYTES = limits.MAX_MESSAGE_BYTES
+export const MAX_COMMANDS_PER_SEC = limits.MAX_COMMANDS_PER_SEC
 export const HEARTBEAT_TIMEOUT_MS = limits.HEARTBEAT_TIMEOUT_MS
+export const INSTRUCTOR_RECONNECT_GRACE_MS = limits.INSTRUCTOR_RECONNECT_GRACE_MS
 export const GRID_BUFFER_LIMIT_BYTES = 64 * 1024 // publisher backpressure threshold, client-only
 
 export type ClassId = string // 6 chars from CLASS_ID_ALPHABET
@@ -89,9 +91,9 @@ export function acceptsSeq(lastSeq: number | undefined, seq: number): boolean {
 }
 
 export type MsgType =
-  | 'class.create' | 'class.focus' | 'class.close'
-  | 'student.join' | 'student.grid' | 'student.focus' | 'student.run' | 'student.leave'
-  | 'join.ok' | 'join.err' | 'focus.on' | 'focus.off' | 'class.closed'
+  | 'class.create' | 'class.focus' | 'class.command' | 'class.close'
+  | 'student.join' | 'student.grid' | 'student.focus' | 'student.run' | 'student.ack' | 'student.leave'
+  | 'join.ok' | 'join.err' | 'focus.on' | 'focus.off' | 'command' | 'class.closed'
   | 'roster.update' | 'student.gone' | 'class.ok' | 'class.err'
 
 // ── Instructor → server ──────────────────────────────────────────────────────
@@ -100,6 +102,7 @@ export type MsgType =
 // stops a LAN client who overheard the code from re-pointing the room at its own key.
 export interface ClassCreateMsg { v: 1; type: 'class.create'; classId: ClassId; classPubKey: string; config: ClassConfig; instructorToken?: string }
 export interface ClassFocusMsg { v: 1; type: 'class.focus'; classId: ClassId; studentId: StudentId | null }
+export interface ClassCommandMsg { v: 1; type: 'class.command'; classId: ClassId; studentId: StudentId | null; instructorToken: string; sealed: Sealed }
 export interface ClassCloseMsg { v: 1; type: 'class.close'; classId: ClassId }
 
 // ── Student → server (server re-emits grid/focus/run to the instructor with `from`) ──
@@ -107,6 +110,7 @@ export interface StudentJoinMsg { v: 1; type: 'student.join'; classId: ClassId; 
 export interface StudentGridMsg { v: 1; type: 'student.grid'; classId: ClassId; from?: StudentId; sealed: Sealed }
 export interface StudentFocusMsg { v: 1; type: 'student.focus'; classId: ClassId; from?: StudentId; sealed: Sealed }
 export interface StudentRunMsg { v: 1; type: 'student.run'; classId: ClassId; from?: StudentId; sealed: Sealed }
+export interface StudentAckMsg { v: 1; type: 'student.ack'; classId: ClassId; from?: StudentId; sealed: Sealed }
 export interface StudentLeaveMsg { v: 1; type: 'student.leave'; classId: ClassId }
 
 // ── Server → student ─────────────────────────────────────────────────────────
@@ -114,6 +118,7 @@ export interface JoinOkMsg { v: 1; type: 'join.ok'; classId: ClassId; studentId:
 export interface JoinErrMsg { v: 1; type: 'join.err'; classId: ClassId; reason: string }
 export interface FocusOnMsg { v: 1; type: 'focus.on'; classId: ClassId }
 export interface FocusOffMsg { v: 1; type: 'focus.off'; classId: ClassId }
+export interface CommandMsg { v: 1; type: 'command'; classId: ClassId; sealed: Sealed }
 export interface ClassClosedMsg { v: 1; type: 'class.closed'; classId: ClassId }
 
 // ── Server → instructor ──────────────────────────────────────────────────────
@@ -126,15 +131,15 @@ export interface RosterUpdateMsg { v: 1; type: 'roster.update'; classId: ClassId
 export interface StudentGoneMsg { v: 1; type: 'student.gone'; classId: ClassId; from: StudentId }
 
 export type Envelope =
-  | ClassCreateMsg | ClassFocusMsg | ClassCloseMsg
-  | StudentJoinMsg | StudentGridMsg | StudentFocusMsg | StudentRunMsg | StudentLeaveMsg
-  | JoinOkMsg | JoinErrMsg | FocusOnMsg | FocusOffMsg | ClassClosedMsg
+  | ClassCreateMsg | ClassFocusMsg | ClassCommandMsg | ClassCloseMsg
+  | StudentJoinMsg | StudentGridMsg | StudentFocusMsg | StudentRunMsg | StudentAckMsg | StudentLeaveMsg
+  | JoinOkMsg | JoinErrMsg | FocusOnMsg | FocusOffMsg | CommandMsg | ClassClosedMsg
   | ClassOkMsg | ClassErrMsg | RosterUpdateMsg | StudentGoneMsg
 
 const MSG_TYPES: ReadonlySet<string> = new Set<MsgType>([
-  'class.create', 'class.focus', 'class.close',
-  'student.join', 'student.grid', 'student.focus', 'student.run', 'student.leave',
-  'join.ok', 'join.err', 'focus.on', 'focus.off', 'class.closed',
+  'class.create', 'class.focus', 'class.command', 'class.close',
+  'student.join', 'student.grid', 'student.focus', 'student.run', 'student.ack', 'student.leave',
+  'join.ok', 'join.err', 'focus.on', 'focus.off', 'command', 'class.closed',
   'roster.update', 'student.gone', 'class.ok', 'class.err',
 ])
 

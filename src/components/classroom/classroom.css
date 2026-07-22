@@ -142,6 +142,20 @@
   font-size: 14px;
   box-sizing: border-box;
 }
+.cls-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--border, #26303f);
+  border-radius: 6px;
+  color: var(--text-primary, #e6ecf3);
+  background: rgba(255, 176, 32, 0.07);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.cls-consent input { margin-top: 2px; accent-color: var(--accent, #39d98a); }
 .cls-btn {
   padding: 10px 16px;
   border-radius: 6px;
@@ -173,6 +187,22 @@
   font-size: 11px;
   font-family: var(--font-mono, monospace);
   pointer-events: none;
+}
+
+.cls-banner.cls-takeover-banner {
+  top: 10px;
+  width: min(760px, calc(100vw - 24px));
+  box-sizing: border-box;
+  padding: 10px 18px;
+  border: 2px solid #ffb020;
+  border-radius: 6px;
+  background: #321d00;
+  color: #fff2cc;
+  box-shadow: 0 0 0 3px rgba(255, 176, 32, 0.2), 0 8px 30px rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
 }
 
 /* Classroom-only scorecard. It is mounted beside App by ClassroomEntry, so the
