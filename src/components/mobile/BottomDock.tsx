@@ -197,7 +197,7 @@ export function MissionSheet() {
 
       <span className="mobile-sheet-label">SIM SPEED</span>
       <div className="mobile-sheet-row">
-        {([1, 5, 10] as SimSpeed[]).map((s) => (
+        {([1, 5, 10, 20] as SimSpeed[]).map((s) => (
           <button
             key={s}
             className={`mobile-btn grow${ui.simSpeed === s ? ' active' : ''}`}

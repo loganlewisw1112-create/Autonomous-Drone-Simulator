@@ -51,7 +51,7 @@ describe('custom mission designer validation', () => {
     definition.recoveryAssignments[customDroneId(1)] = 'missing'
 
     const errors = validateCustomMission(definition).errors.join(' ')
-    expect(errors).toContain('maximum is 24')
+    expect(errors).toContain(`maximum is ${MAX_WAYPOINTS_PER_DRONE}`)
     expect(errors).toContain('20-400 ft')
     expect(errors).toContain('capacity 1')
     expect(errors).toContain('Recovery site is required')

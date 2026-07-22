@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<!-- viewport-fit=cover is REQUIRED for env(safe-area-inset-*) to resolve non-zero.
+     Mirrors index.html so the numbers below reflect what the real app sees. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Drone Ops — iOS device check</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #131a22; --border: #24303d;
+    --text: #dbe6f0; --dim: #7d8fa0;
+    --ok: #35d07f; --warn: #ffb454; --bad: #ff5c5c; --accent: #00d4ff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--mono); }
+  body {
+    padding: max(env(safe-area-inset-top), 12px) max(env(safe-area-inset-right), 12px)
+             max(env(safe-area-inset-bottom), 12px) max(env(safe-area-inset-left), 12px);
+    font-size: 13px; line-height: 1.5;
+  }
+  h1 { font-size: 15px; letter-spacing: .08em; margin: 0 0 4px; color: var(--accent); }
+  .sub { color: var(--dim); font-size: 11px; margin-bottom: 14px; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+  h2 { font-size: 11px; letter-spacing: .12em; color: var(--dim); margin: 0 0 8px; font-weight: 700; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+  .row:last-child { border-bottom: 0; }
+  .k { color: var(--dim); }
+  .v { text-align: right; font-weight: 700; word-break: break-all; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  .verdict { font-size: 12px; padding: 8px 10px; border-radius: 8px; margin-top: 8px; background: rgba(255,255,255,.03); }
+  button {
+    width: 100%; min-height: 48px; margin-top: 6px; border-radius: 10px; cursor: pointer;
+    background: var(--accent); color: #04121a; border: 0; font: 700 13px var(--mono); letter-spacing: .06em;
+  }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  #out { white-space: pre-wrap; font-size: 10px; color: var(--dim); margin-top: 8px; -webkit-user-select: all; user-select: all; }
+  .live { position: sticky; top: 0; }
+</style>
+</head>
+<body>
+<h1>⬡ DRONE OPS — iOS DEVICE CHECK</h1>
+<div class="sub">Scroll the page, then rotate the phone. Values update live. Tap COPY at the bottom and paste the result back into chat.</div>
+
+<section class="live">
+  <h2>VIEWPORT / URL-BAR COLLAPSE</h2>
+  <div id="viewport"></div>
+  <div class="verdict" id="dvhVerdict"></div>
+</section>
+
+<section>
+  <h2>SAFE-AREA INSETS (env)</h2>
+  <div id="safe"></div>
+  <div class="verdict" id="safeVerdict"></div>
+</section>
+
+<section>
+  <h2>SHELL TIER THIS DEVICE WOULD GET</h2>
+  <div id="tier"></div>
+</section>
+
+<section>
+  <h2>RENDERING / CAPABILITY</h2>
+  <div id="caps"></div>
+</section>
+
+<section>
+  <h2>DEVICE</h2>
+  <div id="device"></div>
+</section>
+
+<button id="copy">📋 COPY RESULTS</button>
+<button class="ghost" id="open">▶ OPEN THE REAL APP</button>
+<div id="out"></div>
+
+<script>
+// Mirrors useDeviceMode.ts: phone shells below a 700px short side, tablet tier at/above.
+var SHORT_SIDE_BREAKPOINT = 700;
+
+function px(el, prop) {
+  var probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;visibility:hidden;' + prop;
+  document.body.appendChild(probe);
+  var v = probe.getBoundingClientRect().height;
+  probe.remove();
+  return v;
+}
+
+function rows(target, pairs) {
+  document.getElementById(target).innerHTML = pairs.map(function (p) {
+    return '<div class="row"><span class="k">' + p[0] + '</span><span class="v ' + (p[2] || '') + '">' + p[1] + '</span></div>';
+  }).join('');
+}
+
+var snapshot = {};
+
+function measure() {
+  var vv = window.visualViewport;
+  var dvh = px(0, 'height:100dvh');
+  var svh = px(0, 'height:100svh');
+  var lvh = px(0, 'height:100lvh');
+  var vh  = px(0, 'height:100vh');
+  var iw = window.innerWidth, ih = window.innerHeight;
+  var shortSide = Math.min(iw, ih);
+  var isTablet = shortSide >= SHORT_SIDE_BREAKPOINT;
+  var orientation = iw >= ih ? 'landscape' : 'portrait';
+
+  // env() insets, read through a probe so we get the resolved pixel values.
+  function inset(side) {
+    var probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;visibility:hidden;height:env(safe-area-inset-' + side + ',0px)';
+    document.body.appendChild(probe);
+    var v = probe.getBoundingClientRect().height;
+    probe.remove();
+    return Math.round(v);
+  }
+  var insets = { top: inset('top'), right: inset('right'), bottom: inset('bottom'), left: inset('left') };
+  var anyInset = insets.top + insets.right + insets.bottom + insets.left > 0;
+
+  // WebGL — maplibre needs this; if it fails the map will not render at all.
+  var gl = null, renderer = 'unavailable';
+  try {
+    var c = document.createElement('canvas');
+    gl = c.getContext('webgl2') || c.getContext('webgl');
+    if (gl) {
+      var dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      renderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : 'available (masked)';
+    }
+  } catch (e) { renderer = 'error: ' + e.message; }
+
+  rows('viewport', [
+    ['innerWidth × innerHeight', iw + ' × ' + ih],
+    ['visualViewport', vv ? Math.round(vv.width) + ' × ' + Math.round(vv.height) : 'n/a'],
+    ['100dvh (dynamic)', Math.round(dvh) + 'px'],
+    ['100svh (small)', Math.round(svh) + 'px'],
+    ['100lvh (large)', Math.round(lvh) + 'px'],
+    ['100vh (legacy)', Math.round(vh) + 'px', Math.round(vh) > Math.round(dvh) ? 'warn' : ''],
+    ['orientation', orientation],
+  ]);
+
+  var dvhOk = Math.abs(dvh - ih) <= 2;
+  document.getElementById('dvhVerdict').innerHTML = dvhOk
+    ? '<span class="ok">✓ 100dvh tracks the visible viewport.</span> The full-bleed map will not hide behind the URL bar.'
+    : '<span class="bad">✗ 100dvh (' + Math.round(dvh) + ') ≠ innerHeight (' + ih + ').</span> Scroll down to collapse the URL bar and re-check — if it stays off, the map is being clipped.';
+
+  rows('safe', [
+    ['top', insets.top + 'px', insets.top > 0 ? 'ok' : ''],
+    ['right', insets.right + 'px'],
+    ['bottom', insets.bottom + 'px', insets.bottom > 0 ? 'ok' : ''],
+    ['left', insets.left + 'px'],
+  ]);
+  document.getElementById('safeVerdict').innerHTML = anyInset
+    ? '<span class="ok">✓ Non-zero insets resolving.</span> The floating topbar/dock padding and map badge insets are active on this device.'
+    : '<span class="warn">⚠ All insets are 0.</span> Expected on a non-notched device (SE, older iPad). On a notched iPhone this would mean viewport-fit=cover is not applying.';
+
+  rows('tier', [
+    ['short side', shortSide + 'px'],
+    ['tablet breakpoint', SHORT_SIDE_BREAKPOINT + 'px'],
+    ['shell tier', isTablet ? 'TABLET (mobile-shell--tablet)' : 'PHONE', 'ok'],
+    ['expected surface grid', isTablet ? '3 columns' : '2 columns'],
+  ]);
+
+  rows('caps', [
+    ['devicePixelRatio', window.devicePixelRatio],
+    ['WebGL renderer', renderer, gl ? 'ok' : 'bad'],
+    ['touch points', navigator.maxTouchPoints],
+    ['dvh unit support', CSS.supports('height: 100dvh') ? 'yes' : 'no', CSS.supports('height: 100dvh') ? 'ok' : 'bad'],
+    ['env() support', CSS.supports('padding: env(safe-area-inset-top)') ? 'yes' : 'no', 'ok'],
+  ]);
+
+  rows('device', [
+    ['screen', screen.width + ' × ' + screen.height],
+    ['pixel screen', (screen.width * window.devicePixelRatio) + ' × ' + (screen.height * window.devicePixelRatio)],
+    ['userAgent', navigator.userAgent],
+  ]);
+
+  snapshot = {
+    viewport: { innerWidth: iw, innerHeight: ih, dvh: Math.round(dvh), svh: Math.round(svh), lvh: Math.round(lvh), vh: Math.round(vh) },
+    visualViewport: vv ? { w: Math.round(vv.width), h: Math.round(vv.height), scale: vv.scale } : null,
+    safeAreaInsets: insets,
+    orientation: orientation,
+    shortSide: shortSide,
+    shellTier: isTablet ? 'tablet' : 'phone',
+    dvhTracksViewport: dvhOk,
+    devicePixelRatio: window.devicePixelRatio,
+    webglRenderer: renderer,
+    maxTouchPoints: navigator.maxTouchPoints,
+    screen: { w: screen.width, h: screen.height },
+    userAgent: navigator.userAgent,
+  };
+}
+
+measure();
+window.addEventListener('resize', measure);
+window.addEventListener('orientationchange', function () { setTimeout(measure, 250); });
+window.addEventListener('scroll', measure, { passive: true });
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', measure);
+  window.visualViewport.addEventListener('scroll', measure);
+}
+
+document.getElementById('copy').addEventListener('click', function () {
+  var text = JSON.stringify(snapshot, null, 2);
+  document.getElementById('out').textContent = text;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () {
+      document.getElementById('copy').textContent = '✓ COPIED — paste into chat';
+    }).catch(function () {
+      document.getElementById('copy').textContent = 'Select the text below and copy';
+    });
+  } else {
+    document.getElementById('copy').textContent = 'Select the text below and copy';
+  }
+});
+
+document.getElementById('open').addEventListener('click', function () { location.href = '/'; });
+</script>
+</body>
+</html>
