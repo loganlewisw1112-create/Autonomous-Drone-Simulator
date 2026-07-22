@@ -1,0 +1,1039 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tactical Command, Assessment &amp; Launch Doctrine — Engineering Plan v4</title>
+<style>
+:root{
+  --bg:#0b0e13; --bg-2:#111621; --bg-3:#161d2b; --panel:#131a26;
+  --fg:#dfe6f0; --fg-2:#9fb0c6; --fg-3:#6b7d95;
+  --line:#233047; --line-2:#1a2436;
+  --accent:#3ea8ff; --accent-2:#7c5cff;
+  --ok:#3ddc97; --warn:#ffb020; --crit:#ff5c5c; --info:#57c7ff;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  --maxw:1180px;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f7f9fc; --bg-2:#fff; --bg-3:#eef2f8; --panel:#fff;
+    --fg:#15202e; --fg-2:#425064; --fg-3:#6d7c90;
+    --line:#d8e0ea; --line-2:#e7edf4;
+    --accent:#0b64c8; --accent-2:#5b3fd6;
+    --ok:#0a8a5a; --warn:#a86a00; --crit:#c4302b; --info:#0b6fa4;
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family:var(--sans); font-size:15.5px; line-height:1.65;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 28px 120px;}
+
+/* ---------- masthead ---------- */
+header.mast{
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,var(--bg-2),transparent);
+  padding:52px 0 34px; margin-bottom:14px;
+}
+.kicker{
+  font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--accent); margin:0 0 14px;
+}
+h1{
+  font-size:clamp(28px,4.4vw,44px); line-height:1.12; margin:0 0 16px;
+  letter-spacing:-0.022em; font-weight:680;
+}
+.sub{font-size:17px; color:var(--fg-2); max-width:76ch; margin:0 0 24px;}
+.meta{
+  display:flex; flex-wrap:wrap; gap:10px 26px;
+  font-family:var(--mono); font-size:11.5px; color:var(--fg-3);
+  padding-top:18px; border-top:1px solid var(--line-2);
+}
+.meta b{color:var(--fg-2); font-weight:600;}
+
+/* ---------- layout ---------- */
+.cols{display:grid; grid-template-columns:232px minmax(0,1fr); gap:48px; align-items:start;}
+@media (max-width:1000px){ .cols{grid-template-columns:1fr; gap:0;} nav.toc{position:static!important; max-height:none!important; margin-bottom:36px;} }
+
+nav.toc{
+  position:sticky; top:22px; max-height:calc(100vh - 44px); overflow-y:auto;
+  font-size:13px; padding-right:8px; border-right:1px solid var(--line-2);
+}
+nav.toc .toc-h{font-family:var(--mono); font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--fg-3); margin:0 0 12px;}
+nav.toc ol{list-style:none; margin:0; padding:0;}
+nav.toc li{margin:0 0 3px;}
+nav.toc a{display:block; color:var(--fg-2); text-decoration:none; padding:3px 8px; border-radius:5px; border-left:2px solid transparent;}
+nav.toc a:hover{color:var(--fg); background:var(--bg-3); border-left-color:var(--accent);}
+nav.toc .lvl2{padding-left:16px; font-size:12.5px; color:var(--fg-3);}
+
+/* ---------- headings ---------- */
+h2{
+  font-size:25px; letter-spacing:-0.015em; margin:56px 0 6px; padding-top:22px;
+  border-top:1px solid var(--line); font-weight:660;
+}
+h2:first-of-type{margin-top:8px;}
+h2 .num{font-family:var(--mono); font-size:14px; color:var(--accent); margin-right:12px; font-weight:500;}
+h3{font-size:18px; margin:34px 0 8px; letter-spacing:-0.01em; font-weight:640;}
+h4{font-size:14.5px; margin:24px 0 6px; color:var(--fg); font-weight:640;}
+p{margin:0 0 14px; max-width:82ch;}
+ul,ol{max-width:82ch; padding-left:22px; margin:0 0 14px;}
+li{margin:0 0 6px;}
+a{color:var(--accent);}
+
+/* ---------- inline ---------- */
+code{
+  font-family:var(--mono); font-size:.875em; background:var(--bg-3);
+  border:1px solid var(--line-2); border-radius:4px; padding:1px 5px; color:var(--fg);
+  word-break:break-word;
+}
+pre{
+  background:var(--bg-2); border:1px solid var(--line); border-radius:9px;
+  padding:16px 18px; overflow-x:auto; font-family:var(--mono); font-size:12.5px;
+  line-height:1.6; margin:0 0 18px; color:var(--fg-2);
+}
+pre code{background:none; border:0; padding:0; font-size:inherit; color:inherit;}
+.path{font-family:var(--mono); font-size:.86em; color:var(--accent); white-space:nowrap;}
+
+/* ---------- tables ---------- */
+.tbl{overflow-x:auto; margin:0 0 22px; border:1px solid var(--line); border-radius:10px; background:var(--panel);}
+table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:560px;}
+th{
+  text-align:left; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--fg-3); font-weight:600;
+  padding:11px 14px; border-bottom:1px solid var(--line); background:var(--bg-3); white-space:nowrap;
+}
+td{padding:11px 14px; border-bottom:1px solid var(--line-2); vertical-align:top;}
+tr:last-child td{border-bottom:0;}
+td:first-child{white-space:nowrap;}
+td.wrap-ok:first-child{white-space:normal;}
+
+/* ---------- badges ---------- */
+.b{
+  display:inline-block; font-family:var(--mono); font-size:10px; font-weight:700;
+  letter-spacing:.06em; padding:2px 7px; border-radius:4px; border:1px solid;
+  text-transform:uppercase; white-space:nowrap; vertical-align:middle;
+}
+.b-crit{color:var(--crit); border-color:color-mix(in srgb,var(--crit) 40%,transparent); background:color-mix(in srgb,var(--crit) 12%,transparent);}
+.b-warn{color:var(--warn); border-color:color-mix(in srgb,var(--warn) 40%,transparent); background:color-mix(in srgb,var(--warn) 12%,transparent);}
+.b-ok{color:var(--ok); border-color:color-mix(in srgb,var(--ok) 40%,transparent); background:color-mix(in srgb,var(--ok) 12%,transparent);}
+.b-info{color:var(--info); border-color:color-mix(in srgb,var(--info) 40%,transparent); background:color-mix(in srgb,var(--info) 12%,transparent);}
+.b-new{color:var(--accent-2); border-color:color-mix(in srgb,var(--accent-2) 42%,transparent); background:color-mix(in srgb,var(--accent-2) 12%,transparent);}
+
+/* ---------- callouts ---------- */
+.call{
+  border-left:3px solid var(--accent); background:var(--bg-2);
+  border-radius:0 9px 9px 0; padding:15px 20px; margin:0 0 20px; max-width:82ch;
+}
+.call.crit{border-left-color:var(--crit);}
+.call.warn{border-left-color:var(--warn);}
+.call.ok{border-left-color:var(--ok);}
+.call .t{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--fg-3); margin:0 0 7px; font-weight:600;
+}
+.call p:last-child{margin-bottom:0;}
+
+.hero-note{
+  border:1px solid var(--line); border-radius:11px; background:var(--bg-2);
+  padding:20px 24px; margin:0 0 26px;
+}
+.hero-note .t{font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0 0 9px;}
+
+/* ---------- stat strip ---------- */
+.stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:0 0 28px;}
+.stat{border:1px solid var(--line); border-radius:10px; background:var(--panel); padding:14px 16px;}
+.stat .v{font-size:26px; font-weight:680; letter-spacing:-0.02em; line-height:1.1;}
+.stat .l{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--fg-3); margin-top:5px;}
+
+/* ---------- gap cards ---------- */
+.gap{border:1px solid var(--line); border-left:3px solid var(--line); border-radius:0 10px 10px 0; background:var(--panel); padding:15px 20px; margin:0 0 12px;}
+.gap.sev-crit{border-left-color:var(--crit);}
+.gap.sev-warn{border-left-color:var(--warn);}
+.gap .gh{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:6px;}
+.gap .gid{font-family:var(--mono); font-size:12px; font-weight:700; color:var(--accent);}
+.gap .gt{font-weight:640; font-size:15px;}
+.gap .gl{font-size:13.5px; color:var(--fg-2); margin:0 0 8px;}
+.gap .gf{font-size:13.5px; border-top:1px dashed var(--line-2); padding-top:8px; margin:0;}
+.gap .gf b{color:var(--ok); font-weight:660;}
+
+/* ---------- misc ---------- */
+hr.soft{border:0; border-top:1px solid var(--line-2); margin:30px 0;}
+.lede{font-size:16.5px; color:var(--fg-2); max-width:80ch;}
+.tier{font-family:var(--mono); font-size:12.5px; line-height:1.9; background:var(--bg-2); border:1px solid var(--line); border-radius:9px; padding:16px 20px; margin:0 0 18px; overflow-x:auto;}
+footer{margin-top:70px; padding-top:22px; border-top:1px solid var(--line); font-size:12.5px; color:var(--fg-3); font-family:var(--mono);}
+
+@media print{
+  :root{--bg:#fff;--bg-2:#fff;--bg-3:#f4f6f9;--panel:#fff;--fg:#000;--fg-2:#333;--fg-3:#666;--line:#ccc;--line-2:#e3e3e3;}
+  nav.toc{display:none;} .cols{grid-template-columns:1fr;}
+  body{font-size:10.5pt;} h2{page-break-after:avoid;} .gap,.call,.tbl{page-break-inside:avoid;}
+  header.mast{padding-top:0;}
+}
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <div class="wrap">
+    <p class="kicker">Autonomous Drone Mission Simulator · Engineering Plan v4</p>
+    <h1>Tactical Command, Live Assessment &amp;<br>Launch Doctrine</h1>
+    <p class="sub">
+      One-press fleet retasking, total instructor command authority over live student sessions,
+      a life-safety-first assessment engine, and launch bays that finally make logistical and
+      tactical sense — with operator capabilities landing identically on all three builds and every
+      classroom capability sealed inside the instructor-led edition.
+    </p>
+    <div class="meta">
+      <span><b>Branch</b> feat/coordinator-build-and-realism-groundwork</span>
+      <span><b>Baseline</b> 86 spec files, working tree carries uncommitted WP-3/WP-4 work</span>
+      <span><b>Status</b> Design — no code written</span>
+      <span><b>Scope</b> Mobile · Windows · Instructor-led class</span>
+      <span><b>Rev</b> v4.1 — build-isolation pass</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="cols">
+
+<nav class="toc">
+  <p class="toc-h">Contents</p>
+  <ol>
+    <li><a href="#s0">0 · Executive summary</a></li>
+    <li><a href="#s1">1 · Current-state findings</a></li>
+    <li class="lvl2"><a href="#s13">1.3 Build isolation</a></li>
+    <li><a href="#sA">A · Tactical fleet retask</a></li>
+    <li><a href="#sB">B · Instructor command authority</a></li>
+    <li><a href="#sC">C · Assessment &amp; rubric engine</a></li>
+    <li><a href="#sD">D · Launch bay doctrine</a></li>
+    <li class="lvl2"><a href="#sD1">D.1 What's broken</a></li>
+    <li class="lvl2"><a href="#sD2">D.2 launchDoctrine module</a></li>
+    <li class="lvl2"><a href="#sD3">D.3 Mobile stations</a></li>
+    <li><a href="#sE">E · Gap register</a></li>
+    <li><a href="#sF">F · Architecture map</a></li>
+    <li><a href="#sG">G · Tests &amp; enforcement</a></li>
+    <li><a href="#sH">H · Phasing</a></li>
+    <li><a href="#sI">I · Risks</a></li>
+    <li><a href="#sJ">J · Doctrine sources</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ============ 0 ============ -->
+<h2 id="s0"><span class="num">0</span>Executive summary</h2>
+
+<div class="stats">
+  <div class="stat"><div class="v">4</div><div class="l">Feature tracks</div></div>
+  <div class="stat"><div class="v">29</div><div class="l">Gaps identified</div></div>
+  <div class="stat"><div class="v">12</div><div class="l">Blockers</div></div>
+  <div class="stat"><div class="v">~11.5<span style="font-size:16px">d</span></div><div class="l">To full system</div></div>
+  <div class="stat"><div class="v">0</div><div class="l">Protocol version bumps</div></div>
+</div>
+
+<p class="lede">
+  Four capabilities, one architecture. Every piece of decision logic lives in the pure
+  simulation layer; the shells render and nothing else. That single rule is what makes
+  three-build parity a mechanical guarantee rather than an intention — and the existing
+  <code>parityMatrix.spec.ts</code> is what enforces it.
+</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Track</th><th>What the operator gets</th><th>Core module</th><th>Days</th></tr></thead>
+<tbody>
+<tr><td><b>A · Fleet Retask</b></td><td>One press spawns and commits tactically optimal routes for the whole fleet in real time, with inline undo</td><td><span class="path">sim/mission/tacticalAdvisor.ts</span></td><td>4</td></tr>
+<tr><td><b>B · Command Authority</b></td><td>Instructor takes total control of any student's live session — session, fleet, per-drone, authority, injects</td><td><span class="path">classroom/commandRegistry.ts</span></td><td>3</td></tr>
+<tr><td><b>C · Assessment</b> <span class="b b-new">class only</span></td><td>Live % complete, rubric band, and a life-safety gate that cannot be bought back</td><td><span class="path">classroom/missionAssessment.ts</span></td><td>2</td></tr>
+<tr><td><b>D · Launch Doctrine</b></td><td>Bays assigned on reachability and doctrine, not array index; mobile stations the operator can relocate</td><td><span class="path">sim/mission/launchDoctrine.ts</span></td><td>2.5</td></tr>
+</tbody>
+</table></div>
+
+<div class="call crit">
+  <p class="t">Build isolation — the hard rule this plan obeys</p>
+  <p><b>Nothing classroom-related ships in the Mobile or Windows builds. At all.</b> Not the
+  assessment engine, not the rubric, not the scorecard UI, not the command channel, not a type, not
+  a string. Tracks <b>A</b> and <b>D</b> are operator capabilities and land on all three builds;
+  tracks <b>B</b> and <b>C</b> are instructor capabilities and live entirely behind the
+  classroom's one-way door. See <a href="#s13">§1.3</a> for the invariant and its enforcement.</p>
+</div>
+
+<div class="hero-note">
+  <p class="t">The three findings that shape everything</p>
+  <p><b>1 · The classroom build is not a third UI.</b> <code>ClassroomEntry.StudentLive</code> renders
+  <code>&lt;App /&gt;</code> verbatim. Put a control in the two shells and the student inherits it —
+  with full authority, since the store defaults <code>operatorRole: 'pic'</code>. Three-build parity
+  collapses to two shells plus one instructor signal.</p>
+  <p><b>2 · Roughly 60% of the retask pipeline already exists</b>, scoped to one drone and driven by an
+  <code>if/else</code> ladder. Propose → geofence-audit → diff → accept → hash-chain is built and tested.
+  What is missing is fleet scope, a scoring model, and situational totality.</p>
+  <p style="margin-bottom:0"><b>3 · The classroom crypto layer is already hardened enough to carry commands.</b>
+  Symmetric ECDH session keys, sealed <code>{seq, body}</code> anti-replay, a server-minted
+  <code>instructorToken</code>, and directed instructor→student routing all exist today. The command
+  channel is a mirror of primitives already in the repo — not new cryptography.</p>
+</div>
+
+<!-- ============ 1 ============ -->
+<h2 id="s1"><span class="num">1</span>Current-state findings</h2>
+
+<h3>1.1 What is already built and load-bearing</h3>
+
+<div class="tbl"><table>
+<thead><tr><th>Capability</th><th>Location</th><th>Reused by</th></tr></thead>
+<tbody>
+<tr><td>Per-drone route suggestions</td><td><span class="path">sim/mission/operatorRoutes.ts:103</span></td><td>A</td></tr>
+<tr><td>Geofence-safe path (Dijkstra over buffered perimeters)</td><td><span class="path">sim/mission/routeAudit.ts:243</span></td><td>A · D</td></tr>
+<tr><td>Route feasibility audit</td><td><span class="path">sim/mission/routeAudit.ts:123</span></td><td>A · D</td></tr>
+<tr><td>Validated apply + persist + chain-of-custody</td><td><span class="path">store/droneStore.ts:249</span></td><td>A · B</td></tr>
+<tr><td>Shared mission-control seam for both shells</td><td><span class="path">hooks/useMissionControls.ts</span></td><td>A · B · D</td></tr>
+<tr><td>Magenta dashed proposal layer on the map</td><td><span class="path">components/TacticalMap.tsx:400</span></td><td>A · D</td></tr>
+<tr><td>SAR sweep width → coverage → POD (built, unwired)</td><td><span class="path">sim/sensors/sweepWidth.ts</span></td><td>A · C</td></tr>
+<tr><td>Battery reserve, drain, forward recharge selection</td><td><span class="path">sim/mission/rechargeStations.ts</span></td><td>A · C · D</td></tr>
+<tr><td>Fleet alert bitfield + auto-promoting tile wall</td><td><span class="path">classroom/gridFrame.ts:19</span></td><td>B · C</td></tr>
+<tr><td>Sealed anti-replay counter <code>{seq, body}</code></td><td><span class="path">classroom/protocol.ts:72</span></td><td>B</td></tr>
+<tr><td>Server-minted instructor authority token</td><td><span class="path">classroom/protocol.ts:101</span></td><td>B</td></tr>
+<tr><td>Coordinated launch fan + staggered takeoff</td><td><span class="path">sim/mission/LaunchCoordinator.ts</span></td><td>D</td></tr>
+<tr><td>Two-shell capability parity enforcement</td><td><span class="path">tests/parityMatrix.spec.ts</span></td><td>all</td></tr>
+</tbody>
+</table></div>
+
+<h3>1.2 The governing constraints</h3>
+<ul>
+  <li><b>Determinism is the product's central claim.</b> Same seed must produce identical output on Mobile, Windows and Coordinator. Every new module is pure: no <code>Date.now()</code>, no <code>Math.random()</code>, no wall-clock, no I/O.</li>
+  <li><b>No ML, anywhere.</b> The roadmap bans it explicitly — <i>"breaks determinism, the most defensible claim the project has."</i> Every algorithm here is closed-form scoring plus bounded search.</li>
+  <li><b>Zero network in <code>src/</code>.</b> Enforced mechanically by an ESLint <code>no-restricted-globals</code> rule over <code>src/sim</code> and <code>src/scenarios</code>, plus the classroom bundle guard.</li>
+  <li><b>Simulation fidelity is uniform across builds; only rendering differs.</b> Note the scope of this rule carefully — it governs <i>simulation</i>: physics, detection, occlusion, determinism. It does <b>not</b> mandate that a pedagogical scoring layer ship everywhere. See §1.3.</li>
+</ul>
+
+<h3 id="s13">1.3 Build isolation — the one-way door</h3>
+
+<p>The classroom is a <b>separate edition</b>, not a feature flag on the other two. The dependency
+rule is directional and absolute:</p>
+
+<pre><code>  src/classroom/  ──imports──▶  src/sim/ · src/store/ · src/components/     ✅ ALLOWED
+  src/classroom/  ──imports──▶  src/App.tsx                                 ✅ ALLOWED
+
+  App / MobileShell  ──imports──▶  src/classroom/                           ❌ FORBIDDEN
+  ─────────────────────────────────────────────────────────────────────────────────────
+  ONE permitted crossing: main.tsx's flag-gated dynamic import
+      VITE_CLASSROOM_ENABLED === 'true'  &amp;&amp;  ?join= | ?coordinator=1
+          → import('@/components/classroom/ClassroomEntry')</code></pre>
+
+<div class="call ok">
+  <p class="t">Verified against the working tree — and already enforced in CI</p>
+  <p>A sweep of every <code>.ts</code> / <code>.tsx</code> outside <code>src/classroom/</code> and
+  <code>src/components/classroom/</code> found <b>exactly one</b> reference to classroom code: the
+  dynamic import in <code>main.tsx</code>. The invariant holds today.</p>
+  <p style="margin-bottom:0">More than that — it is <b>already enforced mechanically, against built
+  artifacts</b>, by <span class="path">scripts/assert-bundle-isolation.mjs</span>, wired into CI as
+  <code>npm run assert:bundles</code>. That script is stronger than a source-level check: it builds
+  <i>both</i> ways and asserts the difference.</p>
+</div>
+
+<pre><code>default build   → no classroom chunk emitted at all · no networking token anywhere
+classroom build → classroom chunk exists · networking confined to it · relay client not dropped</code></pre>
+
+<p>The second half is the part most such guards omit: a check that only inspected the shipping
+bundle would still pass if the classroom feature silently stopped shipping altogether. This one
+fails in both directions.</p>
+
+<div class="call warn">
+  <p class="t">The one hole that guard cannot see — and it is exactly the hole this plan could open</p>
+  <p>The artifact guard detects leakage by two signals: a chunk <b>filename</b> matching
+  <code>/Classroom/i</code>, and <b>networking tokens</b> (<code>new WebSocket(</code>,
+  <code>WebSocketServer</code>). <code>ClassroomEntry</code> is reached by dynamic import, so it
+  gets its own named chunk and both signals fire.</p>
+  <p style="margin-bottom:0"><b>But a <i>statically</i> imported, <i>non-networking</i> classroom
+  module would trip neither.</b> If <code>App.tsx</code> imported
+  <code>classroom/missionAssessment.ts</code>, Rollup would inline it into
+  <code>index-*.js</code> — no chunk named "Classroom", no WebSocket token — and the guard would
+  report OK while the rubric shipped to every Mobile and Windows user. That is precisely the module
+  this plan adds, so the residual assertion in <a href="#sG">§G</a> is not redundant polish; it
+  closes the one gap that this specific work opens.</p>
+</div>
+
+<p><b>What this costs, stated honestly.</b> The classroom student runs <code>&lt;App /&gt;</code>, so
+they inherit tracks A and D for free — that part is unchanged. But an instructor-only surface such
+as the scorecard <b>cannot be rendered from inside <code>App</code></b>, because that would require
+<code>App</code> to import it. Instead the classroom shell renders it as a <b>sibling overlay around
+<code>App</code></b> — precisely the pattern <code>StudentLive</code> already uses for the
+<code>cls-banner</code>. Same screen, zero coupling.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Capability</th><th>Mobile</th><th>Windows</th><th>Classroom</th><th>Lives in</th></tr></thead>
+<tbody>
+<tr><td>A · Fleet retask advisor</td><td>✅</td><td>✅</td><td>✅</td><td><code>src/sim/</code></td></tr>
+<tr><td>D · Launch doctrine + mobile stations</td><td>✅</td><td>✅</td><td>✅</td><td><code>src/sim/</code></td></tr>
+<tr><td>Mission objectives &amp; % complete</td><td>✅</td><td>✅</td><td>✅</td><td><code>src/sim/</code></td></tr>
+<tr><td>C · Rubric / life-safety gate / scorecard</td><td>❌</td><td>❌</td><td>✅</td><td><code>src/classroom/</code></td></tr>
+<tr><td>B · Instructor command channel</td><td>❌</td><td>❌</td><td>✅</td><td><code>src/classroom/</code></td></tr>
+<tr><td>Grid frames · tiles · roster · results</td><td>❌</td><td>❌</td><td>✅</td><td><code>src/classroom/</code></td></tr>
+</tbody>
+</table></div>
+
+<div class="call warn">
+  <p class="t">The objectives / assessment seam</p>
+  <p><code>missionObjectives.ts</code> stays in <code>src/sim/</code> and
+  <code>missionAssessment.ts</code> moves to <code>src/classroom/</code>. The line between them is
+  <b>"what is this mission trying to achieve" versus "how well did you do."</b> Objectives are
+  mission definition — the tactical advisor consumes them directly for its <code>valueGain</code>
+  term, and any solo operator legitimately wants to know how much of the task remains. Assessment is
+  grading: bands, caps, rubric findings, life-safety violations. That is a teaching artifact and it
+  ships only with the teaching edition.</p>
+</div>
+
+<!-- ============ A ============ -->
+<h2 id="sA"><span class="num">A</span>Tactical fleet retask</h2>
+
+<p class="lede">One press. The advisor reads the mission in totality, scores a bounded candidate
+set per aircraft, assigns across the fleet, and <b>commits immediately</b> — new coordinates spawn on
+the map and the aircraft turn on the next tick. An inline undo bar replaces the confirm dialog.</p>
+
+<h3>A.1 Execution model — how "autospawn" actually feels</h3>
+<pre><code>t = 0 ms      plan computed                    synchronous, sub-millisecond
+t = 0 ms      N magenta dashed polylines spawn; waypoint pins drop in sequence
+t ≈ 250 ms    lines flip to each drone's own colour  = COMMITTED
+next tick     aircraft turn onto new headings        ≤ 50 ms
+
+              ⟳ FLEET RETASKED · 6 drones · +18% POD · ↺ UNDO (8s)</code></pre>
+
+<p>No modal, on any shell. The visual is <b>already built</b> — <code>TacticalMap</code> carries a
+<code>suggested-route</code> source and a magenta dashed line layer today, refreshed on a 100 ms
+interval. Repurposing it means <b>zero new MapLibre layers and zero new GPU buffers</b>, which keeps
+the mobile memory rule intact.</p>
+
+<div class="call ok">
+  <p class="t">Why immediate commit is safe</p>
+  <p>The sim loop re-reads <code>droneWaypoints</code> from <code>getState()</code> on every physics
+  sub-step, and a React click handler can never interleave with the synchronous sub-step loop.
+  Application always lands cleanly between frames. The advisor reads a snapshot and never ticks
+  physics, so determinism is untouched.</p>
+</div>
+
+<h3>A.2 The algorithm</h3>
+
+<p><b>Step 1 — snapshot the mission in totality.</b> One pure read produces <code>MissionSituation</code>:
+per-drone position, battery vs reserve, effective drain rate, platform speed/endurance/sensor,
+signal, mission state, remaining route; environment (wind, speed cap, drain multiplier, sensor
+confidence, hazards, forced-RTB); objectives (unresolved contacts weighted by confidence × recency,
+operational features, due dispatch tasks, recharge stations); and swept coverage per sector derived
+from <code>positionHistory</code>.</p>
+
+<p><b>Step 2 — bounded candidate generation</b> (≤ 8 per drone) reusing the six existing route
+patterns, plus <code>hold_station</code> (always present, so the advisor can honestly recommend
+"keep going"), <code>deep_scan(contact)</code> per top-K contact, <code>route_recharge(station)</code>,
+and <code>rtb_now</code>. Every candidate passes the existing, already-tested geofence audit.</p>
+
+<p><b>Step 3 — score.</b> Every term is computable from modules that already exist:</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Term</th><th>Derivation</th><th>Role</th></tr></thead>
+<tbody>
+<tr><td><code>valueGain</code></td><td><code>podFromCoverage</code> + contact confidence × recency + feature priority</td><td>what the task buys</td></tr>
+<tr><td><code>transitCost</code></td><td><code>haversineDistanceM</code> ÷ (<code>maxSpeedMs</code> × <code>speedCapMultiplier</code>)</td><td>time to effect</td></tr>
+<tr><td><code>energyFeasible</code></td><td>route time × drain × weather multiplier vs <code>batteryPct − reservePct</code></td><td><b>hard gate</b></td></tr>
+<tr><td><code>riskPenalty</code></td><td>geofence proximity, signal, active hazards, conflict flag</td><td>safety</td></tr>
+<tr><td><code>continuityPenalty</code></td><td>fraction of current route abandoned</td><td>anti-thrash</td></tr>
+<tr><td><code>redundancyPenalty</code></td><td>objective overlap with another drone's claim</td><td><b>makes it fleet logic</b></td></tr>
+</tbody>
+</table></div>
+
+<p><b>Step 4 — assign.</b> Greedy over pairs sorted by score with a stable
+<code>(droneId, candidateId)</code> tie-break, then ≤ 2 bounded swap-improvement passes.
+With D ≤ 8 this is free. The last two scoring terms are what separate a fleet plan from eight
+independent selfish choices.</p>
+
+<div class="call crit">
+  <p class="t">The trap that will make it look broken</p>
+  <p><code>getNextCommand</code> applies its emergency guards <b>before</b> any commanded route —
+  below-reserve, geofence breach, and weather-forced RTB all coerce the aircraft to
+  <code>return_to_base</code> regardless of what was just commanded. An advisor that ignores those
+  thresholds will emit plans the simulation overrules one tick later: the operator watches a route
+  spawn and then watches the drone turn for home. <b>The advisor must gate on the identical
+  thresholds <code>MissionManager</code> enforces.</b></p>
+</div>
+
+<!-- ============ B ============ -->
+<h2 id="sB"><span class="num">B</span>Instructor command authority</h2>
+
+<p class="lede">Total control of every student's live session — and because the student is running the
+real simulator, "control" means every action a student could take, executed remotely, attributed
+correctly, and logged in their own evidence chain.</p>
+
+<h3>B.1 The command set</h3>
+<p>Every command maps 1:1 onto a store action or mission-control handler that already exists.
+<b>The enum is the security boundary</b> — never arbitrary payloads, never anything outside the sim store.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Group</th><th>Commands</th><th>Backing</th></tr></thead>
+<tbody>
+<tr><td><b>Session</b></td><td><code>pause</code> · <code>resume</code> · <code>restart</code> · <code>end_mission</code> · <code>load_scenario</code> · <code>set_variant</code> · <code>set_sim_speed</code></td><td><code>useMissionControls</code> handlers</td></tr>
+<tr><td><b>Fleet</b></td><td><code>rtb_all</code> · <code>hold_all</code> · <code>retask_fleet</code> · <code>undo_retask</code></td><td><code>handleAbort</code>, Track A</td></tr>
+<tr><td><b>Per drone</b></td><td><code>hover</code> · <code>resume</code> · <code>rtb</code> · <code>remote_land</code> · <code>abort_recovery</code> · <code>command_route</code> · <code>set_route</code></td><td>existing <code>droneStore</code> actions</td></tr>
+<tr><td><b>Authority</b></td><td><code>set_operator_role</code> — demote to <code>observer</code> <b>freezes the student's hands</b> · <code>set_advisor_policy</code> · <code>lock_sim_speed</code></td><td><code>setOperatorRole</code> + policy flag</td></tr>
+<tr><td><b>Injects</b></td><td><code>inject_thermal_contact</code> · <code>force_weather</code> · <code>force_comms_degradation</code> · <code>reposition_site</code></td><td><code>addThermalContact</code>, variant dials, Track D</td></tr>
+<tr><td><b>Comms</b></td><td><code>directive(text, student|class)</code> — banner on the student console</td><td>new, trivial</td></tr>
+</tbody>
+</table></div>
+
+<p><code>inject_thermal_contact</code> and <code>directive</code> are what make this a teaching
+instrument rather than a kill switch. <i>"You now have a second victim 200 m north — re-plan"</i>
+is the entire pedagogical loop in one command.</p>
+
+<h3>B.2 Protocol — three additive message types, no version bump</h3>
+<pre><code>interface ClassCommandMsg {           // instructor → server → one student (or broadcast)
+  v: 1; type: 'class.command'; classId: ClassId;
+  studentId: StudentId | null;        // null = whole class
+  instructorToken: string;            // server-side authority gate
+  sealed: Sealed;                     // SealedPayload&lt;InstructorCommand&gt;
+}
+interface CommandMsg   { v: 1; type: 'command';     classId: ClassId; sealed: Sealed }
+interface StudentAckMsg{ v: 1; type: 'student.ack'; classId: ClassId; from?: StudentId; sealed: Sealed }</code></pre>
+<p><code>PROTOCOL_VERSION</code> stays <code>1</code>. <code>decodeEnvelope</code> validates version,
+type and classId only, and rejects unknown types before dispatch — so an older client ignores
+commands rather than misbehaving. Routing is the identical shape as the existing
+<code>class.focus</code> → <code>focus.on</code> path.</p>
+
+<h3>B.3 Security model — five non-negotiables</h3>
+<ol>
+  <li><b>Server gates on <code>instructorToken</code></b> using the same constant-time compare that already guards instructor re-binding. Without it, anyone who overheard a six-character class code could puppet the room.</li>
+  <li><b>Outbound sequence mirror.</b> Instructor holds <code>outSeqByStudent</code>; student enforces <code>acceptsSeq</code> through a single decrypt door. Without it, a captured <code>end_mission</code> is replayable forever.</li>
+  <li><b>Typed whitelist, validated after decryption.</b> Unknown or malformed commands are rejected and acknowledged as failures.</li>
+  <li><b>Rate limit in <code>limits.json</code></b>, enforced server-side, shared by the TypeScript client and the plain-JS relay.</li>
+  <li><b>Integrity counters on the student side too.</b> A student seeing <code>commandRejects &gt; 0</code> means someone is injecting.</li>
+</ol>
+
+<div class="call crit">
+  <p class="t">The attribution trap — highest-value finding in this track</p>
+  <p><code>MissionEvent</code> carries <code>operatorId</code> and <code>role</code>, and
+  <code>emitEvent</code> fills <code>operatorId</code> from the active operator. If instructor
+  commands flow through the same path unmarked, <b>the assessment engine in Track C will score the
+  student on the instructor's actions.</b> An instructor who RTBs a drone to save it hands the
+  student credit for battery discipline they never exercised.</p>
+  <p><b>Fix — with zero classroom leakage into shared types.</b> An earlier draft proposed a
+  <code>EventType: 'instructor_command'</code> member and a <code>MissionEvent.actorKind</code>
+  field. Both live in <code>src/types/index.ts</code>, which every build compiles — so both would
+  put the word "instructor" inside the Mobile and Windows editions. Rejected under §1.3.</p>
+  <p>Instead: <code>emitEvent</code> <b>already</b> accepts an optional <code>operatorId: string</code>
+  and falls back to the active operator. Add one generic, classroom-agnostic primitive to the store —
+  a <code>commandActorId</code> override (or a <code>withCommandActor(id, fn)</code> scope) that
+  <code>recordOperatorCommand</code> honours. Mobile and Windows never set it, and nothing in the
+  shared code knows what a classroom is. The classroom command executor sets it to a namespaced
+  id, and the classroom-side assessment partitions on that prefix.</p>
+  <p style="margin-bottom:0">Do <b>not</b> add <code>'instructor'</code> to <code>OperatorRole</code>
+  under any circumstance — that type models a simulated aviation role (PIC / MC / Observer), and
+  conflating a real-world actor into it would corrupt the existing authority gates in addition to
+  breaking isolation. With attribution in place, student events score the student and instructor
+  events are reported as <i>interventions</i> — itself a first-class teaching signal.</p>
+</div>
+
+<h3>B.4 Visible takeover is a design requirement</h3>
+<pre><code>CLASS 7KX3M2 · streaming · ⬤ INSTRUCTOR CONTROL — "UAV-03 → RTB"          [3s]</code></pre>
+<p>The classroom banner already renders <i>"instructor watching."</i> Extend it to flash every
+executed command. Silent remote control of a person's screen is a trust failure and, in a school
+deployment, a policy problem. The join gate should state that the instructor can observe and
+control the session — <b>joining with the code is the consent act.</b> Every command also lands in
+the student's own event log, so the debrief is honest in both directions.</p>
+
+<!-- ============ C ============ -->
+<h2 id="sC"><span class="num">C</span>Assessment &amp; rubric engine <span class="b b-new">classroom edition only</span></h2>
+
+<p class="lede">A pure module that answers three questions continuously, for every student on the
+wall: <b>how far through the task are they, are they meeting the rubric, and did they put human
+lives first?</b> It ships with the instructor-led edition and <b>nowhere else</b> — see
+<a href="#s13">§1.3</a>. The <i>objectives</i> it measures against are shared sim data; the
+<i>grading</i> is not.</p>
+
+<h3>C.1 Doctrine spine — lexicographic, not weighted</h3>
+<p>The rubric is built on the <b>ICS / NIMS incident priority hierarchy</b>, the order every US
+incident commander is trained to work to:</p>
+
+<div class="tier"><b>1. Life Safety &nbsp;→&nbsp; 2. Incident Stabilization &nbsp;→&nbsp; 3. Property &amp; Environmental Conservation</b></div>
+
+<p>The load-bearing property is that this order is <b>lexicographic</b>. You do not trade life safety
+for stabilization efficiency at any exchange rate. Therefore the rubric must be lexicographic too —
+and this is the entire answer to <i>"ensure the operator puts human lives first."</i></p>
+
+<div class="call crit">
+  <p class="t">Why a weighted life-safety term would fail</p>
+  <p>If life safety is one weighted term in a sum, students optimise the sum and <b>trade lives for
+  coverage points.</b> Rubrics get gamed — that is what rubrics do. So Tier 0 is a <b>gate that caps
+  the achievable total</b>, not a term that contributes to it.</p>
+</div>
+
+<div class="tier">
+Tier 0 &nbsp;LIFE SAFETY&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ PASS/FAIL gate. Any violation CAPS the total.
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;minor → cap 79 · major → cap 59 · critical → cap 39
+Tier 1 &nbsp;INCIDENT STABILIZATION → 0–60 weighted, reachable only if Tier 0 passes
+Tier 2 &nbsp;RESOURCE STEWARDSHIP&nbsp;&nbsp;&nbsp;→ 0–40 weighted
+</div>
+
+<p>A student who achieves 100% sector POD, flawless battery discipline and a clean recovery — but
+left a 0.9-confidence thermal contact unactioned for eight minutes — <b>scores 39</b>. That is the
+lesson, delivered by arithmetic rather than by a comment in a debrief.</p>
+
+<h3>C.2 Tier 0 — the life-safety gate</h3>
+<p>Every check is computable today from <code>events</code>, <code>thermalContacts</code>,
+<code>drones</code> and <code>metrics</code>. No new simulation machinery.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Check</th><th>Derivation</th><th>Severity</th></tr></thead>
+<tbody>
+<tr><td><code>CONTACT_UNACTIONED</code></td><td>contact ≥ 0.75 confidence with no action at end, or open past the response threshold live</td><td><span class="b b-crit">critical</span></td></tr>
+<tr><td><code>HOLD_ABANDONED</code></td><td>drone entered <code>thermal_hold</code>, then retasked or RTB'd with no <code>resolveThermal</code></td><td><span class="b b-crit">critical</span></td></tr>
+<tr><td><code>THIRD_PARTY_RISK</code></td><td><code>geofence_breach</code> over a life-critical zone</td><td><span class="b b-crit">critical</span></td></tr>
+<tr><td><code>CONTACT_RESPONSE_SLOW</code></td><td><code>thermal_detection</code> tick → first attributable action on that <code>sourceId</code></td><td><span class="b b-warn">major</span></td></tr>
+<tr><td><code>PROPERTY_BEFORE_LIFE</code></td><td>a <code>last_known</code> / <code>search_sector</code> objective was available and unserviced while property features were serviced first</td><td><span class="b b-warn">major</span></td></tr>
+<tr><td><code>UNCONTROLLED_DESCENT</code></td><td>drone reached <code>emergency</code> without a prior operator RTB — an uncommanded landing over a populated scene</td><td><span class="b b-warn">major</span></td></tr>
+<tr><td><code>FLEW_INTO_FORCE_RTB</code></td><td>route commands issued while <code>isWeatherForceRtb</code> is true</td><td><span class="b b-warn">major</span></td></tr>
+<tr><td><code>GROUND_UNIT_LATENCY</code></td><td>dispatch → <code>ground_unit_on_scene</code> beyond threshold</td><td><span class="b b-info">minor</span></td></tr>
+</tbody>
+</table></div>
+
+<p><b>Tier 1 — Incident Stabilization (0–60):</b> sector POD vs target (finally consuming the built
+<code>sweepWidth.ts</code>) · contact resolution rate · mean time-to-resolution · ground-unit dispatch
+latency · airspace discipline · dispatch-task compliance.</p>
+<p><b>Tier 2 — Resource Stewardship (0–40):</b> fleet recovered intact · minimum battery-reserve
+margin observed · <b>flight distance per POD point</b> — this one deliberately prices the retask
+churn Track A makes cheap · evidence chain verified.</p>
+
+<h3>C.3 "% done with task" — the objective model</h3>
+
+<div class="call warn">
+  <p class="t">Why this is not optional</p>
+  <p>The project has no representation of "the task." <code>metrics.waypointsReached</code> has no
+  meaningful denominator — and <b>Track A actively destroys waypoint-based progress</b>, because a
+  fleet retask replaces routes wholesale. Progress must be objective-based or the two features fight
+  each other.</p>
+</div>
+
+<p><code>MissionObjective[]</code> becomes an optional field on <code>ScenarioConfig</code>, with a
+derivation fallback so <b>all 21 existing scenarios get objectives for free</b>:</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Objective</th><th>Auto-derived when</th><th>Completion metric</th></tr></thead>
+<tbody>
+<tr><td><code>contact_resolution</code></td><td><code>heatSources.length &gt; 0</code></td><td>actioned / detectable contacts</td></tr>
+<tr><td><code>sector_coverage</code></td><td><code>searchArea</code> present</td><td><code>podFromCoverage</code> vs target (default 0.80)</td></tr>
+<tr><td><code>tasking_compliance</code></td><td>timeline has <code>operator_task</code> entries</td><td>serviced / due</td></tr>
+<tr><td><code>containment</code></td><td>features of type <code>perimeter</code> / <code>gate</code></td><td>visited &amp; held</td></tr>
+<tr><td><code>fleet_recovery</code></td><td>always</td><td>terminal-safe / launched</td></tr>
+</tbody>
+</table></div>
+
+<pre><code>progress% = Σ ( objective.weight × clamp01(objective.completion) )</code></pre>
+<p>Authors may declare <code>missionObjectives</code> explicitly to override. Zero authoring cost for
+the existing catalog, full control when it is wanted.</p>
+
+<h3>C.4 Output, transport, and placement</h3>
+
+<div class="tbl"><table>
+<thead><tr><th>Channel</th><th>Payload</th><th>Rate</th><th>Cost</th></tr></thead>
+<tbody>
+<tr><td>Grid frame (Tier A)</td><td>compact: progress %, band, life-safety violation bitfield, total</td><td>1 Hz</td><td><b>~12 B</b> on a ~400 B frame</td></tr>
+<tr><td>Focus stream (Tier B)</td><td>full <code>MissionAssessment</code> with narrative findings</td><td>3 Hz, focused student</td><td>already full-detail</td></tr>
+<tr><td>Run submission</td><td>final assessment folded into the stored run summary</td><td>once</td><td>inside <code>sealed</code></td></tr>
+</tbody>
+</table></div>
+
+<p>Two new alert bits: <code>LIFE_SAFETY_VIOLATION</code> → <b>CRIT_MASK</b> and
+<code>OFF_RUBRIC</code> → WARN_MASK. The tile wall already auto-promotes CRIT tiles to the top-left,
+so <b>the instructor's screen surfaces whoever is currently failing life safety, automatically, at
+zero new UI cost.</b></p>
+
+<div class="call crit">
+  <p class="t">Placement is load-bearing — and this is a deliberate reversal</p>
+  <p>An earlier draft argued <code>missionAssessment.ts</code> should live in
+  <span class="path">src/sim/mission/</span> so all three builds could render a scorecard, citing the
+  "simulation fidelity is uniform across builds" principle. <b>That was an over-application of the
+  rule.</b> That principle governs <i>simulation</i> — physics, detection geometry, occlusion,
+  determinism — so that a seed reproduces identically everywhere. A rubric is not simulation. It is
+  a read-only observer of simulation output that assigns a grade, and it changes no physics
+  whatsoever. Nothing in the fidelity rule requires it to ship to an operator who has no instructor.</p>
+  <p style="margin-bottom:0"><b>Correct placement:</b> <span class="path">src/classroom/missionAssessment.ts</span>,
+  pure and deterministic exactly as before, but inside the classroom's one-way door. It imports
+  <i>downward</i> into <code>src/sim/</code> for <code>sweepWidth</code>, <code>missionObjectives</code>
+  and the types it scores — which is the allowed direction. The scorecard renders as a sibling
+  overlay beside <code>&lt;App /&gt;</code> in the classroom shell, never from inside <code>App</code>.</p>
+</div>
+
+<div class="call warn">
+  <p class="t">Consequence: keep the assessment out of the shared after-action package</p>
+  <p><code>buildAfterActionPackage</code> is shared by all three builds. Folding the scorecard into
+  it would drag the rubric straight into the Mobile and Windows bundles through the export path —
+  the exact leak §1.3 forbids, arriving by the back door. The shared AAR export stays exactly as it
+  is. The classroom produces its <b>own</b> debrief artifact from the sealed end-of-run submission,
+  which it already receives and already stores.</p>
+</div>
+
+<p>Also worth stating plainly: this module <b>is</b> the roadmap's WP-9 (<code>laneScoring.ts</code>,
+described there as <i>"the one auto-scorable number for the Coordinator dashboard"</i>), generalized
+from a single NIST lane to all 21 scenarios — and it delivers without waiting on the WP-4 keystone.</p>
+
+<!-- ============ D ============ -->
+<h2 id="sD"><span class="num">D</span>Launch bay doctrine &amp; mobile stations</h2>
+
+<p class="lede">Launch bays are currently assigned by array index. They carry no reachability check,
+no doctrine, no recovery symmetry, and they cannot move — even though three of the nine site kinds
+in the type system are explicitly mobile platforms.</p>
+
+<h3 id="sD1">D.1 What is actually broken today</h3>
+
+<div class="gap sev-crit">
+  <div class="gh"><span class="gid">LB-1</span><span class="gt">Auto-assign is round-robin by array index</span><span class="b b-crit">blocker</span></div>
+  <p class="gl"><code>buildAutoAssignments</code> does <code>siteEntries[i % siteEntries.length]</code>.
+  It ignores distance to the drone's first waypoint, site kind, capacity, weather closure, agency,
+  platform endurance — and it ignores <code>droneRouteBriefs[id].launchRationale</code>, <b>which
+  already contains the authored tactical justification for that drone's launch site.</b> The
+  "⚡ Auto-Assign" button can therefore produce a plan that immediately fails
+  <code>computeBlockers</code> for over-capacity or weather closure.</p>
+  <p class="gf"><b>Fill:</b> replace with a scored assignment from <code>launchDoctrine.ts</code> (§D.2) that respects the same blockers it will be validated against.</p>
+</div>
+
+<div class="gap sev-crit">
+  <div class="gh"><span class="gid">LB-2</span><span class="gt">Two drones on one bay spawn at identical coordinates</span><span class="b b-crit">blocker</span></div>
+  <p class="gl"><code>initFleet</code> resolves <code>explicitBays[id]</code> to the assigned site's
+  position — the <i>same</i> <code>LatLng</code> for both drones. <code>planCoordinatedLaunch</code>
+  then short-circuits: <code>if (explicitBays?.[id]) bay = explicitBays[id]</code>, with no
+  intra-site fan. Default capacity is 2 drones per bay, so <b>the standard case stacks two aircraft
+  on one point</b> — defeating that module's own stated purpose (<i>"no two drones lift from the same
+  spot"</i>) and its <code>BAY_SPACING_M = 35</code>, chosen specifically to exceed the horizontal
+  separation minimum so aircraft are deconflicted on the pad.</p>
+  <p class="gf"><b>Fill:</b> fan drones <i>within</i> a shared site along the pad's usable axis, respecting <code>BAY_SPACING_M</code> and the site's declared footprint.</p>
+</div>
+
+<div class="gap sev-warn">
+  <div class="gh"><span class="gid">LB-3</span><span class="gt">Weather closure is index-keyed and fleet-global</span><span class="b b-warn">enhancement</span></div>
+  <p class="gl"><code>computeBayStatuses</code> looks up <code>bay-${i}</code> while the weather engine
+  generates exactly <code>bay-0…bay-7</code> from a <b>single</b> boolean
+  (<code>gusts &gt; 30 || ceiling &lt; 200 || snow_ice</code>). So a scenario with more than eight sites
+  has the rest silently always-open, and every bay closes together. There is no notion of a
+  <i>sheltered</i> pad — a parking structure, a rooftop with a windbreak, a vessel in the lee — versus
+  an exposed one. That distinction is the entire tactical content of a weather bay decision.</p>
+  <p class="gf"><b>Fill:</b> <code>exposure: 'sheltered' | 'semi' | 'exposed'</code> on the site, with per-bay gust/ceiling thresholds. Key availability by <code>siteId</code>, not index.</p>
+</div>
+
+<div class="gap sev-warn">
+  <div class="gh"><span class="gid">LB-4</span><span class="gt">Sites are keyed by droneId, so the "pool" is an illusion</span><span class="b b-warn">structural</span></div>
+  <p class="gl">Both the catalog and the custom-mission compiler write
+  <code>launchSites[droneId] = …</code>, and the planner seeds assignments with
+  <code>if (launchSites[id]) rec[id] = id</code>. Launch sites are therefore effectively
+  <b>per-drone</b>, not a shared pool — which makes <code>capacityDrones</code> nearly meaningless
+  and makes the assignment dropdown misleading, since it offers UAV-05's site to UAV-02. The option
+  labels render <code>agency — kind</code> and drop the site label and position entirely, so the
+  operator chooses between "SFPD — police_rooftop" entries with no distance, no ETA, no capacity and
+  no weather state.</p>
+  <p class="gf"><b>Fill:</b> give <code>LaunchRecoverySite</code> its own <code>id</code>, treat sites as a genuine shared pool, and render each option with distance, transit ETA, remaining slots, exposure and doctrine fit.</p>
+</div>
+
+<div class="gap sev-crit">
+  <div class="gh"><span class="gid">LB-5</span><span class="gt">Mobile stations exist in the type system but cannot move</span><span class="b b-crit">the ask</span></div>
+  <p class="gl"><code>LaunchRecoverySiteKind</code> already includes <code>mobile_command</code>,
+  <code>field_icp</code> and <code>vessel</code> — three genuinely mobile platforms — yet
+  <code>scenario.launchSites</code> is static configuration with no reposition path anywhere in the
+  codebase. A mobile command post that cannot be moved is a rooftop with worse optics.</p>
+  <p class="gf"><b>Fill:</b> §D.3 — an override layer, map-drag repositioning, relocation time, and full evidence logging.</p>
+</div>
+
+<div class="gap sev-warn">
+  <div class="gh"><span class="gid">LB-6</span><span class="gt">No recovery-side symmetry and no round-trip feasibility</span><span class="b b-warn">enhancement</span></div>
+  <p class="gl">The planner never surfaces or validates <code>recoverySites</code>, even though
+  <code>buildSafeDroneRoutes</code> silently appends an <i>"RTB Safe Recovery"</i> waypoint to a base
+  the operator never saw. Nothing checks that the assigned bay is within round-trip range given
+  platform endurance, reserve and weather drain — the exact arithmetic
+  <code>rechargeStations.ts</code> already implements. A drone can be assigned a bay it cannot fly
+  the mission from and return.</p>
+  <p class="gf"><b>Fill:</b> reachability becomes a <b>hard gate</b> in the doctrine scorer, and the planner shows the launch → mission → recovery triangle with margin.</p>
+</div>
+
+<h3 id="sD2">D.2 <code>launchDoctrine.ts</code> — scoring a bay against a mission</h3>
+
+<p>A pure module mirroring the tactical advisor's shape: hard gates first, then a weighted score,
+then a deterministic assignment with a bounded improvement pass.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Criterion</th><th>Computation</th><th>Kind</th></tr></thead>
+<tbody>
+<tr><td><b>Round-trip reachability</b></td><td>bay → first waypoint → route → recovery site, using platform speed × weather speed cap and drain × weather multiplier, versus start battery minus reserve</td><td><span class="b b-crit">hard gate</span></td></tr>
+<tr><td><b>Airspace legality</b></td><td>bay position and climb-out corridor against active geofences via <code>firstBreachedGeofence</code></td><td><span class="b b-crit">hard gate</span></td></tr>
+<tr><td><b>Exposure vs conditions</b></td><td>site <code>exposure</code> against gust / ceiling / icing thresholds</td><td><span class="b b-crit">hard gate</span></td></tr>
+<tr><td><b>Capacity &amp; pad separation</b></td><td><code>capacityDrones</code> plus an intra-site fan honouring <code>BAY_SPACING_M</code></td><td><span class="b b-crit">hard gate</span></td></tr>
+<tr><td>Transit efficiency</td><td>dead-leg distance and time from bay to first tasking</td><td>score</td></tr>
+<tr><td>Doctrine fit</td><td>site kind × drone role — overwatch and relay favour elevated fixed sites for line of sight; rapid-response favours <code>mobile_command</code> / <code>field_icp</code> nearest the scene; maritime tasks favour <code>vessel</code></td><td>score</td></tr>
+<tr><td>Recovery symmetry</td><td>penalty for a bay far from the drone's designated recovery site</td><td>score</td></tr>
+<tr><td>Fleet dispersion</td><td>penalty for concentrating the whole fleet on one bay — single point of failure is a real doctrine principle, not a modelling nicety</td><td>score</td></tr>
+<tr><td>Authored intent</td><td>agreement with <code>droneRouteBriefs[id].launchRationale</code>, so the scorer reinforces rather than contradicts the scenario author</td><td>score</td></tr>
+</tbody>
+</table></div>
+
+<p>The planner UI then shows a <b>rationale line per assignment</b> — "SFPD Bryant St rooftop ·
+1.2 km to sector · 4.1 min transit · 31% reserve margin · elevated for relay LOS · sheltered" —
+turning a dropdown into a briefing. Where a bay is rejected, it says why, rather than silently
+omitting it.</p>
+
+<h3 id="sD3">D.3 Mobile stations the operator can reposition</h3>
+
+<h4>Type additions</h4>
+<pre><code>interface LaunchRecoverySite {
+  id: string                       // NEW — sites become a real pool, not droneId-keyed  (LB-4)
+  kind: LaunchRecoverySiteKind
+  // …existing fields…
+  exposure?: 'sheltered' | 'semi' | 'exposed'   // NEW — per-bay weather gating          (LB-3)
+  mobile?: boolean                 // NEW — derived default: kind ∈ {mobile_command, field_icp, vessel}
+  repositionRadiusM?: number       // NEW — how far it may credibly relocate
+  repositionTimeSec?: number       // NEW — how long the move takes (vehicle transit + set-up)
+  padFootprintM?: number           // NEW — usable pad width, feeds the intra-site fan    (LB-2)
+}</code></pre>
+
+<h4>State — an override layer, never a scenario mutation</h4>
+<pre><code>droneStore.siteOverrides : Record&lt;siteId, LatLng&gt;
+resolveLaunchSite(scenario, siteId, overrides) → LaunchRecoverySite</code></pre>
+<div class="call">
+  <p class="t">Why an override layer instead of editing the scenario</p>
+  <p><code>ScenarioConfig</code> must stay immutable: it is the deterministic input that a seed
+  reproduces, it is what the classroom broadcasts to every student byte-identically, and it is what
+  replay and the after-action package reference. Repositioning writes to a separate override map,
+  and one resolver replaces every direct <code>scenario.launchSites[...]</code> read — there are
+  nine such sites in the codebase today.</p>
+</div>
+
+<h4>Interaction — reuse the two editing gestures that already exist</h4>
+<ul>
+  <li><b>Desktop:</b> drag the site marker, using the same draggable-marker pattern the route editor already implements.</li>
+  <li><b>Mobile:</b> tap-to-place, using the existing touch-edit map-click handler.</li>
+  <li><b>Constraints, live:</b> clamped to <code>repositionRadiusM</code>, rejected inside an active geofence, and shown with a live delta — <i>"−1.4 km to sector · +9% reserve margin · 4 drones re-planned."</i></li>
+  <li><b>Fixed sites are not draggable.</b> A police rooftop does not move; the affordance must be absent, not merely disabled, or the model teaches the wrong thing.</li>
+</ul>
+
+<h4>Mid-mission relocation is an operation, not a teleport</h4>
+<p>Before launch, repositioning is free. <b>After launch it takes time and has consequences</b>, which
+is precisely what makes it a tactical decision:</p>
+<ol>
+  <li>The site enters a <code>relocating</code> state for <code>repositionTimeSec</code> and accepts no recoveries during transit.</li>
+  <li>Drones currently RTB'ing to that site must be re-vectored — Track A handles this natively as a "base moved" trigger, and the advisor proposes the re-plan the instant the move commits.</li>
+  <li>A drone below reserve with no reachable alternative <b>blocks the move</b>, with the reason surfaced. You cannot strand an aircraft by driving away from it.</li>
+  <li>A <code>launch_site_repositioned</code> event enters the chain of custody with from, to, affected drones and the reserve-margin delta.</li>
+</ol>
+
+<h4>How it connects to the other three tracks</h4>
+<div class="tbl"><table>
+<thead><tr><th>Track</th><th>Interaction</th></tr></thead>
+<tbody>
+<tr><td><b>A · Retask</b></td><td>Moving a base changes every reachability calculation. The advisor re-plans on the same trigger; the "+reserve margin" figure in the reposition preview <i>is</i> the advisor's feasibility term, shown before commit.</td></tr>
+<tr><td><b>B · Instructor</b></td><td><code>reposition_site(siteId, pos)</code> is a command. The instructor can demonstrate <i>"move your ICP here and look what it buys you"</i> on a struggling student's screen, live.</td></tr>
+<tr><td><b>C · Assessment</b></td><td>Relocating a mobile ICP toward a last-known location shortens victim response time — a <b>life-safety-positive</b> action credited in Tier 0. Leaving a mobile ICP 4 km from the search sector when it could have moved is a Tier 1 finding with a named cost in minutes.</td></tr>
+</tbody>
+</table></div>
+
+<!-- ============ E ============ -->
+<h2 id="sE"><span class="num">E</span>Consolidated gap register</h2>
+
+<h3>Blockers <span class="b b-crit">11</span></h3>
+<div class="tbl"><table>
+<thead><tr><th>#</th><th>Gap</th><th>Evidence</th><th>Fill</th></tr></thead>
+<tbody>
+<tr><td>G1</td><td class="wrap-ok">Routes planned from the launch pad, not live position</td><td><span class="path">operatorRoutes.ts:98</span> seeds detour planning from <code>defaultDroneStartPosition</code></td><td>optional <code>fromPosition</code>, defaulting to current behaviour</td></tr>
+<tr><td>G2</td><td class="wrap-ok">No retask-eligibility predicate</td><td><span class="path">droneStore.ts:266</span> excludes only <code>idle/landed/recharge</code> — would yank drones out of <code>thermal_hold</code>, <code>inspect</code>, <code>avoid</code>, <code>emergency</code>, recovery</td><td><code>isRetaskable(drone)</code></td></tr>
+<tr><td>G3</td><td class="wrap-ok">Advisor ignores the sim's own override guards</td><td><span class="path">MissionManager.ts:41-62</span> coerces RTB before any command</td><td>gate on identical thresholds</td></tr>
+<tr><td>G4</td><td class="wrap-ok">No route history ⇒ no undo</td><td>nothing snapshots prior routes</td><td><code>lastFleetRetask</code> + <code>undoFleetRetask()</code></td></tr>
+<tr><td>G5</td><td class="wrap-ok">Only the selected drone's proposal renders</td><td><span class="path">TacticalMap.tsx:299</span> <code>.find(...)</code></td><td><code>.find</code> → <code>.filter</code>, same source, same layer</td></tr>
+<tr><td>G6</td><td class="wrap-ok">Instructor actions would be scored as student actions</td><td><code>recordOperatorCommand</code> cannot express who issued a command</td><td>generic <code>commandActorId</code> override in the store — <b>no classroom vocabulary in shared types</b>; classroom partitions on the prefix</td></tr>
+<tr><td>G21</td><td class="wrap-ok">Isolation guard is blind to a <b>non-networking</b> classroom module statically imported by a shell</td><td><span class="path">scripts/assert-bundle-isolation.mjs</span> detects leakage by chunk <i>filename</i> and <i>networking tokens</i> only — a statically imported rubric inlines into <code>index-*.js</code> and trips neither</td><td>negative reachability assertion over both shell import graphs, plus a shared-types vocabulary check (§G) — narrow addition to an already-strong guard</td></tr>
+<tr><td>G7</td><td class="wrap-ok">No command channel; no outbound sequence counter</td><td><code>class.focus</code> is the only instructor→student path</td><td>3 message types + outbound seq mirror</td></tr>
+<tr><td>G8</td><td class="wrap-ok">Server has no command authority gate</td><td>—</td><td>gate on <code>instructorToken</code> via existing compare</td></tr>
+<tr><td>LB-1</td><td class="wrap-ok">Bay auto-assign is round-robin by index</td><td><span class="path">launchBayPlanning.ts:59</span></td><td><code>launchDoctrine.ts</code> scored assignment</td></tr>
+<tr><td>LB-2</td><td class="wrap-ok">Two drones per bay spawn at identical coordinates</td><td><span class="path">LaunchCoordinator.ts:90</span> skips the fan for explicit bays</td><td>intra-site fan honouring <code>BAY_SPACING_M</code></td></tr>
+<tr><td>LB-5</td><td class="wrap-ok">Mobile stations cannot be repositioned</td><td><code>scenario.launchSites</code> is static config</td><td><code>siteOverrides</code> + resolver + drag/tap</td></tr>
+</tbody>
+</table></div>
+
+<h3>Enhancements <span class="b b-warn">17</span></h3>
+<div class="tbl"><table>
+<thead><tr><th>#</th><th>Gap</th><th>Fill</th></tr></thead>
+<tbody>
+<tr><td>G9</td><td class="wrap-ok">Replace-only; no divert-and-resume</td><td><code>mode:'divert_resume'</code> splices ahead of <code>route.slice(currentWaypointIndex)</code> — zero new sim machinery, largest realism win available</td></tr>
+<tr><td>G10</td><td class="wrap-ok">No "task" concept ⇒ no % complete</td><td><code>MissionObjective[]</code> + derivation fallback</td></tr>
+<tr><td>G11</td><td class="wrap-ok"><code>Geofence</code> has no life-criticality</td><td><code>lifeCritical?: boolean</code> — without it, "flew over the school" and "flew over the compressor yard" score identically</td></tr>
+<tr><td>G12</td><td class="wrap-ok"><code>routeCommandError</code> is one string; fleet apply produces N</td><td>per-entry reasons → <i>"6 of 8 retasked · UAV-03 below reserve"</i></td></tr>
+<tr><td>G13</td><td class="wrap-ok">Persist write amplification — 8 localStorage writes per fleet apply</td><td>batched <code>saveFleetRoutes()</code></td></tr>
+<tr><td>G14</td><td class="wrap-ok">Waypoint cap unenforced on the advisor path</td><td>clamp <code>MAX_WAYPOINTS_PER_DRONE</code>, surface as plan warning</td></tr>
+<tr><td>G15</td><td class="wrap-ok">No cooldown ⇒ button-mash thrash</td><td><code>situationHash</code> + N-second cache</td></tr>
+<tr><td>G16</td><td class="wrap-ok"><code>fleetPlan</code> not cleared on reset or scenario swap</td><td>add to the reset lists</td></tr>
+<tr><td>G17</td><td class="wrap-ok">Dispatch feed blind to advisor, instructor and site moves</td><td>additive <code>switch</code> cases — live narrative on both shells, ~10 lines</td></tr>
+<tr><td>G18</td><td class="wrap-ok">"AI-proposed" copy contradicts the roadmap's ML ban</td><td>rename to <b>Route Advisor / decision support</b></td></tr>
+<tr><td>G19</td><td class="wrap-ok">Student cannot tell when control is taken</td><td>extend the class banner; join-gate consent copy</td></tr>
+<tr><td>G20</td><td class="wrap-ok">No command rate limit</td><td><code>MAX_COMMANDS_PER_SEC</code> in <code>limits.json</code></td></tr>
+<tr><td>LB-3</td><td class="wrap-ok">Weather closure index-keyed and fleet-global</td><td><code>exposure</code> tier + per-<code>siteId</code> availability</td></tr>
+<tr><td>LB-4</td><td class="wrap-ok">Sites keyed by droneId; assignment dropdown is uninformative</td><td>site <code>id</code>, true shared pool, briefing-grade option labels</td></tr>
+<tr><td>LB-6</td><td class="wrap-ok">No recovery symmetry, no round-trip feasibility</td><td>reachability as a hard gate; show the launch → mission → recovery triangle</td></tr>
+<tr><td>LB-7</td><td class="wrap-ok">Mid-mission relocation has no cost model</td><td><code>relocating</code> state, <code>repositionTimeSec</code>, blocked when it would strand an aircraft</td></tr>
+<tr><td>LB-8</td><td class="wrap-ok">Repositioning invisible to evidence and rubric</td><td><code>launch_site_repositioned</code> event; Tier 0 / Tier 1 credit in the assessment</td></tr>
+</tbody>
+</table></div>
+
+<!-- ============ F ============ -->
+<h2 id="sF"><span class="num">F</span>Architecture map</h2>
+
+<pre><code>╔═══════════════════════════════════════════════════════════════════════════════════════╗
+║  SHIPS IN ALL THREE BUILDS                                                            ║
+╚═══════════════════════════════════════════════════════════════════════════════════════╝
+
+PURE SIMULATION LAYER — deterministic, no store, no I/O, no clock, no RNG
+  sim/mission/tacticalAdvisor.ts      situation → candidates → score → assign
+  sim/mission/missionObjectives.ts    declared objectives + derivation fallback  (mission DEFINITION)
+  sim/mission/launchDoctrine.ts       bay ↔ mission scoring, reachability gate
+  sim/mission/operatorRoutes.ts       + fromPosition                                          G1
+  sim/mission/LaunchCoordinator.ts    + intra-site fan                                        LB-2
+  sim/mission/launchBayPlanning.ts    auto-assign delegates to launchDoctrine                 LB-1
+
+STATE
+  store/droneStore.ts                 fleetPlan · lastFleetRetask · isRetaskable
+                                      siteOverrides · commandActorId override   G2,4,6,12,13,16
+                                      ↑ generic "who issued this" — no classroom vocabulary
+  hooks/useMissionControls.ts         + handleFleetRetask · handleUndoRetask
+                                      + handleRepositionSite            ← THE SHARED SEAM
+  types/index.ts                      MissionObjective · Geofence.lifeCritical
+                                      LaunchRecoverySite.{id,exposure,mobile,
+                                      repositionRadiusM,repositionTimeSec,padFootprintM}
+                                      ↑ NO instructor/rubric/actorKind members                §1.3
+
+SHELLS — render only, no decision logic
+  ControlBar.tsx  /  BottomDock.MissionSheet   ⟳ RETASK FLEET + undo bar
+  LaunchBayPlanner.tsx                          doctrine rationale, reposition control
+  TacticalMap.tsx                               .find → .filter · draggable mobile sites   G5
+  &lt;FleetRetaskReview&gt;                           shared, container owned per shell
+
+╔═══════════════════════════════════════════════════════════════════════════════════════╗
+║  CLASSROOM EDITION ONLY — behind main.tsx's flag-gated dynamic import                 ║
+║  imports DOWNWARD into sim/store/components · nothing above imports back              ║
+╚═══════════════════════════════════════════════════════════════════════════════════════╝
+
+  classroom/missionAssessment.ts   ICS-tiered rubric + life-safety gate   (= WP-9, generalized)
+  classroom/commandRegistry.ts     typed whitelist → droneStore actions   ← SECURITY BOUNDARY
+  classroom/protocol.ts            class.command · command · student.ack  (v stays 1)
+  classroom/classroomClient.ts     sendCommand() · inbound door with seq enforcement
+  classroom/gridFrame.ts           compact assessment (+12 B) + 2 alert bits
+  server/classroom.mjs             onCommand() gated on instructorToken + rate limit
+  components/classroom/
+    CoordinatorConsole.tsx         control rail · rubric wall · intervention log
+    ClassroomEntry.tsx             renders &lt;MissionScorecard&gt; as a SIBLING overlay
+                                   beside &lt;App /&gt; — never from inside App        §1.3
+    MissionScorecard.tsx           student-facing rubric surface</code></pre>
+
+<!-- ============ G ============ -->
+<h2 id="sG"><span class="num">G</span>Tests &amp; enforcement</h2>
+
+<div class="call ok">
+  <p class="t">Two mechanical guarantees, pulling in opposite directions</p>
+  <p><b>Parity — what must be in both shells.</b> <code>parityMatrix.spec.ts</code> walks both shells'
+  actual import graphs and asserts every capability is reachable from each. Adding
+  <code>handleFleetRetask</code> and <code>handleRepositionSite</code> to <code>ACTION_HANDLERS</code>
+  means the <b>build fails</b> if either lands in only one shell. <b><code>MissionScorecard</code> is
+  deliberately <i>not</i> a parity row</b> — it is classroom-only, and adding it would assert exactly
+  the leak §1.3 forbids.</p>
+  <p style="margin-bottom:0"><b>Isolation — what must be in neither shell.</b> Largely solved
+  already: <code>classroomBundleGuard.spec.ts</code> proves WebSocket confinement and the flag-gated
+  dynamic import at the source level, and <span class="path">scripts/assert-bundle-isolation.mjs</span>
+  proves it on the built artifacts in CI. The two assertions below close the single remaining hole
+  described in §1.3 — a statically imported, non-networking classroom module, which is exactly what
+  track C introduces.</p>
+</div>
+
+<pre><code>// classroomBundleGuard.spec.ts — NEW, reusing parityMatrix's collectGraph walker
+it('keeps classroom modules out of both shell import graphs', () =&gt; {
+  const shells = [collectGraph('App.tsx', () =&gt; false),
+                  collectGraph('components/mobile/MobileShell.tsx', () =&gt; false)]
+  for (const graph of shells) {
+    const leaks = [...graph.keys()].filter(p =&gt; /[/\\]classroom[/\\]/.test(p))
+    expect(leaks).toEqual([])          // ← fails the build on ANY app → classroom import
+  }
+})
+
+it('keeps classroom vocabulary out of shared types', () =&gt; {
+  const shared = readFileSync('src/types/index.ts', 'utf8')
+  expect(shared).not.toMatch(/instructor|rubric|classroom|studentId/i)
+})</code></pre>
+
+<div class="tbl"><table>
+<thead><tr><th>Spec</th><th>Asserts</th></tr></thead>
+<tbody>
+<tr><td><code>tacticalAdvisor.spec.ts</code></td><td>determinism across two constructions · energy gate · <code>isRetaskable</code> · thresholds match <code>MissionManager</code> exactly</td></tr>
+<tr><td><code>missionAssessment.spec.ts</code></td><td><b>the lexicographic cap cannot be bought back</b> · actor partitioning excludes instructor-issued commands from the student score · objective derivation succeeds for all 21 catalog scenarios</td></tr>
+<tr><td><code>classroomBundleGuard.spec.ts</code></td><td><span class="b b-crit">isolation</span> neither shell graph contains a <code>classroom</code> module · shared types contain no classroom vocabulary · shared AAR export carries no assessment</td></tr>
+<tr><td><code>launchDoctrine.spec.ts</code></td><td>unreachable bay is never assigned · no two drones share a coordinate · exposure gating · deterministic assignment</td></tr>
+<tr><td><code>siteReposition.spec.ts</code></td><td>clamped to radius · geofence rejection · blocked when it would strand an aircraft · scenario object never mutated</td></tr>
+<tr><td><code>commandRegistry.spec.ts</code></td><td>unknown command rejected · every enum member maps to a real store action</td></tr>
+<tr><td><code>classroomCommandWire.spec.ts</code></td><td>outbound seq · replayed command rejected · token-less command rejected server-side</td></tr>
+<tr><td>Touched</td><td><code>parityMatrix</code> · <code>controlBar</code> · <code>mobileShell</code> · <code>operatorCommandPanel</code> · <code>launchBayPlan</code> · <code>launchBayAssignment</code> · <code>classroomGridFrame</code> · <code>classroomProtocol</code> · <code>classroomWire</code></td></tr>
+<tr><td><code>determinism.spec.ts</code></td><td>unaffected — assert that explicitly</td></tr>
+</tbody>
+</table></div>
+
+<!-- ============ H ============ -->
+<h2 id="sH"><span class="num">H</span>Phasing</h2>
+
+<div class="tbl"><table>
+<thead><tr><th>Phase</th><th>Scope</th><th>Ships</th><th>Days</th></tr></thead>
+<tbody>
+<tr><td><b>0</b></td><td>Correctness fixes — G1 <code>fromPosition</code>, G2 <code>isRetaskable</code>, G3 threshold parity, G4 route history. <b>Also fixes a latent bug in today's per-drone SUGGEST.</b></td><td>standalone</td><td>1</td></tr>
+<tr><td><b>1</b></td><td><code>tacticalAdvisor.ts</code> + determinism specs. No UI.</td><td>internal</td><td>1</td></tr>
+<tr><td><b>2</b></td><td>Real-time apply — store action, undo, batched persist, cooldown, per-entry errors</td><td>internal</td><td>1</td></tr>
+<tr><td><b>3</b></td><td>Both shells + map — buttons, undo bar, <code>.find→.filter</code>, parity rows, feed cases, copy fix. <b>Classroom student is live here.</b></td><td><span class="b b-ok">all 3 builds</span></td><td>1</td></tr>
+<tr><td><b>4</b></td><td>Launch doctrine — <code>launchDoctrine.ts</code>, intra-site fan, exposure tiers, site <code>id</code>, briefing-grade planner UI</td><td><span class="b b-ok">all 3 builds</span></td><td>1.5</td></tr>
+<tr><td><b>5</b></td><td>Mobile stations — <code>siteOverrides</code>, resolver, drag/tap, relocation cost, evidence event</td><td><span class="b b-ok">all 3 builds</span></td><td>1</td></tr>
+<tr><td><b>6a</b></td><td>Mission objectives — <code>missionObjectives.ts</code>, <code>Geofence.lifeCritical</code>, % complete surfaced to the operator. Feeds the advisor's value term.</td><td><span class="b b-ok">all 3 builds</span></td><td>1</td></tr>
+<tr><td><b>6b</b></td><td>Assessment — <code>classroom/missionAssessment.ts</code>, generic <code>commandActorId</code>, <code>MissionScorecard</code> overlay, isolation guard test</td><td><span class="b b-new">classroom</span></td><td>1</td></tr>
+<tr><td><b>7</b></td><td>Command channel — protocol, registry, client send/receive with seq, server gate + rate limit, student banner + consent copy</td><td><span class="b b-new">instructor</span></td><td>1.5</td></tr>
+<tr><td><b>8</b></td><td>Coordinator console — control rail, rubric wall, intervention log, per-student and per-class policy</td><td><span class="b b-new">instructor</span></td><td>1.5</td></tr>
+<tr><td><b>9</b></td><td>Divert-and-resume splice + waypoint clamp</td><td>polish</td><td>0.5</td></tr>
+</tbody>
+</table></div>
+
+<p><b>≈ 11.5 days to the full system</b>, with four independently shippable milestones —
+and note the clean split down the isolation line: <b>phases 0–3, 4–5 and 6a are operator work that
+ships to all three builds</b>; <b>phases 6b, 7 and 8 are instructor work that ships only with the
+classroom edition</b>. No phase straddles the boundary, so the operator builds can ship at any
+milestone without carrying a byte of teaching code.</p>
+
+<!-- ============ I ============ -->
+<h2 id="sI"><span class="num">I</span>Risks — what will actually bite</h2>
+
+<ol>
+  <li><b>The attribution trap silently corrupts everything downstream.</b> If instructor commands are not distinguished from student commands, the rubric measures the wrong person and every debrief built on it is wrong. Fix it in the same commit as the command channel, never after.</li>
+  <li><b>The sim's own guards run first.</b> An advisor — or an instructor command — that ignores reserve, geofence and weather thresholds produces plans the simulation overrules a tick later. Indistinguishable from a bug at a glance.</li>
+  <li><b>Lexicographic, not weighted.</b> The moment life safety becomes a weighted term the rubric is gameable and the product's ethical claim evaporates. Keep it a cap.</li>
+  <li><b>Undo must ship with the button.</b> An instant fleet apply at 20× speed with no undo is a bad afternoon for a student who mis-taps.</li>
+  <li><b>Visible takeover is not optional</b> in a classroom product. Silent screen control is a trust and policy failure regardless of how well it is encrypted.</li>
+  <li><b>Repositioning must never mutate <code>ScenarioConfig</code>.</b> That object is the deterministic input a seed reproduces and the bytes the classroom broadcasts. Overrides only.</li>
+  <li><b>Fixed sites must not appear draggable.</b> A police rooftop does not move; an affordance that is present but disabled teaches the wrong mental model.</li>
+  <li><b>Never fork decision logic into a shell.</b> Sim, store and hook own everything; shells render. The parity matrix is what catches a violation.</li>
+  <li><b>Classroom leakage arrives quietly, through shared surfaces.</b> Not through an obvious import — through a <code>types/index.ts</code> union member, an after-action export field, or a "harmless" parity row. Each looks like a one-line convenience. Together they put the teaching edition inside the two operator editions. The isolation guard in §G is what makes the invariant survive contact with future work.</li>
+  <li><b>Do not let the fidelity principle be over-applied.</b> "Uniform simulation across builds" is about physics and determinism. It is not a licence to ship a grading rubric to an operator who has no instructor — an inversion this plan made in an earlier draft and has since corrected.</li>
+</ol>
+
+<!-- ============ J ============ -->
+<h2 id="sJ"><span class="num">J</span>Doctrine sources</h2>
+
+<div class="tbl"><table>
+<thead><tr><th>Anchor</th><th>Used for</th><th>Status in repo</th></tr></thead>
+<tbody>
+<tr><td>ICS / NIMS incident priority hierarchy — Life Safety → Incident Stabilization → Property Conservation</td><td>the lexicographic rubric spine (Track C)</td><td><span class="b b-new">new</span></td></tr>
+<tr><td>NASAR / USCG effective sweep width and probability of detection</td><td>coverage value term and Tier 1 scoring</td><td><span class="b b-ok">built</span> <code>sweepWidth.ts</code>, currently unwired</td></tr>
+<tr><td>NIST ASTM E54 response-robot test methods</td><td>the 0–100 scorable lane this module generalizes</td><td><span class="b b-info">planned</span> roadmap WP-9</td></tr>
+<tr><td>FAA Part 107 altitude ceiling</td><td>operator waypoint validation, 20–400 ft AGL band</td><td><span class="b b-ok">built</span> <code>operatorRoutes.ts</code></td></tr>
+<tr><td>Horizontal separation minima</td><td>launch pad spacing and intra-site fan</td><td><span class="b b-ok">built</span> <code>DeconflictEngine.H_SEP_M</code></td></tr>
+</tbody>
+</table></div>
+
+<footer>
+  Engineering plan v4 · design only, no code written · all file references verified against the working tree<br>
+  Simulation only — not for operational deployment.
+</footer>
+
+</main>
+</div>
+</div>
+</body>
+</html>

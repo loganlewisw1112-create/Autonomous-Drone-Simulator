@@ -1,0 +1,1061 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autonomous Drone Mission Simulator — Classroom Guide</title>
+<style>
+  :root{
+    --bg:#f3f1ec;
+    --surface:#ffffff;
+    --surface-2:#eae6dc;
+    --line:#d9d3c4;
+    --ink:#1c1917;
+    --ink-dim:#6b6459;
+    --accent:#9c5a14;
+    --accent-2:#25666e;
+    --crit:#a83e34;
+    --warn:#76661d;
+    --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", monospace;
+    --font-serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0d1113;
+      --surface:#171c1f;
+      --surface-2:#1f262a;
+      --line:#2c3439;
+      --ink:#eef1f0;
+      --ink-dim:#93a3a6;
+      --accent:#d98e3f;
+      --accent-2:#4fa3b0;
+      --crit:#dd7268;
+      --warn:#c2ad57;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1113; --surface:#171c1f; --surface-2:#1f262a; --line:#2c3439;
+    --ink:#eef1f0; --ink-dim:#93a3a6; --accent:#d98e3f; --accent-2:#4fa3b0;
+    --crit:#dd7268; --warn:#c2ad57;
+  }
+  :root[data-theme="light"]{
+    --bg:#f3f1ec; --surface:#ffffff; --surface-2:#eae6dc; --line:#d9d3c4;
+    --ink:#1c1917; --ink-dim:#6b6459; --accent:#9c5a14; --accent-2:#25666e;
+    --crit:#a83e34; --warn:#76661d;
+  }
+
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-serif);
+    line-height:1.6;
+    overflow-x:hidden;
+  }
+  .page{padding:2.5rem 1.25rem 4rem;}
+  .wrap{max-width:1020px;margin:0 auto;}
+
+  /* ---------- header ---------- */
+  .eyebrow{
+    font-family:var(--font-mono);
+    font-size:0.72rem;
+    letter-spacing:0.16em;
+    text-transform:uppercase;
+    color:var(--accent);
+    margin:0 0 0.6rem;
+  }
+  h1{
+    font-size:2.15rem;
+    font-weight:700;
+    margin:0 0 0.6rem;
+    text-wrap:balance;
+    letter-spacing:-0.01em;
+  }
+  .subhead{
+    color:var(--ink-dim);
+    font-size:1.05rem;
+    max-width:64ch;
+    margin:0 0 1.4rem;
+  }
+  .meta-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:0.5rem 1.4rem;
+    font-family:var(--font-mono);
+    font-size:0.76rem;
+    color:var(--ink-dim);
+    border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);
+    padding:0.7rem 0;
+    margin-bottom:2.2rem;
+  }
+  .meta-row b{color:var(--ink);font-weight:600;}
+
+  /* ---------- layout + TOC ---------- */
+  .layout{display:block;}
+  nav.toc{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:0.9rem 1.1rem;
+    margin-bottom:2.4rem;
+  }
+  nav.toc .toc-label{
+    font-family:var(--font-mono);
+    font-size:0.66rem;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+    display:block;
+    margin-bottom:0.5rem;
+  }
+  nav.toc ol{
+    list-style:none;
+    margin:0;
+    padding:0;
+    counter-reset:toc;
+    display:grid;
+    gap:0.3rem;
+    font-size:0.9rem;
+  }
+  nav.toc li{counter-increment:toc;padding-left:1.7rem;position:relative;}
+  nav.toc li::before{
+    content:counter(toc);
+    position:absolute;
+    left:0;
+    top:0.1rem;
+    font-family:var(--font-mono);
+    font-size:0.7rem;
+    color:var(--ink-dim);
+  }
+  nav.toc a{color:var(--ink);text-decoration:none;border-bottom:1px solid transparent;}
+  nav.toc a:hover{border-bottom-color:var(--accent);}
+
+  @media (min-width:1000px){
+    .layout{
+      display:grid;
+      grid-template-columns:216px minmax(0,1fr);
+      gap:3rem;
+      align-items:start;
+    }
+    nav.toc{
+      position:sticky;
+      top:1.5rem;
+      margin-bottom:0;
+      max-height:calc(100vh - 3rem);
+      overflow-y:auto;
+    }
+  }
+
+  /* ---------- sections ---------- */
+  section{margin-bottom:3rem;scroll-margin-top:1.5rem;}
+  section:last-of-type{margin-bottom:0;}
+  h2{
+    font-size:1.42rem;
+    font-weight:700;
+    margin:0 0 0.2rem;
+    text-wrap:balance;
+    letter-spacing:-0.01em;
+  }
+  h2 .num{
+    font-family:var(--font-mono);
+    font-size:0.78rem;
+    color:var(--accent);
+    letter-spacing:0.08em;
+    display:block;
+    margin-bottom:0.25rem;
+    font-weight:400;
+  }
+  h3{
+    font-size:1.02rem;
+    font-weight:700;
+    margin:1.6rem 0 0.4rem;
+  }
+  p{margin:0 0 0.85rem;max-width:72ch;}
+  ul,ol.steps{max-width:72ch;}
+  ul{margin:0 0 0.9rem;padding-left:1.15rem;}
+  li{margin-bottom:0.35rem;}
+  a{color:var(--accent-2);}
+  code{
+    font-family:var(--font-mono);
+    font-size:0.86em;
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    border-radius:2px;
+    padding:0.05em 0.32em;
+    word-break:break-word;
+  }
+  strong{font-weight:700;}
+
+  /* ---------- command blocks ---------- */
+  pre.cmd{
+    font-family:var(--font-mono);
+    font-size:0.82rem;
+    line-height:1.65;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-left:3px solid var(--accent-2);
+    border-radius:2px;
+    padding:0.75rem 0.9rem;
+    margin:0.6rem 0 1rem;
+    overflow-x:auto;
+    max-width:100%;
+    white-space:pre;
+    tab-size:2;
+  }
+  pre.cmd .c{color:var(--ink-dim);}
+
+  /* ---------- cards / callouts ---------- */
+  .card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:0.9rem 1.1rem;
+    margin:1rem 0;
+  }
+  .card > :last-child{margin-bottom:0;}
+  .card .card-title{
+    font-family:var(--font-mono);
+    font-size:0.68rem;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+    display:block;
+    margin-bottom:0.45rem;
+  }
+  .flag{border-left:3px solid var(--crit);}
+  .flag .card-title{color:var(--crit);}
+  .note{border-left:3px solid var(--accent-2);}
+  .note .card-title{color:var(--accent-2);}
+  .callout{
+    font-size:0.95rem;
+    color:var(--ink-dim);
+    border-left:2px solid var(--accent);
+    padding:0.15rem 0 0.15rem 0.85rem;
+    margin:0.9rem 0;
+    font-style:italic;
+    max-width:70ch;
+  }
+
+  /* ---------- tables ---------- */
+  .scroll{
+    overflow-x:auto;
+    max-width:100%;
+    border:1px solid var(--line);
+    border-radius:3px;
+    margin:1rem 0;
+    background:var(--surface);
+  }
+  table{
+    border-collapse:collapse;
+    width:100%;
+    min-width:32rem;
+    font-size:0.86rem;
+    font-family:var(--font-mono);
+  }
+  th,td{
+    text-align:left;
+    padding:0.5rem 0.75rem;
+    border-bottom:1px solid var(--line);
+    vertical-align:top;
+  }
+  th{
+    color:var(--ink-dim);
+    font-weight:600;
+    font-size:0.7rem;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    white-space:nowrap;
+  }
+  tr:last-child td{border-bottom:none;}
+  td.nowrap{white-space:nowrap;}
+
+  .pill{
+    font-family:var(--font-mono);
+    font-size:0.66rem;
+    letter-spacing:0.06em;
+    padding:0.12rem 0.45rem;
+    border-radius:2px;
+    border:1px solid;
+    white-space:nowrap;
+  }
+  .pill.crit{color:var(--crit);border-color:var(--crit);}
+  .pill.warn{color:var(--warn);border-color:var(--warn);}
+
+  /* ---------- steps ---------- */
+  ol.steps{
+    list-style:none;
+    counter-reset:step;
+    margin:1rem 0;
+    padding:0;
+  }
+  ol.steps > li{
+    counter-increment:step;
+    position:relative;
+    padding-left:2.1rem;
+    margin-bottom:0.9rem;
+  }
+  ol.steps > li::before{
+    content:counter(step);
+    position:absolute;
+    left:0;
+    top:0.05rem;
+    width:1.4rem;
+    height:1.4rem;
+    border-radius:50%;
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--accent);
+    font-family:var(--font-mono);
+    font-size:0.72rem;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  ol.steps > li > :last-child{margin-bottom:0;}
+
+  footer{
+    margin-top:3.5rem;
+    padding-top:1.2rem;
+    border-top:1px solid var(--line);
+    font-family:var(--font-mono);
+    font-size:0.72rem;
+    color:var(--ink-dim);
+    line-height:1.8;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="wrap">
+
+    <p class="eyebrow">Autonomous Drone Mission Simulator</p>
+    <h1>Classroom Guide</h1>
+    <p class="subhead">
+      The classroom build lets one instructor watch a room full of students fly the same
+      mission at the same time, live, on a local network. This guide covers two things: how
+      instructor access is actually controlled, and how to run a class from a cold laptop.
+      Everything in it was checked against the code in this repository.
+    </p>
+    <div class="meta-row">
+      <span>Repo: <b>04-autonomous-drone-mission-simulator</b></span>
+      <span>Applies to: <b>classroom build</b></span>
+      <span>Last updated: <b>2026-07-21</b></span>
+    </div>
+
+    <div class="layout">
+
+      <nav class="toc">
+        <span class="toc-label">Contents</span>
+        <ol>
+          <li><a href="#access">How access is controlled</a></li>
+          <li><a href="#crypto">What the encryption guarantees</a></li>
+          <li><a href="#licensing">If you want real licensing</a></li>
+          <li><a href="#setup">One-time setup</a></li>
+          <li><a href="#start">Starting a class</a></li>
+          <li><a href="#join">Students joining</a></li>
+          <li><a href="#running">Running the class</a></li>
+          <li><a href="#focus">Watching one student</a></li>
+          <li><a href="#after">After the class</a></li>
+          <li><a href="#limits">Limits</a></li>
+          <li><a href="#trouble">Troubleshooting</a></li>
+          <li><a href="#deploy">Deployment</a></li>
+          <li><a href="#edges">Known rough edges</a></li>
+        </ol>
+      </nav>
+
+      <main>
+
+        <!-- 1 -->
+        <section id="access">
+          <h2><span class="num">Section 1</span>How instructor access is controlled</h2>
+
+          <p>
+            Two things have to be true before anyone reaches the instructor console. Both are
+            checked in <code>src/main.tsx</code>, in <code>resolveRoot()</code>.
+          </p>
+
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr><th>Gate</th><th>What it is</th><th>Where</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="nowrap">Build flag</td>
+                  <td>The bundle must be compiled with <code>VITE_CLASSROOM_ENABLED=true</code>. Without it the whole classroom module is tree-shaken out of the build.</td>
+                  <td class="nowrap"><code>src/main.tsx</code><br><code>vite.config.ts</code></td>
+                </tr>
+                <tr>
+                  <td class="nowrap">URL parameter</td>
+                  <td>The address must carry <code>?coordinator=1</code> (instructor) or <code>?join=&lt;CODE&gt;</code> (student). Neither is present on a normal load.</td>
+                  <td class="nowrap"><code>src/main.tsx</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            The build flag is not a runtime toggle. It decides what code exists in the shipped
+            files. Verified by building both ways:
+          </p>
+
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr><th>Build</th><th>Classroom chunk</th><th>Any WebSocket code</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="nowrap"><code>vite build</code></td>
+                  <td>none emitted</td>
+                  <td>none anywhere in the output</td>
+                </tr>
+                <tr>
+                  <td class="nowrap"><code>vite build --mode classroom</code></td>
+                  <td><code>ClassroomEntry-*.js</code>, 50.63 kB (18.87 kB gzipped)</td>
+                  <td>only inside that one chunk</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            So the mobile and Windows builds cannot be talked into classroom mode. There is no
+            URL, no flag, and no console command that turns it on, because the code is not in
+            the file. A unit test keeps it that way
+            (<code>src/tests/classroomBundleGuard.spec.ts</code>).
+          </p>
+
+          <div class="card flag">
+            <span class="card-title">Say this accurately</span>
+            <p>
+              <strong>There is no account, login, licence key, or credential required to open the
+              instructor console.</strong> Anyone holding a classroom-enabled build who types
+              <code>?coordinator=1</code> is an instructor. <code>ClassSetup.tsx</code> and
+              <code>classroomClient.ts</code> contain no auth check of any kind.
+            </p>
+            <p>
+              The commercial gate is therefore <strong>who you hand a classroom-enabled build
+              to</strong>, not accounts you provision. That is a real gate — it is enforced at
+              build time and cannot be bypassed at runtime — but it is distribution control, not
+              account control. Do not describe it as per-instructor licensing.
+            </p>
+          </div>
+
+          <p>
+            Students need no credential either, and that is deliberate. The 6-character class
+            code is a room name, not a secret. Anyone on the same network who knows the code can
+            join as a student. Nobody, including the relay server, can read what a student does
+            without the instructor's key.
+          </p>
+        </section>
+
+        <!-- 2 -->
+        <section id="crypto">
+          <h2><span class="num">Section 2</span>What the encryption guarantees</h2>
+
+          <p>
+            This part is strong and can be stated confidently.
+          </p>
+
+          <ul>
+            <li>
+              <strong>End-to-end encryption.</strong> x25519 key agreement, HKDF-SHA-256 to
+              derive the session key, AES-256-GCM per message with a fresh IV
+              (<code>src/classroom/sessionCrypto.ts</code>).
+            </li>
+            <li>
+              <strong>The relay only sees ciphertext.</strong> It routes on the plaintext
+              envelope — message type, class code, student id — and forwards the sealed payload
+              untouched. It never parses or opens it. It cannot read a single student metric
+              (<code>server/classroom.mjs</code>).
+            </li>
+            <li>
+              <strong>The instructor's private key never leaves their browser.</strong> It is
+              generated in the tab, held in memory, and never sent anywhere. Nobody can recover
+              it for you, and there is no vendor-side copy. If that tab is lost, that class's
+              data is unrecoverable. This is inherent to real end-to-end encryption, not a
+              defect, and the class-creation screen says so on screen.
+            </li>
+            <li>
+              <strong>Re-binding a live class costs a token.</strong> When a class is created the
+              relay mints a 256-bit instructor token and gives it only to the creating socket.
+              Any later attempt to point that class at a different key must present the token,
+              compared in constant time. Someone on the network who overhears the six characters
+              read aloud cannot seize the room.
+            </li>
+            <li>
+              <strong>Live frames are never stored.</strong> Only the end-of-run submission is
+              written to disk, and it is written as ciphertext, under
+              <code>classroom-runs/&lt;classId&gt;/</code> on the instructor's own machine.
+            </li>
+            <li>
+              <strong>Replayed frames are rejected.</strong> Every sealed message carries a
+              counter inside the ciphertext, under the authentication tag. The instructor keeps a
+              high-water mark per student and drops anything that repeats or rewinds.
+            </li>
+          </ul>
+
+          <p class="callout">
+            The honest summary: the crypto is the real boundary, and it holds. The access gate in
+            front of it is distribution, not identity.
+          </p>
+        </section>
+
+        <!-- 3 -->
+        <section id="licensing">
+          <h2><span class="num">Section 3</span>If you want real per-instructor licensing</h2>
+          <div class="card">
+            <p>
+              This does not exist today. Nothing in the code identifies, counts, or expires an
+              instructor.
+            </p>
+            <p>
+              The option that fits this product is an offline signed activation key: an Ed25519
+              signature over the instructor's name and an expiry date, verified in the browser
+              against a public key embedded in the build, using the
+              <code>@noble/curves</code> dependency the project already ships. It needs no
+              server and no network call, so the offline and LAN-only posture survives intact.
+            </p>
+            <p>
+              Be clear about what it buys. A client-side check is honest friction — it stops
+              casual sharing and makes expiry real — not unbreakable DRM. Anyone willing to
+              patch a JavaScript bundle can remove it.
+            </p>
+          </div>
+        </section>
+
+        <!-- 4 -->
+        <section id="setup">
+          <h2><span class="num">Section 4</span>One-time setup</h2>
+
+          <p>
+            On the instructor's laptop only. Students install nothing — they use a browser.
+            You need Node 20 or newer.
+          </p>
+
+          <pre class="cmd">npm install</pre>
+
+          <p>Two commands run the classroom:</p>
+
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr><th>Command</th><th>What it does</th><th>When to use it</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="nowrap"><code>npm run classroom</code></td>
+                  <td>Builds the classroom bundle, then starts the relay server.</td>
+                  <td>First run of the day, and after any code change.</td>
+                </tr>
+                <tr>
+                  <td class="nowrap"><code>npm run classroom:relay</code></td>
+                  <td>Starts the relay against the bundle that is already built.</td>
+                  <td>Restarting the server between classes. Much faster.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            The relay serves the built app and relays messages on the same port, so students
+            only ever need one address.
+          </p>
+
+          <div class="card note">
+            <span class="card-title">Port</span>
+            <p>
+              Default is 8080. Override with an environment variable or a first argument; the
+              argument wins.
+            </p>
+            <pre class="cmd">node server/classroom.mjs 9000   <span class="c"># port as an argument</span>
+PORT=9000 npm run classroom:relay</pre>
+          </div>
+        </section>
+
+        <!-- 5 -->
+        <section id="start">
+          <h2><span class="num">Section 5</span>Starting a class</h2>
+
+          <ol class="steps">
+            <li>
+              <p>Run <code>npm run classroom</code>. On boot the relay prints its address once for
+              <code>localhost</code> and once for every non-internal IPv4 address on the machine:</p>
+              <pre class="cmd">Classroom relay on http://localhost:8080
+Classroom relay on http://192.168.1.24:8080</pre>
+              <p>The one that is not <code>localhost</code> is the address students need. If more
+              than one is printed, it is the one on the same network as the students' wifi.</p>
+            </li>
+            <li>
+              <p>Open the instructor console in a browser on that laptop:</p>
+              <pre class="cmd">http://192.168.1.24:8080/?coordinator=1</pre>
+            </li>
+            <li>
+              <p>Pick a scenario from the list. All 21 catalog scenarios are available.</p>
+            </li>
+            <li>
+              <p>Check the seed. It defaults to the scenario's own seed. <strong>Reroll</strong>
+              gives a random one. Whatever is showing when you create the class is what every
+              student flies, so all of them get byte-identical conditions — same weather, same
+              comms dropouts, same thermal contacts, same battery pressure. That is what makes
+              comparing their runs fair.</p>
+            </li>
+            <li>
+              <p>Press <strong>Create class</strong>. The console appears with a 6-character code
+              in the header, in large type. Read it aloud.</p>
+              <p>Codes use digits and consonants only — vowels are removed so a code can never
+              accidentally spell a word.</p>
+            </li>
+          </ol>
+
+          <div class="card flag">
+            <span class="card-title">Do not refresh this tab</span>
+            <p>
+              The instructor's private key exists only in that tab's memory and is never written
+              to storage. Refreshing or closing it ends the class for everyone and the key is
+              gone. Leave it open for the whole session.
+            </p>
+          </div>
+        </section>
+
+        <!-- 6 -->
+        <section id="join">
+          <h2><span class="num">Section 6</span>Students joining</h2>
+
+          <p>
+            Students must be on the same wifi as the instructor's laptop. They open:
+          </p>
+
+          <pre class="cmd">http://192.168.1.24:8080/?join=&lt;CODE&gt;</pre>
+
+          <p>
+            The code arrives prefilled. They type their name and press <strong>Join class</strong>.
+            If they mistyped the code they can correct it on that screen.
+          </p>
+
+          <p>
+            As soon as they join, the assigned mission loads and starts. Students do not pick a
+            scenario, run preflight, or plan launch bays — they land straight into the mission
+            the instructor published, already flying, with a small banner at the top of the
+            screen showing the class code. Their tile starts reporting immediately.
+          </p>
+
+          <div class="card flag">
+            <span class="card-title">Rough edge — you must give out the full address</span>
+            <p>
+              The console does not display a join URL or a QR code. It shows the code only, so
+              the instructor has to tell students the address as well — write it on the board
+              before class starts.
+            </p>
+            <p>
+              The plain base address does not work as a fallback. Opening
+              <code>http://192.168.1.24:8080/</code> with no parameter loads the ordinary
+              simulator, not the join screen. The <code>?join=</code> part is what reaches the
+              join screen at all.
+            </p>
+          </div>
+        </section>
+
+        <!-- 7 -->
+        <section id="running">
+          <h2><span class="num">Section 7</span>Running the class</h2>
+
+          <p>
+            The console is a wall of tiles, one per student, updating once a second. Each tile is
+            a small live map of that student's mission, not a video — the browser is drawing
+            their drone positions onto a shared picture of the scenario, so twenty tiles cost
+            almost nothing.
+          </p>
+
+          <h3>What each tile shows</h3>
+          <ul>
+            <li>The scenario backdrop, drawn once and shared by every tile: geofences in red,
+              search areas in cyan, planned routes in grey, launch and recovery sites as small
+              grey squares.</li>
+            <li>One dot per drone with a heading triangle. Green means flying, amber means
+              returning to base or recharging, red means emergency, stranded, or awaiting
+              recovery, grey means landed, idle, or recovered.</li>
+            <li>Below the map: the student's name, elapsed mission time as <code>T+mm:ss</code>,
+              the number of drones still active, and the lowest battery in their fleet — which
+              turns red under 20%.</li>
+            <li>A coloured border when something needs attention.</li>
+          </ul>
+
+          <p>
+            There is no status word on the tile. Status is carried by the border colour and the
+            drone colours.
+          </p>
+
+          <h3>Alerts</h3>
+          <p>
+            Nobody can watch twenty tiles at once, so the wall sorts itself. Any tile with an
+            alert moves to the top-left — critical first, then warning, then everyone else — and
+            the student's name appears as a coloured pill in the strip above the grid. Clicking
+            either the tile or the pill jumps straight to that student.
+          </p>
+
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr><th>Severity</th><th>Border</th><th>Raised by</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="nowrap"><span class="pill crit">CRIT</span></td>
+                  <td class="nowrap">red</td>
+                  <td>geofence breach · comms lost (signal at or below &minus;90&nbsp;dBm) · battery critical (under 10%) · emergency · airspace conflict · recovery needed (stranded, recovery requested, or recovery en route)</td>
+                </tr>
+                <tr>
+                  <td class="nowrap"><span class="pill warn">WARN</span></td>
+                  <td class="nowrap">amber</td>
+                  <td>comms degraded (signal at or below &minus;80&nbsp;dBm) · battery low (under 20%) · returning to base · stalled · idle · new thermal contact</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            A tile with any critical bit set is red, even if it also has warnings. The three
+            warning bits for stalled, idle, and new thermal contact are defined in the code but
+            are not raised by the current build — see <a href="#edges">known rough edges</a>.
+          </p>
+
+          <p>
+            Above 16 students the wall automatically switches to smaller tiles. There is no
+            layout control to set.
+          </p>
+
+          <h3>Header</h3>
+          <p>
+            The header carries the class code, the scenario name, the number of students joined,
+            a toggle between the results pane and the focus pane, and <strong>End class</strong>.
+            An amber <code>N rejected</code> badge appears if any message failed to decrypt or
+            repeated a sequence number; the usual cause is a student who joined a different class
+            code.
+          </p>
+        </section>
+
+        <!-- 8 -->
+        <section id="focus">
+          <h2><span class="num">Section 8</span>Watching one student</h2>
+
+          <p>
+            Click a tile. That student's browser starts a second, more detailed stream at roughly
+            three times a second, and the right-hand pane fills with:
+          </p>
+          <ul>
+            <li>a larger live map of their mission;</li>
+            <li>mission time, wind in knots, visibility in miles, and their thermal contact count;</li>
+            <li>a per-drone table: drone, mission state, altitude, battery, signal.</li>
+          </ul>
+
+          <p>
+            One student at a time. Clicking another tile switches the detailed stream to them and
+            stops the previous one. This is a deliberate design limit, not a setting: the extra
+            traffic never scales with class size.
+          </p>
+
+          <p>
+            Everyone else keeps streaming their once-a-second tile the whole time, including
+            students whose simulation is paused. A paused student still reports, which is usually
+            exactly when you want to know.
+          </p>
+        </section>
+
+        <!-- 9 -->
+        <section id="after">
+          <h2><span class="num">Section 9</span>After the class</h2>
+
+          <p>
+            When a student's mission ends, their run is encrypted and sent automatically. No
+            action from the student. Submissions appear in the results pane as they arrive.
+          </p>
+
+          <p>The comparison table holds one row per student:</p>
+
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr><th>Column</th><th>Meaning</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="nowrap">Student</td><td>the name they typed at join</td></tr>
+                <tr><td class="nowrap">Outcome</td><td>complete, ended, or a dash</td></tr>
+                <tr><td class="nowrap">Dur(s)</td><td>mission duration in seconds</td></tr>
+                <tr><td class="nowrap">WP</td><td>waypoints reached</td></tr>
+                <tr><td class="nowrap">Conflicts</td><td>airspace conflicts detected</td></tr>
+                <tr><td class="nowrap">Geofence</td><td>geofence breaches</td></tr>
+                <tr><td class="nowrap">RTB</td><td>return-to-base triggers</td></tr>
+                <tr><td class="nowrap">Thermal</td><td>thermal contacts</td></tr>
+                <tr><td class="nowrap">Recovery</td><td>recovery dispatches</td></tr>
+                <tr><td class="nowrap">MinBatt%</td><td>lowest battery any of their drones reached</td></tr>
+                <tr><td class="nowrap">Verified</td><td>whether that run's evidence hash chain verified</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            <strong>Export CSV</strong> downloads the table as
+            <code>class-&lt;CODE&gt;-results.csv</code>. Nothing is scored or graded — these are
+            the numbers the simulator already records.
+          </p>
+
+          <p>
+            The relay also writes an encrypted copy of each submission to
+            <code>classroom-runs/&lt;classId&gt;/</code> on the instructor's machine, as a
+            backup against a crashed browser tab. Those files are ciphertext and the app has no
+            way to import them back today.
+          </p>
+
+          <p>
+            If a student flies a second time in the same class, their newer run replaces the
+            older one in the table.
+          </p>
+        </section>
+
+        <!-- 10 -->
+        <section id="limits">
+          <h2><span class="num">Section 10</span>Limits</h2>
+
+          <p>
+            These come from <code>src/classroom/limits.json</code>, which the browser and the
+            server both read, so there is one set of numbers rather than two that can drift.
+          </p>
+
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr><th>Limit</th><th>Value</th><th>What happens at the limit</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="nowrap">Students per class</td>
+                  <td class="nowrap">40</td>
+                  <td>The next student is refused with "That class is full."</td>
+                </tr>
+                <tr>
+                  <td class="nowrap">Classes per relay</td>
+                  <td class="nowrap">8</td>
+                  <td>Creating a ninth is refused with "This relay is already hosting its maximum number of classes."</td>
+                </tr>
+                <tr>
+                  <td class="nowrap">Message size</td>
+                  <td class="nowrap">256 KB</td>
+                  <td>Anything larger is dropped by the relay without comment.</td>
+                </tr>
+                <tr>
+                  <td class="nowrap">Heartbeat timeout</td>
+                  <td class="nowrap">30 s</td>
+                  <td>The relay pings every 15 seconds and disconnects anything silent for the full 30.</td>
+                </tr>
+                <tr>
+                  <td class="nowrap">Class code</td>
+                  <td class="nowrap">6 characters</td>
+                  <td>Digits and consonants only, from a fixed 31-character alphabet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            Two more, set on the browser side: tiles update once a second, the focused student
+            about three times a second, and a student whose connection is backed up past 64 KB
+            skips a frame rather than queueing a stale one.
+          </p>
+        </section>
+
+        <!-- 11 -->
+        <section id="trouble">
+          <h2><span class="num">Section 11</span>Troubleshooting</h2>
+
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr><th>Symptom</th><th>Cause and fix</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Students cannot reach the address at all.</td>
+                  <td>
+                    Almost always the firewall on the instructor's laptop. Windows prompts to
+                    allow Node through on private networks the first time — if that prompt was
+                    dismissed, allow it in the firewall settings. Then check: everyone on the
+                    same wifi, not a guest network; students using the printed LAN address, not
+                    <code>localhost</code>; some guest and campus networks isolate clients from
+                    each other and will block this no matter what the laptop allows.
+                  </td>
+                </tr>
+                <tr>
+                  <td>"No class with that code is running."</td>
+                  <td>
+                    Wrong code, or the class was ended. Codes have no vowels — a reported "O" is
+                    a zero, and there is no I, A, E, or U. Read the header code again.
+                  </td>
+                </tr>
+                <tr>
+                  <td>"That class is full."</td>
+                  <td>40 students are already in. Start a second class on the same relay.</td>
+                </tr>
+                <tr>
+                  <td>"This relay is already hosting its maximum number of classes."</td>
+                  <td>
+                    Eight classes are live on that server. End one, or restart the relay with
+                    <code>npm run classroom:relay</code> — that clears all class state, which
+                    also ends every class it was hosting.
+                  </td>
+                </tr>
+                <tr>
+                  <td>"That code is already running on this relay."</td>
+                  <td>A code collision with a live class. Press Reroll and create again.</td>
+                </tr>
+                <tr>
+                  <td>The instructor refreshed or closed the console tab.</td>
+                  <td>
+                    The class is over. The key lived only in that tab and cannot be recovered.
+                    Students see "Class ended". Create a new class and read out the new code.
+                  </td>
+                </tr>
+                <tr>
+                  <td>The instructor's wifi dropped for a few seconds.</td>
+                  <td>
+                    If the tab stayed open, it retries for about 20 seconds and comes back under
+                    the same code with the same key. Students will have been told the class
+                    closed, so have them reload and join again with that same code.
+                  </td>
+                </tr>
+                <tr>
+                  <td>An amber <code>N rejected</code> badge in the header.</td>
+                  <td>
+                    Messages arrived that would not decrypt, or repeated a sequence number.
+                    Normally a student who joined a different class code. Hover the badge for the
+                    breakdown.
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>?coordinator=1</code> loads the ordinary simulator instead of the console.</td>
+                  <td>
+                    The relay is serving a bundle built without the classroom flag — usually
+                    because a plain <code>npm run build</code> ran after the classroom build. Run
+                    <code>npm run classroom</code> to rebuild and restart.
+                  </td>
+                </tr>
+                <tr>
+                  <td>A student's tile is blank or frozen.</td>
+                  <td>
+                    Their browser has stopped sending. Have them reload the join URL and rejoin.
+                    They keep their name; their earlier run is not lost unless it never finished.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- 12 -->
+        <section id="deploy">
+          <h2><span class="num">Section 12</span>Deployment</h2>
+
+          <p>
+            Three builds come off this one codebase, distinguished only by environment variables
+            set per Vercel project:
+          </p>
+
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr><th>Build</th><th>Environment</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="nowrap">Mobile</td><td><code>VITE_APP_TARGET=mobile</code></td></tr>
+                <tr><td class="nowrap">Windows</td><td><code>VITE_APP_TARGET=windows</code></td></tr>
+                <tr><td class="nowrap">Classroom</td><td><code>VITE_CLASSROOM_ENABLED=true</code>, with <code>VITE_APP_TARGET</code> left unset so phone students get the mobile shell and the instructor gets the desktop console automatically</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card flag">
+            <span class="card-title">Vercel cannot host the relay</span>
+            <p>
+              The classroom client can be hosted on Vercel. The relay cannot. It is a long-lived
+              WebSocket server that holds every class's state in memory for the duration of the
+              class, and Vercel is serverless — there is no process to hold that state.
+            </p>
+            <p>
+              So the hosted copy exists to show the interface. Real classes run on the local
+              network from <code>npm run classroom</code>. This is settled.
+            </p>
+          </div>
+
+          <p>
+            Running on the LAN is also why the classroom works over plain HTTP with no
+            certificates: the encryption is implemented without the browser API that would demand
+            a secure context. Nothing has to leave the building.
+          </p>
+        </section>
+
+        <!-- 13 -->
+        <section id="edges">
+          <h2><span class="num">Section 13</span>Known rough edges</h2>
+
+          <p>Things that will be noticed in a first class, stated plainly.</p>
+
+          <ul>
+            <li>
+              <strong>No join URL or QR code on screen.</strong> The console shows the code only.
+              The instructor has to supply the address separately.
+            </li>
+            <li>
+              <strong>The instructor tab cannot be refreshed.</strong> The key is not persisted,
+              so a reload ends the class. There is no resume.
+            </li>
+            <li>
+              <strong>The "Graded (lock seed)" checkbox does nothing yet.</strong> The seed shown
+              at creation is sent to every student either way. The checkbox does not change what
+              is published.
+            </li>
+            <li>
+              <strong>Only scenario and seed are selectable.</strong> The class always runs at
+              daytime, summer, with the weather, comms, thermal, battery, and terrain dials at
+              zero. The deeper variant settings exist in the simulator but are not exposed on the
+              class setup screen.
+            </li>
+            <li>
+              <strong>Three alert types never fire.</strong> Stalled, idle, and new thermal
+              contact are defined and unit-tested, but the live publisher does not currently
+              raise them. Everything else in the alert table works.
+            </li>
+            <li>
+              <strong>No mission authoring from the console.</strong> The class configuration
+              format supports a custom-authored mission, but the setup screen offers the catalog
+              only.
+            </li>
+            <li>
+              <strong>Encrypted run backups cannot be re-imported.</strong> The relay writes them;
+              nothing reads them back.
+            </li>
+            <li>
+              <strong>No instructor notes or rubric scoring.</strong> The results table reports
+              simulator metrics only.
+            </li>
+          </ul>
+        </section>
+
+        <footer>
+          Autonomous Drone Mission Simulator — classroom build.<br>
+          Every command, path, limit, and URL pattern in this guide was checked against the
+          source in this repository. Access model: <code>src/main.tsx</code>,
+          <code>src/components/classroom/</code>, <code>src/classroom/</code>,
+          <code>server/classroom.mjs</code>. Limits: <code>src/classroom/limits.json</code>.<br>
+          Last updated 2026-07-21.
+        </footer>
+
+      </main>
+    </div>
+  </div>
+</div>
+</body>
+</html>
