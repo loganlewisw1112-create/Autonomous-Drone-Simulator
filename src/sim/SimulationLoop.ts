@@ -30,6 +30,7 @@ import {
   type NistLaneDefinition,
 } from '@/sim/mission/laneScoring'
 import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
+import { exceedsGustLimit, gustAtTick } from '@/sim/weather/dryden'
 import { tickGroundUnit, computeGroundUnitEta } from '@/sim/mission/groundUnits'
 import { tickRecoveryTeam, tickRecoveryExtraction, needsRecovery, recoveryTransitionState, createRecoveryTeam } from '@/sim/mission/recoveryManager'
 import { bearingDeg, haversineDistanceM } from '@/utils/geometry'
@@ -45,6 +46,7 @@ const LANE_CHECK_INTERVAL = 5
 /** Largest feature's acuity range — nothing is resolvable beyond it. */
 const LANE_MAX_FEATURE_RANGE_M = Math.max(...featureRangesM())
 const FT_TO_M = 0.3048
+const KTS_TO_MS = 0.514444
 const FIXED_DT = 0.05
 const TELEMETRY_SAMPLE_INTERVAL = 10
 const TICK_INTERVAL_MS = 50
@@ -59,6 +61,13 @@ const NON_INSPECTABLE_STATES = new Set<DroneState['missionState']>([
 // terminal grounded state. `launchTimeSec` is stamped on the first 'launch' transition and
 // never cleared mid-mission, so it distinguishes "landed after flying" from "never launched".
 const TERMINAL_GROUNDED_STATES = new Set<DroneState['missionState']>(['landed', 'recovered', 'unrecoverable_sim'])
+
+/** States a gust-limit abort must not disturb: already grounded, already recovering, or
+ *  already on the way home. Re-aborting an aircraft that is complying is noise. */
+const GUST_ABORT_EXEMPT_STATES = new Set<DroneState['missionState']>([
+  'idle', 'preflight', 'landed', 'recharge', 'return_to_base', 'emergency', 'remote_landed',
+  'stranded', 'recovery_requested', 'recovery_enroute', 'recovered', 'unrecoverable_sim',
+])
 
 function isMissionComplete(drones: DroneState[]): boolean {
   if (drones.length === 0) return false
@@ -215,6 +224,21 @@ export function tick() {
             { ...cmd, batteryDrainRatePerSec },
             FIXED_DT,
             platformForDrone(scenario, drone.id),
+            // WP-10/WP-11: the Dryden gust this aircraft is fighting right now, and the ambient
+            // temperature the discharge curve derates against. `gustAtTick` is pure in the tick
+            // index, so sub-stepping and replay reproduce it exactly.
+            {
+              tempC: (weatherState.tempF - 32) * 5 / 9,
+              windMs: weatherState.windKts * KTS_TO_MS,
+              gustMs: gustAtTick(
+                scenario.seed,
+                drone.id,
+                currentTick,
+                weatherState.gustKts * KTS_TO_MS,
+                drone.altitudeFt,
+              ),
+              drainMultiplier: weatherState.batteryDrainMultiplier,
+            },
           )
 
       // Emit chain-of-custody events for significant transitions
@@ -609,6 +633,36 @@ export function tick() {
           }
         }
       }
+    }
+
+    // ── WP-10: gust-limit abort ────────────────────────────────────────────────
+    //
+    // The airframe feels sustained wind plus the instantaneous Dryden gust. Exceeding the
+    // platform's PUBLISHED gust tolerance (WP-1) is a real abort condition, and this is the
+    // coupling that makes turbulence matter to an operator who never touches the sticks: the
+    // aircraft that has to come home is decided by the airframe's own limit, not by a scripted
+    // weather event. Aircraft already heading home or on the ground are left alone.
+    for (let i = 0; i < finalDrones.length; i += 1) {
+      const drone = finalDrones[i]
+      if (GUST_ABORT_EXEMPT_STATES.has(drone.missionState)) continue
+      const platform = platformForDrone(scenario, drone.id)
+      const gustMs = drone.gustMs ?? 0
+      if (!exceedsGustLimit(weatherState.windKts * KTS_TO_MS, gustMs, platform.gustToleranceMs)) continue
+
+      finalDrones[i] = { ...drone, missionState: 'return_to_base', weatherDivertFlag: true }
+      useDroneStore.getState().emitEvent({
+        eventType: 'weather_divert',
+        droneId: drone.id,
+        tick: currentTick,
+        payload: {
+          reason: 'gust_limit',
+          from: drone.missionState,
+          gustMs: Math.round(gustMs * 10) / 10,
+          sustainedWindMs: Math.round(weatherState.windKts * KTS_TO_MS * 10) / 10,
+          gustToleranceMs: platform.gustToleranceMs,
+          platform: platform.id,
+        },
+      })
     }
 
     // ── NIST lane: feature identification (WP-9) ───────────────────────────────

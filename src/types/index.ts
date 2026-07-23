@@ -90,6 +90,13 @@ export interface DroneState {
   linkLatencyMs?: number
   linkViaRelayId?: string | null  // aircraft carrying the hop, or null when direct to the GCS
   linkLos?: boolean             // false when terrain/structures block the path (NLOS penalty applied)
+
+  // ─── Battery + turbulence (REALISM_ROADMAP WP-10 / WP-11) ──────────────────
+  // Present only once the loop supplies a FlightEnvironment; absent means the legacy linear
+  // drain is running and there is no modelled voltage to report.
+  cellVoltageV?: number         // per-cell terminal voltage under load
+  packVoltageV?: number
+  gustMs?: number               // instantaneous Dryden gust the airframe is fighting
 }
 
 /** WP-7 receiver fix state. Mirrors `src/sim/nav/gnss.ts`, declared here to keep types leaf-level. */
