@@ -7,7 +7,9 @@ import { PerfMonitor } from '@/components/PerfMonitor'
 import { MissionStatusFeed } from '@/components/MissionStatusFeed'
 import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
 import { buildAirspaceCeilingFeatures, buildConflictFeatures, buildIrFootprintFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
+import { addScenarioBuildingLayer, removeScenarioBuildingLayer } from '@/components/scenarioBuildingLayers.target'
 import { airspaceCeilingCaption, airspaceForScenario } from '@/sim/mission/airspace'
+import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
 import { buildAirspaceReservationFeatures, buildExternalTrafficFeatures, buildUtmAirspaceState, utmAirspaceStateEquals } from '@/sim/demo/utmEngine'
 import { useDeviceMode, type DeviceMode } from '@/hooks/useDeviceMode'
 import { buildAppendedWaypoint, canAppend, routeWithoutWaypoint } from '@/components/mapRouteEditing'
@@ -482,9 +484,16 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       style: forceLocalMapStyle ? LOCAL_DEMO_MAP_STYLE : MAP_STYLE,
       center: [-122.4862, 37.7695],
       zoom: 15,
-      // OSM/ODbL requires visible attribution on published maps; compact keeps it
-      // out of the way of the tactical HUD. OpenFreeMap credit added explicitly.
-      attributionControl: { compact: true, customAttribution: '© OpenFreeMap' },
+      // OSM/ODbL and Overture's data licence both require visible attribution on published
+      // maps. Compact mode keeps all three credits out of the tactical HUD.
+      attributionControl: {
+        compact: true,
+        customAttribution: [
+          '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>',
+          '<a href="https://overturemaps.org/">Buildings © Overture Maps Foundation</a>',
+          '© OpenFreeMap',
+        ],
+      },
     })
 
     // Idempotent: adds all permanent overlay sources/layers; safe to call after style switch
@@ -726,10 +735,11 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     if (!map || !scenario) return
 
     const setup = () => {
+      removeScenarioBuildingLayer(map, latestDeviceModeRef.current)
       ;['waypoints-circle', 'route-line', 'operational-point-circle', 'operational-point-label', 'search-area-fill', 'search-area-outline', 'sar-grid-lines'].forEach(
         (id) => { if (map.getLayer(id)) map.removeLayer(id) }
       )
-      ;['waypoints', 'route', 'operational-points', 'search-area', 'sar-grid'].forEach(
+      ;['waypoints', 'route', 'operational-points', 'search-area', 'sar-grid', 'scenario-buildings'].forEach(
         (id) => { if (map.getSource(id)) map.removeSource(id) }
       )
       let gi = 0
@@ -905,6 +915,32 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     if (mapStyleLoadedRef.current) setup()
     else map.once('load', setup)
   }, [scenario])
+
+  // WP-4 building rendering is a view-only concern. A scenario swap replaces the frozen
+  // GeoJSON source; rotating a phone or resizing desktop replaces only this layer and never
+  // rebuilds the simulation or any other scenario overlay.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady || !mapStyleLoadedRef.current) return
+
+    removeScenarioBuildingLayer(map, deviceMode)
+
+    const fixture = scenario ? buildingFixtureFor(scenario.id) : undefined
+    if (!fixture) {
+      if (map.getSource('scenario-buildings')) map.removeSource('scenario-buildings')
+      return
+    }
+
+    const data = fixture as unknown as GeoJSON.FeatureCollection
+    const source = map.getSource('scenario-buildings') as maplibregl.GeoJSONSource | undefined
+    if (source) source.setData(data)
+    else map.addSource('scenario-buildings', { type: 'geojson', data })
+
+    // Always place physical context under tactical overlays. The permanent thermal layer is
+    // registered first, so inserting before it also keeps routes, geofences and alerts legible.
+    const beforeId = map.getLayer('thermal-circle') ? 'thermal-circle' : undefined
+    addScenarioBuildingLayer(map, deviceMode, beforeId)
+  }, [deviceMode, mapReady, scenario])
 
   // ── Effect 2a: Launch/recovery site markers and reposition affordances ────
   useEffect(() => {

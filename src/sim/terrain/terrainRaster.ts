@@ -507,14 +507,43 @@ function base64Lookup(): Int8Array {
  * That is the property `src/tests/occlusionService.spec.ts` asserts directly; a cache that
  * merely "usually" matches would be a determinism bug, not an optimisation.
  */
-const RASTER_CACHE = new Map<string, TerrainRaster>()
+interface CachedRaster {
+  headerSignature: string
+  raster: TerrainRaster
+}
+
+const RASTER_CACHE = new Map<string, CachedRaster>()
+
+function terrainHeaderSignature(header: TerrainHeader): string {
+  const b = header.bounds
+  return [
+    header.format,
+    header.width,
+    header.height,
+    b.west,
+    b.south,
+    b.east,
+    b.north,
+    header.metersPerPixel,
+    header.surface,
+    header.elevationRangeM.min,
+    header.elevationRangeM.max,
+    header.verticalQuantumM ?? '',
+  ].join('|')
+}
 
 /** Decode (or return the cached decode of) a Terrarium fixture. */
 export function loadTerrainRaster(payload: string, header: TerrainHeader): TerrainRaster {
+  const headerSignature = terrainHeaderSignature(header)
   const cached = RASTER_CACHE.get(payload)
-  if (cached) return cached
+  if (cached) {
+    if (cached.headerSignature !== headerSignature) {
+      throw new Error('terrain fixture payload was reused with a different geo header')
+    }
+    return cached.raster
+  }
   const raster = decodeTerrariumPng(base64ToBytes(payload), header)
-  RASTER_CACHE.set(payload, raster)
+  RASTER_CACHE.set(payload, { headerSignature, raster })
   return raster
 }
 

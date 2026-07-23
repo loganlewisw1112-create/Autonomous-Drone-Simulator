@@ -71,6 +71,12 @@ export interface StructureLayer {
   topAt(lat: number, lng: number): number | null
   /** Highest structure top anywhere in the layer, m MSL — bounds the sky-visibility march. */
   maxTopM: number
+  /** Exact footprint/ray intersection. Prevents narrow structures falling between terrain samples. */
+  intersectRay?(a: Point3D, b: Point3D): {
+    clear: boolean
+    blocker: { blockedAt: LatLng; topMslM: number; clearanceM: number } | null
+    clearanceM: number
+  }
 }
 
 export interface OcclusionOptions {
@@ -203,6 +209,20 @@ export function createTerrainOcclusionService(
         worstLng = lng
         worstSurface = surface
         worstIsStructure = isStructure
+      }
+    }
+
+    // Terrain is sampled at DEM resolution, but buildings use exact footprint crossings.
+    // A narrow footprint can lie wholly between two DEM samples, so topAt sampling alone is
+    // insufficient even though it remains useful for endpoint and surface-height queries.
+    const structureRay = structures?.intersectRay?.(p, q)
+    if (structureRay && structureRay.clearanceM < minClearance) {
+      minClearance = structureRay.clearanceM
+      if (structureRay.blocker) {
+        worstLat = structureRay.blocker.blockedAt.lat
+        worstLng = structureRay.blocker.blockedAt.lng
+        worstSurface = structureRay.blocker.topMslM
+        worstIsStructure = true
       }
     }
 
