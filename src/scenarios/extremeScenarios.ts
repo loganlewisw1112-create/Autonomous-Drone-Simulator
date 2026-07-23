@@ -262,6 +262,8 @@ export const uscgCapeCodeSAR: ScenarioConfig = {
 // ── 5. USSS JOTSC — Presidential Visit San Francisco ──────────────────────
 export const usssPresidentialSF: ScenarioConfig = {
   id: 'extreme_usss_presidential_sf',
+  // WP-8 §18.4: Moscone/Union Square/Nob Hill is dense-urban SF core.
+  rfClutter: 'dense_urban',
   name: 'USSS — Presidential Visit SF Advance Sweep',
   description: 'USSS JOTSC deploys five drone platforms for a presidential site advance at Moscone Center. Drones sweep: Moscone exterior/docks, motorcade route on 3rd to Market, Union Square and Westin perimeter, Powell Street BART plaza, Nob Hill hotel exterior. Single-sortie advance sweep before POTUS motorcade. SIMULATION ONLY.',
   seed: 20005,
@@ -584,6 +586,8 @@ export const lapdSkidRowWelfare: ScenarioConfig = {
 // ── 10. NYPD Aviation — Times Square MCI ──────────────────────────────────
 export const nypdTimesSqMCI: ScenarioConfig = {
   id: 'extreme_nypd_times_sq_mci',
+  // WP-8 §18.4: Times Square is the canonical dense-urban case.
+  rfClutter: 'dense_urban',
   name: 'NYPD Aviation — Times Square MCI',
   description: 'NYPD Aviation Unit deploys five drones for a mass casualty incident at Times Square, coordinating with FDNY EMS and ESU. Sectors: Broadway/7th Ave incident zone, 47th–49th St crowd flow, 42nd–45th St/Port Authority, TKTS elevated overwatch, comms relay. Two sorties for secondary search of surrounding blocks. SIMULATION ONLY.',
   seed: 20010,
