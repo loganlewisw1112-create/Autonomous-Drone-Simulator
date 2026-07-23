@@ -2,11 +2,11 @@
 
 **Autonomous Drone Mission Simulator · 22 July 2026**
 
-**Execution update:** WP-4 through WP-9 are complete — **all of Tranche C**. Terrain/building
-occlusion, AGL/MSL conversion, route/live surface safety, target-specific thermal physics, the
-desktop/mobile rendering split, SAR probability of detection, GNSS occlusion → DOP → reported
-position error, the RF link budget, and NIST standard test-method lanes are wired and covered by
-artifact-level CI.
+**Execution update:** WP-1 through WP-11 are complete — **all of Tranches A, B, C and D**.
+Terrain/building occlusion, AGL/MSL conversion, route/live surface safety, target-specific thermal
+physics, the desktop/mobile rendering split, SAR probability of detection, GNSS occlusion → DOP →
+reported position error, the RF link budget, NIST standard test-method lanes, Dryden turbulence and
+the LiPo discharge curve are all wired live and covered by artifact-level CI.
 
 WP-6 retired the fabricated "TIME SAVED"-class KPI problem in the search metric. WP-7 closes what
 the Damman article names as the largest remaining gap — **GPS degradation is now simulated rather
@@ -20,10 +20,10 @@ WP-4/5/6/7 are scoped to the pinned `demo_wildfire` fixture (it is the AO carryi
 buildings and a constellation, and which the obstructed lane reuses); WP-8 applies catalog-wide,
 since clutter class derives from each scenario's existing weather location tag.
 
-**Tranche C is complete.** What remains is Tranche D polish — **WP-10** (Dryden turbulence) and
-**WP-11** (battery discharge), both already shipped as pure tested modules and needing only
-determinism-sensitive live wiring — plus **WP-12**, still blocked on authenticated air-traffic
-data. §22 points 1-6 now hold; points 7 and 8 remain protected.
+**Tranches C and D are complete.** WP-10 and WP-11 are now wired live, which was the
+determinism-sensitive step held back deliberately. The only package left is **WP-12**, still
+blocked on authenticated air-traffic data. §22 points 1-6 hold; points 7 and 8 remain protected
+and green.
 
 Applies to **all three builds**: Mobile, Windows, Coordinator/classroom.
 Grounded in 16 external research passes and cross-referenced against the codebase
@@ -869,7 +869,34 @@ lane measurably harder purely because of terrain.
 
 ---
 
-## WP-10 · Dryden turbulence and wind gradient `[Tranche D]` `[needs WP-2]` — **MODULE DONE**
+## WP-10 · Dryden turbulence and wind gradient `[Tranche D]` `[needs WP-2]` — **DONE + LIVE**
+
+**Status:** live. Gusts feed battery burn and a per-airframe gust-limit abort.
+
+**⚠ The determinism hazard, and how it was solved.** `drydenSeries` is an AR(1) recursion driven
+by a stateful PRNG. Stepping it once per tick inside the loop would have put **persistent RNG
+state in the simulation kernel** — precisely what §3 forbids, because sub-stepping and replay
+consume draws in a different order and diverge. This was the single most dangerous wiring in the
+roadmap.
+
+The fix makes the gust a **pure function of tick index**: a NORMALISED series (σ=1, nominal
+correlation) is generated once per (seed, aircraft) and memoised, then scaled per tick by the live
+σ from `lowAltitudeDryden`. The *shape* (Dryden spectrum, correlation structure) comes from the
+cached series; the *intensity* tracks altitude and wind live. `gustAtTick` returns the same value
+however that tick was reached, and a cold cache reproduces a warm one bit-for-bit.
+
+**Stated simplification.** The correlation time L/V varies with airspeed and altitude in the full
+model; the cached shape fixes it at nominal cruise. Intensity — which is what the couplings
+actually respond to — stays fully live. Buying exact time-varying correlation would cost the
+determinism guarantee, which is worth far more than the second-order spectral detail.
+
+**Couplings wired** (the roadmap's own instruction to model the couplings, not the ride quality):
+battery burn via `flightLoadFactor`, and a `weather_divert` abort when sustained wind + gust
+exceeds the airframe's **published** gust tolerance (WP-1).
+
+**Original WP-10 target below (unchanged).**
+
+## WP-10 · Dryden turbulence and wind gradient — original target
 
 **Status:** the seeded gust generator ships as pure, tested functions in `src/sim/weather/dryden.ts`
 (`drydenCoefficients`, `drydenSeries`, `lowAltitudeDryden`, `exceedsGustLimit`) — deterministic
@@ -909,7 +936,29 @@ approximates the Dryden spectrum.
 
 ---
 
-## WP-11 · Battery discharge curve `[Tranche D]` `[independent]` — **MODULE DONE**
+## WP-11 · Battery discharge curve `[Tranche D]` `[independent]` — **DONE + LIVE**
+
+**Status:** live. `stepDrone` takes an optional `FlightEnvironment`; supplying it swaps the linear
+drain for the sourced discharge model. Omitting it preserves the previous behaviour exactly, which
+is why the whole catalog did not need re-tuning.
+
+Drain is now derived from modelled endurance: the published figure, derated for temperature, divided
+by a live load factor that rises with airspeed and with the work of holding station against wind and
+gusts — which is how WP-10 reaches an operator who never touches the sticks. Aircraft report
+`cellVoltageV` / `packVoltageV` / `gustMs`.
+
+**⚠ A constant was wrong and the test caught it.** The reserve was first set at 3.5 V/cell loaded,
+which crosses at ~20% SoC — *later* than the existing linear 25% gate, the exact opposite of the
+accept criterion. It is now **3.6 V/cell loaded**, crossing at ~37% SoC: below that the pack is into
+the knee, where remaining energy collapses far faster than the percentage suggests, and the aircraft
+still has to fly home and descend.
+
+**Measured:** every platform's modelled endurance reproduces its published figure to **<5%** at
+20 °C in still air; −10 °C cuts endurance to under 85% of the 20 °C figure.
+
+**Original WP-11 target below (unchanged).**
+
+## WP-11 · Battery discharge curve — original target
 
 **Status:** the discharge model ships as pure, tested functions in `src/sim/drone/battery.ts`
 (`ocvFromSoc` with the low-SoC knee, `terminalVoltage`, `capacityTempMultiplier`, `enduranceMinutes`,
