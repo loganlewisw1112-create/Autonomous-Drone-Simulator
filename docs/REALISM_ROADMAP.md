@@ -2,11 +2,13 @@
 
 **Autonomous Drone Mission Simulator · 22 July 2026**
 
-**Execution update:** WP-4 and WP-5 are complete for the pinned `demo_wildfire` realism
+**Execution update:** WP-4, WP-5 and WP-6 are complete for the pinned `demo_wildfire` realism
 fixture. Terrain/building occlusion, AGL/MSL conversion, route/live surface safety, target-
-specific thermal physics, and the desktop/mobile rendering split are wired and covered by
-artifact-level CI. The next dependency-ordered package is WP-6 POD reporting, followed by
-WP-7 GNSS geometry and WP-8 RF propagation.
+specific thermal physics, the desktop/mobile rendering split, and SAR probability of detection
+are wired and covered by artifact-level CI. WP-6 also retires the fabricated "TIME SAVED"-class
+KPI problem in the search metric: the READY tab now reports POD, and the old route figure is
+labelled route progress rather than coverage. The next dependency-ordered package is
+**WP-7 GNSS geometry**, followed by WP-8 RF propagation and WP-9 NIST lanes.
 
 Applies to **all three builds**: Mobile, Windows, Coordinator/classroom.
 Grounded in 16 external research passes and cross-referenced against the codebase
@@ -48,14 +50,17 @@ formats and byte budgets closed.
 | WP-3/4 | **DONE for the first realism AO** | `demo_wildfire` carries pinned terrain and Overture buildings, exact LOS, surface safety, provenance and fixture-budget enforcement. |
 | WP-7/8/9 | **UNBLOCKED** | WP-4's live occlusion service is available; these are now implementation work rather than dependency blockers. |
 | WP-12 | **BLOCKED** | OpenSky still needs authenticated access or an approved alternative source. |
-| WP-6/10/11 | **MODULE DONE** | Pure, tested, deterministic modules shipped: `sensors/sweepWidth.ts` (POD), `weather/dryden.ts` (turbulence), `drone/battery.ts` (discharge curve). Change no live behaviour yet — live wiring into the loop is the deferred, determinism-sensitive step (WP-5 pattern). |
+| WP-6 SAR POD | **DONE + LIVE** | `sensors/podReporting.ts` closes R_d → W → coverage → POD against the live WP-5 range and reports per-sector + cumulative POD on the READY tab. Derived from `positionHistory`; no sim-tick change, no new kernel state. Removed the fabricated 60 m radius fallback the old sector objective used. |
+| WP-10/11 | **MODULE DONE** | Pure, tested, deterministic modules shipped: `weather/dryden.ts` (turbulence), `drone/battery.ts` (discharge curve). Change no live behaviour yet — live wiring into the loop is the deferred, determinism-sensitive step (WP-5 pattern). |
 | Coordinator consumer for WP-9 | **LANDED** | Classroom build ships; a NIST-scored lane now has a comparison table to report into. |
 
-**The offline frontier WP-6/10/11 now exists as tested math.** They need no fixtures. Each shipped
-as a pure module with its own spec (the WP-5 pattern) so the 480→501 suite stays green and the sim
+**The offline frontier WP-10/11 exists as tested math.** They need no fixtures. Each shipped
+as a pure module with its own spec (the WP-5 pattern) so the suite stays green and the sim
 tick's determinism is untouched. What remains for each is the *live wiring* — swapping the linear
-battery drain, injecting Dryden gusts into the loop, and reporting POD on the READY tab — each a
-deliberate, separately-verified step because it touches deterministic behaviour.
+battery drain and injecting Dryden gusts into the loop — each a deliberate, separately-verified
+step because it touches deterministic behaviour. **WP-6 has since completed that step**: POD is
+reported on the READY tab as a derived read-model over `positionHistory`, which needed no sim-tick
+change at all (see WP-6 below).
 
 ---
 
@@ -489,13 +494,37 @@ a fog case asserting LWIR degrades to 50–70 % rather than to zero.
 
 ---
 
-## WP-6 · SAR sweep width and POD `[Tranche C]` `[needs WP-5]` — **MODULE DONE**
+## WP-6 · SAR sweep width and POD `[Tranche C]` `[needs WP-5]` — **DONE + LIVE**
 
-**Status:** the R_d → W → coverage → POD math ships as pure, tested functions in
-`src/sim/sensors/sweepWidth.ts` (`sweepWidthM`, `coverage`, `podFromCoverage`,
-`probabilityOfDetection`, `cumulativePod`). Anchor reproduces: 10 km track, W=164.5 m, 1 km² →
-coverage 1.645 → POD ≈ 0.807. Remaining: feed it a real R_d from WP-5 and surface per-sector +
-cumulative POD on the READY tab. Rest of this section is the unchanged target.
+**Status:** complete. The R_d → W → coverage → POD chain is closed end to end and reported.
+
+- `src/sim/sensors/sweepWidth.ts` holds the maths (unchanged). Anchor still reproduces: 10 km
+  track, W = 164.5 m, 1 km² → coverage 1.645 → POD ≈ 0.807.
+- `src/sim/sensors/podReporting.ts` (new) is the read-model: it takes the **live WP-5 detection
+  range** — `effectiveDetectionRangeM`, the same function the thermal gate calls, so reported POD
+  and actual detection cannot drift — measures per-drone track length inside the search polygon,
+  scales it by the fraction of the swept swath with clear terrain/building LOS, and returns
+  per-sweep and cumulative POD.
+- `TelemetryPanel` READY tab renders cumulative POD, sector area, a per-sweep breakdown and the
+  formula's provenance.
+
+**Determinism note.** POD needed **no sim-tick change and no new kernel state**. It is derived on
+demand from `positionHistory`, which the store already records, and is computed only while the
+READY tab is mounted. This is why WP-6 was cheap where WP-10/11's live wiring is not: it reads the
+simulation rather than participating in it.
+
+**A fabricated number was removed, not added.** The pre-WP-6 `sector_coverage` objective fell back
+to a flat **60 m detection radius** whenever a platform's optics were unpublished — silently
+undoing WP-5's deliberate `null`. That fallback is gone. An unsourced platform now reports
+`UNSOURCED` and is excluded from the cumulative figure rather than scored against an invented
+radius. `podReporting.spec.ts` and `missionObjectives.spec.ts` both pin it staying gone.
+
+**Known simplification, stated:** `positionHistory` stores position without altitude, so the LOS
+probes fly at the drone's current altitude. Exact for the constant-altitude patterns `SARPlanner`
+generates; an approximation of the altitude profile — never of the terrain — for a sweep flown
+during a climb.
+
+Rest of this section is the unchanged original target.
 
 **Current state.** Detection fires on proximity. READY-tab coverage is a geometric area figure.
 
@@ -514,14 +543,18 @@ this sector at higher POD, or move to the next at lower POD, with finite battery
 actual cognitive task, and it is the metric a real SAR planner recognises instantly — which
 makes the READY tab credible to exactly the people you want as design partners.
 
-**Files:** `src/sim/sensors/sweepWidth.ts` (new) · `src/sim/mission/missionOutcome.ts` ·
-`src/components/TelemetryPanel.tsx` (READY tab)
+**Files (as built):** `src/sim/sensors/sweepWidth.ts` · `src/sim/sensors/podReporting.ts` ·
+`src/sim/mission/missionObjectives.ts` · `src/components/TelemetryPanel.tsx` (READY tab).
+The outcome summary in `src/sim/demo/missionOutcome.ts` was left alone; its figure is route
+progress and is now labelled as such rather than as "search coverage".
 
-**Accept:** per-sector and cumulative POD shown in READY; a second sweep of the same sector
-raises POD along the documented curve; POD is 0 where LOS was never achieved.
+**Accept — all met:** per-sector and cumulative POD shown in READY; a second sweep of the same
+sector raises POD along the documented curve; POD is 0 where LOS was never achieved.
 
-**Test:** `sweepWidth.spec.ts` — known track length + area + W reproduces textbook coverage
-and POD values.
+**Test:** `sweepWidth.spec.ts` (textbook coverage/POD from a known track, area and W) ·
+`podReporting.spec.ts` (the chain against live WP-5 range, re-sweep curve, total and partial
+occlusion, unsourced optics, fog, determinism) · `sectorPodPanel.spec.tsx` (READY-tab render,
+including that unsourced optics read as UNSOURCED rather than as a percentage).
 
 **Bonus.** This is also the honest replacement for the fabricated "TIME SAVED" KPI flagged in
 the 2026-07-02 audit as a diligence risk. POD is defensible; that KPI was not.
