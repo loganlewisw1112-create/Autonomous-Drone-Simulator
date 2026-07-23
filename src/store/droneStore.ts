@@ -12,6 +12,7 @@ import {
   type RouteApplicationWarning,
 } from '@/sim/mission/routeApplication'
 import { buildMissionSituation, planFleetRetask } from '@/sim/mission/tacticalAdvisor'
+import type { TerrainRouteWarning } from '@/sim/mission/routeAudit'
 import { assessSiteReposition, type SiteRepositionResult } from '@/sim/mission/siteReposition'
 import { clearAllSavedWaypointPlans, clearSavedDroneWaypointRoute, saveDroneWaypointRoute, saveFleetWaypointRoutes } from '@/sim/mission/waypointPersistence'
 import { hashEvent } from '@/utils/chainOfCustody'
@@ -446,10 +447,17 @@ export const useDroneStore = create<DroneStore>()(
           })
           return false
         }
+        const terrainWarning = terrainRouteApplicationWarning(validation.terrainWarnings)
+        const routeWarning: RouteApplicationWarning | null = application.warning?.code === 'route_capped' && terrainWarning
+          ? {
+              ...application.warning,
+              message: `${application.warning.message} ${terrainWarning.message}`,
+            }
+          : application.warning ?? terrainWarning
         set((s) => ({
           droneWaypoints: { ...s.droneWaypoints, [droneId]: validation.route },
           routeCommandError: null,
-          routeCommandWarning: application.warning,
+          routeCommandWarning: routeWarning,
           lastRouteChange: snapshotRoutes(s, [droneId]),
           latestFleetRetaskPlan: null,
           latestFleetRetaskResult: null,
@@ -664,10 +672,15 @@ export const useDroneStore = create<DroneStore>()(
           set((s) => {
             const existing = s.thermalContacts.find((c) => c.sourceId === detection.sourceId)
             const weather = s.weatherState
-            const adjusted = detection.confidence * weather.sensorConfidenceFactor
+            const adjusted = Math.min(1, Math.max(
+              0,
+              detection.confidence * weather.sensorConfidenceFactor,
+            ))
             const contact: ThermalContactState = {
               ...detection,
-              confidence: adjusted,
+              // Preserve sensor confidence as evidence. Weather adjustment is a
+              // separate operational value consumed by alerts and auto-inspect.
+              confidence: detection.confidence,
               weatherAdjustedConfidence: adjusted,
               selected: existing?.selected ?? false,
               action: existing?.action,
@@ -1576,6 +1589,24 @@ function cloneWaypointRoute(route: Waypoint[]): Waypoint[] {
     ...waypoint,
     position: { ...waypoint.position },
   }))
+}
+
+function terrainRouteApplicationWarning(
+  warnings: readonly TerrainRouteWarning[],
+): Extract<RouteApplicationWarning, { code: 'terrain_route' }> | null {
+  if (warnings.length === 0) return null
+  const primary = warnings.find((warning) => warning.kind === 'structure_clearance')
+    ?? warnings.find((warning) => warning.kind === 'ground_clearance')
+    ?? warnings.find((warning) => warning.kind === 'outside_coverage')
+    ?? warnings[0]
+  const prefix = primary.kind === 'structure_clearance' || primary.kind === 'ground_clearance'
+    ? 'Terrain clearance warning'
+    : 'Terrain coverage warning'
+  return {
+    code: 'terrain_route',
+    warningCount: warnings.length,
+    message: `${prefix}: ${primary.reason}.`,
+  }
 }
 
 function unavailableSiteReposition(siteId: string, requested: LatLng, reason: string): SiteRepositionResult {

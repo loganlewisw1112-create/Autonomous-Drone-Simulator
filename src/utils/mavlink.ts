@@ -44,7 +44,10 @@ export function encodeHeartbeat(drone: DroneState): MAVLinkMessage {
   }
 }
 
-export function encodeGlobalPositionInt(drone: DroneState): MAVLinkMessage {
+export function encodeGlobalPositionInt(
+  drone: DroneState,
+  aircraftMslM?: number | null,
+): MAVLinkMessage {
   const headingRad = (drone.headingDeg * Math.PI) / 180
   return {
     msgId: 33,
@@ -55,7 +58,9 @@ export function encodeGlobalPositionInt(drone: DroneState): MAVLinkMessage {
       time_boot_ms: Date.now() & 0xffffffff,
       lat: Math.round(drone.position.lat * 1e7),          // degE7
       lon: Math.round(drone.position.lng * 1e7),          // degE7
-      alt: Math.round(drone.altitudeFt * 304.8),          // mm ASL
+      // MAVLink `alt` is MSL/ASL, not relative altitude. -1 is the explicit
+      // unavailable sentinel when this scenario has no sourced terrain.
+      alt: aircraftMslM == null ? -1 : Math.round(aircraftMslM * 1000), // mm MSL
       relative_alt: Math.round(drone.altitudeFt * 304.8), // mm AGL
       vx: Math.round(drone.speedMs * Math.sin(headingRad) * 100), // cm/s
       vy: Math.round(drone.speedMs * Math.cos(headingRad) * 100), // cm/s
@@ -113,10 +118,13 @@ export function encodeSysStatus(drone: DroneState): MAVLinkMessage {
 }
 
 /** Returns the 4 core MAVLink v2 messages for one drone, in standard heartbeat order. */
-export function encodeDroneTelemetry(drone: DroneState): MAVLinkMessage[] {
+export function encodeDroneTelemetry(
+  drone: DroneState,
+  aircraftMslM?: number | null,
+): MAVLinkMessage[] {
   return [
     encodeHeartbeat(drone),
-    encodeGlobalPositionInt(drone),
+    encodeGlobalPositionInt(drone, aircraftMslM),
     encodeBatteryStatus(drone),
     encodeSysStatus(drone),
   ]

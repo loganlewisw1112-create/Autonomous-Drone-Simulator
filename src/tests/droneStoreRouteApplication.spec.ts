@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
+import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
 import { createDroneState } from '@/sim/drone/DroneEntity'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
 import { loadSavedDroneWaypointRoute } from '@/sim/mission/waypointPersistence'
@@ -53,7 +54,11 @@ describe('drone store route application', () => {
 
     expect(useDroneStore.getState().droneWaypoints[droneId].map((item) => item.id)).toEqual(['new-0', 'new-1'])
     expect(useDroneStore.getState().drones[0].currentWaypointIndex).toBe(0)
-    expect(useDroneStore.getState().routeCommandWarning).toBeNull()
+    expect(useDroneStore.getState().routeCommandWarning).toMatchObject({
+      code: 'terrain_route',
+      warningCount: 1,
+    })
+    expect(useDroneStore.getState().routeCommandWarning?.message).toContain('No sourced terrain/building fixture')
   })
 
   it('applies divert-and-resume atomically, persists it, and records attribution', () => {
@@ -94,6 +99,8 @@ describe('drone store route application', () => {
     const state = useDroneStore.getState()
     expect(state.droneWaypoints[droneId]).toHaveLength(MAX_WAYPOINTS_PER_DRONE)
     expect(state.routeCommandWarning).toMatchObject({ code: 'route_capped', droppedWaypointCount: 3 })
+    expect(state.routeCommandWarning?.message).toContain('Route capped')
+    expect(state.routeCommandWarning?.message).toContain('No sourced terrain/building fixture')
     expect(state.routeCommandError).toBeNull()
     expect(state.events.at(-1)?.payload).toMatchObject({ capped: true, droppedWaypointCount: 3 })
   })
@@ -118,6 +125,37 @@ describe('drone store route application', () => {
       'suggested-0', 'old-2', 'old-3',
     ])
     expect(useDroneStore.getState().routeSuggestions).toEqual([])
+  })
+
+  it('accepts a route with terrain findings and prioritizes structure clearance in the warning', () => {
+    const wildfire = ALL_SCENARIOS.find((item) => item.id === 'demo_wildfire')!
+    const feature = buildingFixtureFor('demo_wildfire')!.features[0]
+    const coordinate = feature.geometry.type === 'Polygon'
+      ? feature.geometry.coordinates[0][0]
+      : feature.geometry.coordinates[0][0][0]
+    const [lng, lat] = coordinate
+    const buildingPosition = { lat, lng }
+    const buildingAltitudeFt = feature.properties.h / 0.3048
+    const existingDrone = useDroneStore.getState().drones[0]
+    useDroneStore.setState({
+      scenario: wildfire,
+      drones: [{ ...existingDrone, position: buildingPosition }],
+      droneWaypoints: { [droneId]: [] },
+    })
+
+    const route: Waypoint[] = [
+      { id: 'building', position: buildingPosition, altitudeFt: buildingAltitudeFt },
+      { id: 'outside', position: { lat, lng: -122.3 }, altitudeFt: 120 },
+    ]
+    expect(useDroneStore.getState().setDroneRoute(droneId, route)).toBe(true)
+
+    const warning = useDroneStore.getState().routeCommandWarning
+    expect(warning).toMatchObject({ code: 'terrain_route' })
+    if (warning?.code !== 'terrain_route') throw new Error('Expected terrain route warning')
+    expect(warning.warningCount).toBeGreaterThan(1)
+    expect(warning.message).toContain('Terrain clearance warning')
+    expect(warning.message).toContain('Structure clearance')
+    expect(useDroneStore.getState().routeCommandError).toBeNull()
   })
 
   it('rejects an unsafe divert without partially changing the route or undo snapshot', () => {

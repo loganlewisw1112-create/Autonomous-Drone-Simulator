@@ -19,6 +19,7 @@ import {
 } from '@/sim/terrain/OcclusionService'
 import { sampleCenterLatLng, type Point3D, type TerrainRaster } from '@/sim/terrain/terrainRaster'
 import { occlusionServiceFor, terrainRasterFor } from '@/scenarios/terrainFixtures'
+import { createBuildingIndex } from '@/sim/terrain/buildingIndex'
 
 // ---------------------------------------------------------------------------------------
 // Synthetic terrain: a flat 100 m plain with a 200 m plateau ridge running north–south.
@@ -256,6 +257,34 @@ describe('building seam (§4.4 plugs in here)', () => {
   it('can only report terrain when no structure layer is supplied', () => {
     expect(svc.hasLineOfSight(at(WEST, 140), at(70, 140)).blockedBy).toBeNull()
     expect(svc.hasLineOfSight(at(WEST, 150), at(EAST, 150)).blockedBy).toBe('terrain')
+  })
+
+  it('uses exact footprint intersections when a narrow building falls between terrain samples', () => {
+    const center = at(40, 0)
+    const half = 0.000002
+    const buildings = createBuildingIndex({
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        id: 'narrow',
+        properties: { h: 60, hSrc: 'measured', base: PLAIN_M },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[
+            [center.lng - half, center.lat - half],
+            [center.lng + half, center.lat - half],
+            [center.lng + half, center.lat + half],
+            [center.lng - half, center.lat + half],
+            [center.lng - half, center.lat - half],
+          ]],
+        },
+      }],
+    })
+    const exact = createTerrainOcclusionService(raster, { structures: buildings, stepM: 10_000 })
+
+    const result = exact.hasLineOfSight(at(WEST, 140), at(70, 140))
+    expect(result).toMatchObject({ clear: false, blockedBy: 'building', blockHeight: 160 })
+    expect(result.clearanceM).toBeCloseTo(-20, 6)
   })
 })
 

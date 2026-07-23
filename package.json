@@ -18,12 +18,15 @@
     "classroom": "vite build --mode classroom && node server/classroom.mjs",
     "classroom:relay": "node server/classroom.mjs",
     "fixtures": "node tools/fixtures/index.mjs",
+    "fixtures:terrain": "node tools/fixtures/terrain.mjs",
+    "fixtures:buildings": "node tools/fixtures/buildings.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "prepare": "husky",
     "lint": "eslint src",
     "assert:bundles": "node scripts/assert-bundle-isolation.mjs",
+    "assert:fixtures": "node scripts/assert-realism-fixture-budget.mjs",
     "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {

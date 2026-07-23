@@ -3,12 +3,20 @@ import type { Waypoint } from '@/types'
 
 export type RouteApplicationMode = 'replace' | 'divert_resume'
 
-export interface RouteApplicationWarning {
+export interface RouteCappedWarning {
   code: 'route_capped'
   limit: number
   droppedWaypointCount: number
   message: string
 }
+
+export interface TerrainRouteApplicationWarning {
+  code: 'terrain_route'
+  warningCount: number
+  message: string
+}
+
+export type RouteApplicationWarning = RouteCappedWarning | TerrainRouteApplicationWarning
 
 export interface RouteApplicationResult {
   mode: RouteApplicationMode

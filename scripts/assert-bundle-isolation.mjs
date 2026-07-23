@@ -7,8 +7,9 @@
 // confined to src/classroom and that main.tsx reaches it via a flag-gated dynamic import. That
 // is the *precondition* for tree-shaking, not proof it happened. This script checks the artifact.
 //
-// It builds both ways and asserts the difference:
+// It builds the release targets and asserts the differences:
 //   default build  -> no classroom chunk, no WebSocket token anywhere
+//   mobile build   -> no authored 3D-building layer code in non-MapLibre app chunks
 //   classroom build -> classroom chunk exists, and WebSocket appears ONLY inside it
 //
 // The second half matters as much as the first. A guard that only checks the default build would
@@ -34,12 +35,16 @@ const viteBin = join(root, 'node_modules', 'vite', 'bin', 'vite.js')
 // and the property access is preserved. A bare /WebSocket/ would false-positive on unrelated
 // vendor strings, so match the construction form the app actually uses.
 const NET_TOKENS = [/new WebSocket\s*\(/, /\bWebSocketServer\b/]
+const MOBILE_BUILDING_3D_TOKENS = [/scenario-buildings-extrusion/, /fill-extrusion/]
 
-function build(mode) {
+function build(mode, appTarget) {
   rmSync(dist, { recursive: true, force: true })
   const args = [viteBin, 'build']
   if (mode) args.push('--mode', mode)
-  execFileSync(process.execPath, args, { cwd: root, stdio: 'pipe' })
+  const env = { ...process.env }
+  if (appTarget) env.VITE_APP_TARGET = appTarget
+  else delete env.VITE_APP_TARGET
+  execFileSync(process.execPath, args, { cwd: root, stdio: 'pipe', env })
 }
 
 function bundleFiles() {
@@ -52,6 +57,12 @@ const withNetworking = (files) =>
   files.filter((f) => {
     const src = readFileSync(f.path, 'utf8')
     return NET_TOKENS.some((re) => re.test(src))
+  }).map((f) => f.name)
+
+const withTokens = (files, tokens) =>
+  files.filter((f) => {
+    const src = readFileSync(f.path, 'utf8')
+    return tokens.some((re) => re.test(src))
   }).map((f) => f.name)
 
 const failures = []
@@ -67,6 +78,17 @@ if (shippingClassroom.length > 0) {
 }
 if (shippingNet.length > 0) {
   failures.push(`default build contains networking code in: ${shippingNet.join(', ')}`)
+}
+
+// MapLibre itself supports every MapLibre style layer type, so its vendor chunk necessarily
+// contains the generic 3D-layer vocabulary. The release guarantee is that our mobile app code
+// neither contains nor registers the authored scenario-building extrusion implementation.
+build(null, 'mobile')
+const mobile = bundleFiles()
+const mobileApp = mobile.filter((f) => !/^maplibre-/i.test(f.name))
+const mobileBuilding3d = withTokens(mobileApp, MOBILE_BUILDING_3D_TOKENS)
+if (mobileBuilding3d.length > 0) {
+  failures.push(`mobile app chunks contain the desktop building implementation: ${mobileBuilding3d.join(', ')}`)
 }
 
 // ── Classroom build: the feature ships, and its networking stays quarantined ──
@@ -94,4 +116,5 @@ if (failures.length > 0) {
 
 console.log('Bundle isolation OK')
 console.log(`  shipping build : ${shipping.length} chunks, no classroom chunk, no networking`)
+console.log(`  mobile build   : ${mobileApp.length} app chunks, no scenario-building extrusion code`)
 console.log(`  classroom build: networking confined to ${classroomNet.join(', ')}`)

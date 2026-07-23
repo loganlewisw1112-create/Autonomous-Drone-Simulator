@@ -1,8 +1,17 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const appTarget = process.env.VITE_APP_TARGET ?? env.VITE_APP_TARGET ?? 'universal'
+  const buildingLayerModule = appTarget === 'mobile'
+    ? 'scenarioBuildingLayers.mobile.ts'
+    : appTarget === 'windows'
+      ? 'scenarioBuildingLayers.windows.ts'
+      : 'scenarioBuildingLayers.target.ts'
+
+  return ({
   // Project Pages site — assets resolve under /<repo>/ on GitHub Pages.
   // Local dev/preview and the packaged offline build are unaffected because
   // GITHUB_PAGES is only set in the deploy workflow.
@@ -18,9 +27,15 @@ export default defineConfig(({ mode }) => ({
     ? { 'import.meta.env.VITE_CLASSROOM_ENABLED': JSON.stringify('true') }
     : {},
   resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-    },
+    // Resolve the physical-building renderer at build time. This is a release boundary, not
+    // only a runtime branch: the mobile artifact never receives the desktop extrusion module.
+    alias: [
+      {
+        find: '@/components/scenarioBuildingLayers.target',
+        replacement: resolve(__dirname, 'src/components', buildingLayerModule),
+      },
+      { find: '@', replacement: resolve(__dirname, 'src') },
+    ],
   },
   build: {
     rollupOptions: {
@@ -35,4 +50,5 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-}))
+  })
+})

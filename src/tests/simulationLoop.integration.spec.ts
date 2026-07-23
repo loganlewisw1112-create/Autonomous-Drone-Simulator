@@ -29,6 +29,7 @@ interface MissionRunResult {
   events: MissionEvent[]
   frames: FullMissionFrame[]
   finalDrones: ReturnType<typeof useDroneStore.getState>['drones']
+  thermalContacts: ReturnType<typeof useDroneStore.getState>['thermalContacts']
 }
 
 /** Run the real sim loop for `ticks` ticks from a clean mission start. */
@@ -55,6 +56,7 @@ function runMission(ticks: number): MissionRunResult {
     events: final.events,
     frames: final.replaySession?.frames ?? [],
     finalDrones: final.drones,
+    thermalContacts: final.thermalContacts,
   }
 }
 
@@ -108,5 +110,9 @@ describe('SimulationLoop production integration', () => {
     expect(run2.frames).toEqual(run1.frames)
     expect(run2.finalDrones.map((d) => d.position)).toEqual(run1.finalDrones.map((d) => d.position))
     expect(run2.events.map((e) => e.hash)).toEqual(run1.events.map((e) => e.hash))
+    // The production loop now calls the strict platform-aware thermal path. Pin
+    // both that it is exercised and that its stored output remains deterministic.
+    expect(run1.thermalContacts.length).toBeGreaterThan(0)
+    expect(run2.thermalContacts).toEqual(run1.thermalContacts)
   })
 })

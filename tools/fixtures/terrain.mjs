@@ -83,7 +83,7 @@
 //
 // Optional flags: --res <metres> (default 10) · --no-refs (skip the USGS 3DEP cross-check).
 
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { deflateSync, inflateSync } from 'node:zlib'
 
@@ -637,6 +637,21 @@ export async function writeTerrainFixture({
       sha256: sha256(refJson),
     })
   }
+
+  // Merge provenance here as well as returning it. Terrain and buildings can be generated
+  // independently of the weather catalog CLI; a standalone terrain run must not leave a
+  // sourced payload without the required manifest entry.
+  const manifestUrl = new URL('manifest.json', dir)
+  const previous = await readFile(manifestUrl, 'utf8').then(JSON.parse).catch(() => null)
+  const produced = new Set(sources.map((source) => source.fixture))
+  const kept = (previous?.sources ?? []).filter((source) => !produced.has(source.fixture))
+  const manifest = {
+    scenarioId,
+    area: { ...(previous?.area ?? {}), aoBbox: bbox },
+    generatedAt: retrievedAt,
+    sources: [...kept, ...sources].sort((a, b) => a.fixture.localeCompare(b.fixture)),
+  }
+  await writeFile(manifestUrl, JSON.stringify(manifest, null, 2) + '\n')
 
   return { header: headerDoc, bytes: png.length, refs, sources }
 }
