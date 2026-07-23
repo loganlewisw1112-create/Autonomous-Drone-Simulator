@@ -38,6 +38,9 @@ jobs:
       - name: Assert bundle isolation
         run: npm run assert:bundles
 
+      - name: Assert realism fixture budgets
+        run: npm run assert:fixtures
+
       - name: Audit (high+)
         run: npm audit --audit-level=high
         continue-on-error: true

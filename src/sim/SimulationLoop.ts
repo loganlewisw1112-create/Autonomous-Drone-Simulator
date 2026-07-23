@@ -3,7 +3,7 @@ import { stepDrone } from '@/sim/drone/DroneEntity'
 import { platformForDrone } from '@/sim/drone/platformCatalog'
 import { getNextCommand, type MissionManagerState } from '@/sim/mission/MissionManager'
 import { detectConflicts, applyConflictFlags, getAssignedAltitude } from '@/sim/safety/DeconflictEngine'
-import { applyGeofenceFlags, applyCommsModel } from '@/sim/safety/SafetyManager'
+import { applyGeofenceFlags, applyCommsModel, applySurfaceClearanceSafety } from '@/sim/safety/SafetyManager'
 import { buildSafeDroneRoutes } from '@/sim/mission/routeAudit'
 import { validateOperatorRoute } from '@/sim/mission/operatorRoutes'
 import { restoreSavedWaypointRoutes } from '@/sim/mission/waypointPersistence'
@@ -18,6 +18,8 @@ import {
   selectRechargeStationForDrone,
 } from '@/sim/mission/rechargeStations'
 import { checkThermalDetections } from '@/sim/sensors/ThermalSim'
+import { occlusionEpoch, type TerrainOcclusionService } from '@/sim/terrain/OcclusionService'
+import { occlusionServiceFor } from '@/scenarios/terrainFixtures'
 import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import { tickGroundUnit, computeGroundUnitEta } from '@/sim/mission/groundUnits'
 import { tickRecoveryTeam, tickRecoveryExtraction, needsRecovery, recoveryTransitionState, createRecoveryTeam } from '@/sim/mission/recoveryManager'
@@ -32,7 +34,8 @@ const TICK_INTERVAL_MS = 50
 const INSPECT_CONFIDENCE_THRESHOLD = 0.75
 const NON_INSPECTABLE_STATES = new Set<DroneState['missionState']>([
   'idle', 'preflight', 'launch', 'avoid', 'emergency', 'landed', 'recharge',
-  'inspect', 'thermal_hold', 'remote_landed', 'stranded', 'recovery_requested', 'recovery_enroute', 'recovered', 'unrecoverable_sim',
+  'inspect', 'thermal_hold', 'return_to_base', 'remote_landed', 'stranded',
+  'recovery_requested', 'recovery_enroute', 'recovered', 'unrecoverable_sim',
 ])
 
 // A mission is genuinely over once every drone that lifted off has come to rest in a
@@ -48,6 +51,7 @@ function isMissionComplete(drones: DroneState[]): boolean {
 // ephemeral state — not in store
 const lastPositions = new Map<string, LatLng>()
 const onSceneTicksMap = new Map<string, number>()  // recoveryTeamId → ticks on scene
+let missionOcclusion: TerrainOcclusionService | undefined
 
 /**
  * One fixed-timestep tick (runs `simSpeed` physics sub-steps). Exported so tests and the
@@ -65,6 +69,10 @@ export function tick() {
       siteOverrides, siteRelocations,
     } = useDroneStore.getState()
     if (!scenario) break
+
+    // Occlusion is evaluated at 1 Hz from simulation time, never wall time. A
+    // mission without a committed terrain fixture simply has no LOS service.
+    missionOcclusion?.setEpoch(occlusionEpoch(elapsedSec))
 
     const { droneWaypoints } = useDroneStore.getState()
 
@@ -282,8 +290,29 @@ export function tick() {
     // ── Safety passes ──────────────────────────────────────────────────────────
     const withGeo = applyGeofenceFlags(updatedDrones, scenario.geofences)
     const withComms = applyCommsModel(withGeo, elapsedSec, scenario, weatherState)
-    const conflicts = detectConflicts(withComms)
+    const conflicts = detectConflicts(withComms, missionOcclusion)
     const flaggedDrones = applyConflictFlags(withComms, conflicts)
+    const surfaceSafety = applySurfaceClearanceSafety(flaggedDrones, missionOcclusion)
+    const surfaceHazards = new Map(surfaceSafety.hazards.map((hazard) => [hazard.droneId, hazard]))
+    const surfaceSafeDrones = surfaceSafety.drones
+
+    for (const drone of surfaceSafeDrones) {
+      const hazard = surfaceHazards.get(drone.id)
+      const before = flaggedDrones.find((candidate) => candidate.id === drone.id)
+      if (!hazard || !before || drone.missionState !== 'emergency' || before.missionState === 'emergency') continue
+      useDroneStore.getState().emitEvent({
+        eventType: 'emergency_land',
+        droneId: drone.id,
+        tick: currentTick,
+        payload: {
+          from: before.missionState,
+          reason: 'surface_clearance',
+          surfaceKind: hazard.kind,
+          clearanceFt: Math.round(hazard.clearanceFt * 10) / 10,
+          minimumClearanceFt: hazard.minimumClearanceFt,
+        },
+      })
+    }
 
     // ── Conflict avoidance: the give-way drone diverges ───────────────────────
     // For each detected pair the second aircraft (idB) is the give-way drone: it breaks off
@@ -294,11 +323,11 @@ export function tick() {
     // climb-out is where conflicts actually occur in practice (cruise altitude bands are
     // separated enough that conflicts rarely happen once established) — excluding 'launch'
     // meant the maneuver almost never fired outside forced/artificial scenarios.
-    const withDeconflict: DroneState[] = flaggedDrones.map((drone) => {
+    const withDeconflict: DroneState[] = surfaceSafeDrones.map((drone) => {
       if (!['navigate', 'sar_grid', 'launch'].includes(drone.missionState)) return drone
       const conflict = conflicts.find((c) => c.idB === drone.id)
       if (!conflict) return drone
-      const other = flaggedDrones.find((d) => d.id === conflict.idA)
+      const other = surfaceSafeDrones.find((d) => d.id === conflict.idA)
       if (!other) return drone
       const divergenceHeading = bearingDeg(other.position, drone.position)
       useDroneStore.getState().emitEvent({
@@ -511,9 +540,23 @@ export function tick() {
     // ── Thermal sensor check ───────────────────────────────────────────────────
     if (currentTick % THERMAL_CHECK_INTERVAL === 0 && scenario.heatSources.length > 0) {
       for (const drone of finalDrones) {
-        const detections = checkThermalDetections(drone, scenario.heatSources, currentTick, scenario.seed)
+        const detections = checkThermalDetections(
+          drone,
+          scenario.heatSources,
+          currentTick,
+          scenario.seed,
+          {
+            platform: platformForDrone(scenario, drone.id),
+            weather: weatherState,
+            occlusion: missionOcclusion,
+          },
+        )
         for (const det of detections) {
           useDroneStore.getState().addThermalContact(det)
+          const storedContact = useDroneStore.getState().thermalContacts.find(
+            (contact) => contact.sourceId === det.sourceId,
+          )
+          const operationalConfidence = storedContact?.weatherAdjustedConfidence ?? det.confidence
           const { metrics } = useDroneStore.getState()
           useDroneStore.getState().updateMetrics({ thermalContacts: metrics.thermalContacts + 1 })
           useDroneStore.getState().emitEvent({
@@ -523,14 +566,15 @@ export function tick() {
             payload: {
               sourceId: det.sourceId,
               class: det.class,
-              confidence: Math.round(det.confidence * 100),
+              confidence: Math.round(operationalConfidence * 100),
+              rawConfidence: Math.round(det.confidence * 100),
               position: det.position,
             },
           })
 
           // High-confidence contact triggers a brief automatic hover-and-confirm
           // instead of leaving the operator's only options as "ignore" or manual hover.
-          if (det.confidence >= INSPECT_CONFIDENCE_THRESHOLD && !NON_INSPECTABLE_STATES.has(drone.missionState)) {
+          if (operationalConfidence >= INSPECT_CONFIDENCE_THRESHOLD && !NON_INSPECTABLE_STATES.has(drone.missionState)) {
             const idx = finalDrones.findIndex((d) => d.id === drone.id)
             if (idx !== -1 && finalDrones[idx].missionState !== 'inspect') {
               finalDrones[idx] = {
@@ -709,6 +753,7 @@ export function stopSimLoop() {
 
 export function initFleet() {
   const { scenario, launchPlan, weatherState, scenarioVariant } = useDroneStore.getState()
+  missionOcclusion = scenario ? occlusionServiceFor(scenario.id) : undefined
   if (!scenario) return
   lastPositions.clear()
   onSceneTicksMap.clear()

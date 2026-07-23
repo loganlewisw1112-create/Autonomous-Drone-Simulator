@@ -1,0 +1,60 @@
+{
+  "scenarioId": "demo_wildfire",
+  "area": {
+    "aoBbox": [
+      -122.26666010159904,
+      37.876342220625226,
+      -122.20973989840097,
+      37.92125777937478
+    ]
+  },
+  "generatedAt": "2026-07-22",
+  "sources": [
+    {
+      "fixture": "buildings.json",
+      "source": "Overture Maps Foundation — buildings theme",
+      "url": "https://docs.overturemaps.org/guides/buildings/",
+      "license": "ODbL 1.0; upstream attribution retained by Overture",
+      "attribution": "© OpenStreetMap contributors, Overture Maps Foundation",
+      "retrievedAt": "2026-07-22",
+      "sha256": "ed792f2ddb12b388a55bb20b26590ccf32495022a67f242c4333b8ce08312a69",
+      "rawBytes": 1204068,
+      "gzipBytes": 170813,
+      "input": "overturemaps==1.0.1",
+      "dataRelease": "2026-06-17.0",
+      "schemaVersion": "v1.17.0",
+      "stacCollection": "https://stac.overturemaps.org/2026-06-17.0/buildings/building/collection.json",
+      "client": {
+        "package": "overturemaps",
+        "version": "1.0.1"
+      },
+      "filters": "measured height, or num_floors × 3m; unknown-height footprints excluded"
+    },
+    {
+      "fixture": "terrain.json",
+      "source": "derived header (this pipeline)",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+      "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "retrievedAt": "2026-07-22",
+      "sha256": "b751be07985fe91741c0f69187f402c37f5e3565a3bee8b438c8d31a9f3cefdb"
+    },
+    {
+      "fixture": "terrain.png",
+      "source": "AWS Open Data — Terrain Tiles (Tilezen/Mapzen joerd), Terrarium RGB encoding",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+      "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "attribution": "United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.",
+      "retrievedAt": "2026-07-22",
+      "detail": "z14 664×665px from 12 tiles, 7.54 m/px, 0.25 m vertical quantum, surface dtm-approx",
+      "sha256": "1379458b15bc74b3672dbc423b43fff9a70481932b254a1ca2f656d4dbfe8f3a"
+    },
+    {
+      "fixture": "terrain-refpoints.json",
+      "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
+      "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
+      "license": "US Geological Survey — US federal government work, public domain",
+      "retrievedAt": "2026-07-22",
+      "sha256": "3667e89f66481deade9603adc76ad334bdb9becb4aaed6355e051f63f5cc38c0"
+    }
+  ]
+}

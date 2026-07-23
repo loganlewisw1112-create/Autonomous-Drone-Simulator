@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { buildSuggestedRouteFeatures } from '@/components/TacticalMap'
-import { buildConflictFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
+import {
+  buildingRenderMode,
+  buildConflictFeatures,
+  buildNextWpFeatures,
+} from '@/components/tacticalMapGeoJson'
 import type { DroneState, RouteSuggestion, Waypoint } from '@/types'
 
 const baseDrone: DroneState = {
@@ -26,6 +30,12 @@ const fallbackWaypoints: Waypoint[] = [
 ]
 
 describe('TacticalMap GeoJSON builders', () => {
+  it('uses 2.5D buildings only on desktop and 2D footprints in both phone modes', () => {
+    expect(buildingRenderMode('desktop')).toBe('fill-extrusion')
+    expect(buildingRenderMode('phone-portrait')).toBe('fill')
+    expect(buildingRenderMode('phone-landscape')).toBe('fill')
+  })
+
   it('builds next-waypoint line features from per-drone waypoints first', () => {
     const features = buildNextWpFeatures(
       [

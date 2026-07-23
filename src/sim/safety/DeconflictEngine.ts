@@ -1,10 +1,13 @@
 import { haversineDistanceM, offsetLatLng } from '@/utils/geometry'
 import type { DroneState } from '@/types'
+import type { TerrainOcclusionService } from '@/sim/terrain/OcclusionService'
+import { containsLatLng } from '@/sim/terrain/terrainRaster'
 
 // Separation minima (ICAO-inspired, scaled for low-altitude UAV ops)
 export const H_SEP_M = 30      // 30m horizontal minimum separation
 export const V_SEP_FT = 15     // 15ft vertical minimum separation
 const LOOKAHEAD_S = 2          // 2s prediction horizon for conflict detection
+const METERS_PER_FOOT = 0.3048
 
 // Assigned altitude cruise bands per drone index
 export const ALTITUDE_BANDS = [
@@ -28,7 +31,10 @@ export interface ConflictPair {
 }
 
 /** Compute pairwise predicted conflicts among active drones. */
-export function detectConflicts(drones: DroneState[]): ConflictPair[] {
+export function detectConflicts(
+  drones: DroneState[],
+  terrain?: TerrainOcclusionService,
+): ConflictPair[] {
   const active = drones.filter(
     (d) => !['landed', 'idle', 'preflight'].includes(d.missionState),
   )
@@ -44,7 +50,19 @@ export function detectConflicts(drones: DroneState[]): ConflictPair[] {
       const predB = offsetLatLng(b.position, b.headingDeg, b.speedMs * LOOKAHEAD_S)
 
       const horizDist = haversineDistanceM(predA, predB)
-      const vertDist = Math.abs(a.altitudeFt - b.altitudeFt)
+      // AGL remains the simulator's canonical altitude. Convert both aircraft to the physical
+      // MSL frame only when both predicted positions have sourced terrain coverage. If either
+      // prediction is outside, compare the two authored AGL values; mixing one MSL value with
+      // one AGL value would manufacture a separation that does not exist.
+      const bothCovered = terrain !== undefined
+        && containsLatLng(terrain.raster, predA.lat, predA.lng)
+        && containsLatLng(terrain.raster, predB.lat, predB.lng)
+      const vertDist = bothCovered
+        ? Math.abs(
+            terrain.groundElevation(predA.lat, predA.lng) + a.altitudeFt * METERS_PER_FOOT
+            - terrain.groundElevation(predB.lat, predB.lng) - b.altitudeFt * METERS_PER_FOOT,
+          ) / METERS_PER_FOOT
+        : Math.abs(a.altitudeFt - b.altitudeFt)
 
       if (horizDist < H_SEP_M && vertDist < V_SEP_FT) {
         conflicts.push({ idA: a.id, idB: b.id, horizDistM: horizDist, vertDistFt: vertDist })

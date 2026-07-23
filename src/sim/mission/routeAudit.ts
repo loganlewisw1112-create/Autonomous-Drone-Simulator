@@ -1,11 +1,19 @@
 import { generatePerDroneWaypoints } from '@/sim/mission/SARPlanner'
 import { launchSiteForDrone, recoverySiteForDrone } from '@/sim/mission/siteAssignments'
 import { haversineDistanceM, pointInPolygon } from '@/utils/geometry'
+import { occlusionServiceFor } from '@/scenarios/terrainFixtures'
+import { containsLatLng } from '@/sim/terrain/terrainRaster'
+import type { TerrainOcclusionService } from '@/sim/terrain/OcclusionService'
 import type { Geofence, LatLng, ScenarioConfig, Waypoint } from '@/types'
 
 const DEFAULT_TRACK_SPACING_FT = 50
 const SEGMENT_SAMPLE_COUNT = 40
 const DETOUR_BUFFER_DEG = 0.00035
+const METERS_PER_FOOT = 0.3048
+const STRUCTURE_EPSILON_M = 0.01
+
+/** Minimum vertical separation above a sourced building roof. */
+export const REQUIRED_STRUCTURE_CLEARANCE_FT = 20
 
 export interface RouteAuditFinding {
   scenarioId: string
@@ -18,6 +26,36 @@ export interface RouteAuditFinding {
   reason: string
   altitudeFt: number
   position: LatLng
+}
+
+/**
+ * Terrain/structure findings are intentionally separate from geofence RouteAuditFinding.
+ * They are advisory until the operator chooses a safe route; geofence findings remain the
+ * only rejection contract.
+ */
+export interface TerrainRouteWarning {
+  scenarioId: string
+  droneId: string
+  kind: 'no_fixture' | 'outside_coverage' | 'ground_clearance' | 'structure_clearance'
+  segmentId?: string
+  position: LatLng
+  /** Simulator altitude is always AGL. */
+  altitudeAglFt: number
+  requiredClearanceFt: number
+  /** Null when no sourced surface exists at the warning location. */
+  surfaceClearanceFt: number | null
+  /** Structure height above bare earth, never terrain elevation. */
+  structureHeightFt: number | null
+  reason: string
+}
+
+export interface TerrainRouteAuditOptions {
+  fromPosition?: LatLng
+  /**
+   * Test/integration seam. Omit to resolve the scenario fixture; pass null to explicitly model
+   * missing coverage without consulting the catalog.
+   */
+  service?: TerrainOcclusionService | null
 }
 
 export interface AuditScenarioOptions {
@@ -164,6 +202,117 @@ export function auditScenarioRoutes(scenario: ScenarioConfig, options: AuditScen
   }
 
   return dedupeFindings(findings)
+}
+
+/**
+ * Audit an operator route against sourced terrain coverage and discrete building surfaces.
+ *
+ * Segment samples are spaced at the raster's native resolution. At every sample aircraft MSL
+ * is recomputed as local bare-ground MSL + authored AGL, so climbing terrain cannot create a
+ * false low-clearance warning. Only a surface measurably above bare ground is considered a
+ * structure.
+ */
+export function auditTerrainClearance(
+  scenarioId: string,
+  droneId: string,
+  route: readonly Waypoint[],
+  options: TerrainRouteAuditOptions = {},
+): TerrainRouteWarning[] {
+  if (route.length === 0) return []
+  const service = options.service === undefined
+    ? occlusionServiceFor(scenarioId)
+    : options.service ?? undefined
+  const startPosition = options.fromPosition ?? route[0].position
+  const firstAltitude = route[0].altitudeFt
+
+  if (!service) {
+    return [{
+      scenarioId,
+      droneId,
+      kind: 'no_fixture',
+      position: startPosition,
+      altitudeAglFt: firstAltitude,
+      requiredClearanceFt: REQUIRED_STRUCTURE_CLEARANCE_FT,
+      surfaceClearanceFt: null,
+      structureHeightFt: null,
+      reason: 'No sourced terrain/building fixture is available for this scenario',
+    }]
+  }
+
+  const points: RoutePoint[] = [
+    { id: 'start', position: startPosition, altitudeFt: firstAltitude },
+    ...route.map((waypoint) => ({
+      id: waypoint.id,
+      position: waypoint.position,
+      altitudeFt: waypoint.altitudeFt,
+    })),
+  ]
+  const warnings: TerrainRouteWarning[] = []
+
+  for (let pointIndex = 0; pointIndex < points.length - 1; pointIndex++) {
+    const from = points[pointIndex]
+    const to = points[pointIndex + 1]
+    const segmentId = from.id + '->' + to.id
+    const distanceM = haversineDistanceM(from.position, to.position)
+    const sampleCount = Math.max(1, Math.ceil(distanceM / service.raster.metersPerPixel))
+    let outside: TerrainRouteWarning | null = null
+    let clearance: TerrainRouteWarning | null = null
+
+    for (let sampleIndex = 0; sampleIndex <= sampleCount; sampleIndex++) {
+      const t = sampleIndex / sampleCount
+      const position = {
+        lat: from.position.lat + (to.position.lat - from.position.lat) * t,
+        lng: from.position.lng + (to.position.lng - from.position.lng) * t,
+      }
+      const altitudeAglFt = from.altitudeFt + (to.altitudeFt - from.altitudeFt) * t
+
+      if (!containsLatLng(service.raster, position.lat, position.lng)) {
+        outside ??= {
+          scenarioId,
+          droneId,
+          kind: 'outside_coverage',
+          segmentId,
+          position,
+          altitudeAglFt,
+          requiredClearanceFt: REQUIRED_STRUCTURE_CLEARANCE_FT,
+          surfaceClearanceFt: null,
+          structureHeightFt: null,
+          reason: 'Route leaves the sourced terrain/building coverage area',
+        }
+        continue
+      }
+
+      const groundMslM = service.groundElevation(position.lat, position.lng)
+      const surfaceMslM = service.surfaceHeight(position.lat, position.lng)
+      const structureHeightM = Math.max(0, surfaceMslM - groundMslM)
+      const structureHeightFt = structureHeightM / METERS_PER_FOOT
+      const surfaceClearanceFt = altitudeAglFt - structureHeightFt
+      if (surfaceClearanceFt >= REQUIRED_STRUCTURE_CLEARANCE_FT) continue
+      if (clearance && surfaceClearanceFt >= (clearance.surfaceClearanceFt ?? Infinity)) continue
+      const isStructure = structureHeightM > STRUCTURE_EPSILON_M
+      clearance = {
+        scenarioId,
+        droneId,
+        kind: isStructure ? 'structure_clearance' : 'ground_clearance',
+        segmentId,
+        position,
+        altitudeAglFt,
+        requiredClearanceFt: REQUIRED_STRUCTURE_CLEARANCE_FT,
+        surfaceClearanceFt,
+        structureHeightFt,
+        reason: (isStructure ? 'Structure' : 'Ground') + ' clearance is '
+          + surfaceClearanceFt.toFixed(1)
+          + 'ft; '
+          + REQUIRED_STRUCTURE_CLEARANCE_FT
+          + 'ft required',
+      }
+    }
+
+    if (outside) warnings.push(outside)
+    if (clearance) warnings.push(clearance)
+  }
+
+  return warnings
 }
 
 function auditRoutePoints(

@@ -1,4 +1,10 @@
-import { buildSafeRouteFromWaypoints, defaultDroneStartPosition, droneIdForIndex, auditScenarioRoutes } from '@/sim/mission/routeAudit'
+import {
+  auditScenarioRoutes,
+  auditTerrainClearance,
+  buildSafeRouteFromWaypoints,
+  defaultDroneStartPosition,
+  droneIdForIndex,
+} from '@/sim/mission/routeAudit'
 import { selectRechargeStationForDrone } from '@/sim/mission/rechargeStations'
 import { offsetLatLng } from '@/utils/geometry'
 import type { DispatchPriority, LatLng, RouteSuggestion, ScenarioConfig, ThermalDetection, Waypoint } from '@/types'
@@ -6,6 +12,7 @@ import type { DispatchPriority, LatLng, RouteSuggestion, ScenarioConfig, Thermal
 export interface OperatorRouteValidation {
   accepted: boolean
   findings: ReturnType<typeof auditScenarioRoutes>
+  terrainWarnings: ReturnType<typeof auditTerrainClearance>
   route: Waypoint[]
 }
 
@@ -41,10 +48,17 @@ export function validateOperatorRoute(
     startPositions: fromPosition ? { [droneId]: fromPosition } : undefined,
   })
     .filter((finding) => finding.droneId === droneId)
+  const parsedDroneIndex = Number(droneId.slice(-2))
+  const droneIndex = Number.isFinite(parsedDroneIndex) ? Math.max(0, parsedDroneIndex - 1) : 0
+  const terrainWarnings = auditTerrainClearance(scenario.id, droneId, route, {
+    fromPosition: fromPosition ?? defaultDroneStartPosition(scenario, droneIndex),
+  })
 
   return {
+    // Terrain coverage/clearance remains advisory. Only the established geofence audit rejects.
     accepted: findings.length === 0,
     findings,
+    terrainWarnings,
     route,
   }
 }
