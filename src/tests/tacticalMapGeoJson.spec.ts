@@ -3,8 +3,10 @@ import { buildSuggestedRouteFeatures } from '@/components/TacticalMap'
 import {
   buildingRenderMode,
   buildConflictFeatures,
+  buildGnssUncertaintyFeatures,
   buildNextWpFeatures,
 } from '@/components/tacticalMapGeoJson'
+import { haversineDistanceM } from '@/utils/geometry'
 import type { DroneState, RouteSuggestion, Waypoint } from '@/types'
 
 const baseDrone: DroneState = {
@@ -147,3 +149,59 @@ function suggestion(
 function waypoint(id: string, lat: number, lng: number): Waypoint {
   return { id, position: { lat, lng }, altitudeFt: 120 }
 }
+
+describe('GNSS uncertainty rings (WP-7)', () => {
+  const reported = { lat: 37.7909, lng: -122.3931 }
+
+  it('draws the ring at σ_H around the REPORTED position, not the truth', () => {
+    const [feature] = buildGnssUncertaintyFeatures([{
+      ...baseDrone, fixQuality: 'fix', gnssHorizontalErrorM: 25, reportedPosition: reported,
+    }])
+    expect(feature.properties.radiusM).toBe(25)
+    expect(feature.properties.fixQuality).toBe('fix')
+
+    const ring = feature.geometry.coordinates[0]
+    // Closed ring, and every vertex sits σ_H from the reported centre — never from the truth.
+    expect(ring[0]).toEqual(ring[ring.length - 1])
+    for (const [lng, lat] of ring) {
+      expect(haversineDistanceM({ lat, lng }, reported)).toBeCloseTo(25, 0)
+    }
+    expect(haversineDistanceM({ lat: ring[0][1], lng: ring[0][0] }, baseDrone.position)).not.toBeCloseTo(25, 0)
+  })
+
+  it('omits the ring when there is no fix — an absent ring is never "no error"', () => {
+    expect(buildGnssUncertaintyFeatures([{
+      ...baseDrone, fixQuality: 'no_fix', gnssHorizontalErrorM: null, reportedPosition: reported,
+    }])).toEqual([])
+  })
+
+  it('omits the ring entirely for scenarios with no constellation fixture', () => {
+    // fixQuality undefined = GNSS not modelled here. Must not render a confident zero-error dot.
+    expect(buildGnssUncertaintyFeatures([baseDrone])).toEqual([])
+  })
+
+  it('suppresses sub-metre rings as visual noise', () => {
+    expect(buildGnssUncertaintyFeatures([{
+      ...baseDrone, fixQuality: 'fix', gnssHorizontalErrorM: 0.5, reportedPosition: reported,
+    }])).toEqual([])
+  })
+
+  it('colours a degraded fix amber rather than the drone colour', () => {
+    const [degraded] = buildGnssUncertaintyFeatures([{
+      ...baseDrone, fixQuality: 'degraded', gnssHorizontalErrorM: 40, reportedPosition: reported,
+    }])
+    expect(degraded.properties.color).toBe('#ffaa00')
+    const [good] = buildGnssUncertaintyFeatures([{
+      ...baseDrone, fixQuality: 'fix', gnssHorizontalErrorM: 40, reportedPosition: reported,
+    }])
+    expect(good.properties.color).toBe(baseDrone.color)
+  })
+
+  it('falls back to truth as the centre only when no reported position exists yet', () => {
+    const [feature] = buildGnssUncertaintyFeatures([{
+      ...baseDrone, fixQuality: 'fix', gnssHorizontalErrorM: 12,
+    }])
+    const [lng, lat] = feature.geometry.coordinates[0][0]
+    expect(haversineDistanceM({ lat, lng }, baseDrone.position)).toBeCloseTo(12, 0)
+  })
+})

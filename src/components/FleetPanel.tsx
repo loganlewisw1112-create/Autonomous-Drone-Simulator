@@ -1,7 +1,7 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { PLATFORM_CATALOG } from '@/sim/drone/platformCatalog'
-import type { DroneState, MissionState, RecoveryTeamState } from '@/types'
+import type { DroneState, GnssFixQuality, MissionState, RecoveryTeamState } from '@/types'
 
 function batteryColor(pct: number): string {
   if (pct > 50) return 'var(--accent-green)'
@@ -14,6 +14,13 @@ function signalLabel(dbm: number): string {
   if (dbm > -80) return 'GOOD'
   if (dbm > -90) return 'WEAK'
   return 'LOST'
+}
+
+/** WP-7 fix quality → tactical palette. No fix reads as red: it is an abnormal, not a caution. */
+function gnssColor(fix: GnssFixQuality): string {
+  if (fix === 'no_fix') return 'var(--accent-red)'
+  if (fix === 'degraded') return 'var(--accent-yellow)'
+  return 'var(--accent-green)'
 }
 
 function fmtTime(sec: number): string {
@@ -38,6 +45,9 @@ function DroneCard({ drone, recoveryTeam }: { drone: DroneState; recoveryTeam?: 
     drone.geofenceBreachFlag && 'GEO-BREACH',
     drone.signalDbm < -90 && 'COMMS LOST',
     RECOVERY_STATES.has(drone.missionState) && 'RECOVERY',
+    // WP-7: loss of fix is an abnormal the operator must act on, not a background reading.
+    drone.fixQuality === 'no_fix' && 'GPS LOST',
+    drone.fixQuality === 'degraded' && 'GPS DEGRADED',
   ].filter((w): w is string => !!w)
 
   return (
@@ -82,6 +92,18 @@ function DroneCard({ drone, recoveryTeam }: { drone: DroneState; recoveryTeam?: 
           <div className="telem-row">
             <span className="telem-key">FLT</span>
             <span className="telem-val" style={{ color: 'var(--text-secondary)' }}>{fmtTime(flightSec)}</span>
+          </div>
+        )}
+        {/* WP-7 GNSS. Absent entirely for scenarios with no committed constellation fixture —
+            never a defaulted "good fix", which would be the one reading worth nothing. */}
+        {drone.fixQuality !== undefined && (
+          <div className="telem-row">
+            <span className="telem-key">GPS</span>
+            <span className="telem-val" style={{ color: gnssColor(drone.fixQuality) }}>
+              {drone.fixQuality === 'no_fix'
+                ? `NO FIX ${drone.satsVisible ?? 0}sv`
+                : `${drone.satsVisible ?? 0}sv ±${Math.round(drone.gnssHorizontalErrorM ?? 0)}m`}
+            </span>
           </div>
         )}
       </div>
