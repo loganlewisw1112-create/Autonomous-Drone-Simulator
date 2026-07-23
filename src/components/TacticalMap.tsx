@@ -6,7 +6,7 @@ import { generateGridLines } from '@/sim/mission/SARPlanner'
 import { PerfMonitor } from '@/components/PerfMonitor'
 import { MissionStatusFeed } from '@/components/MissionStatusFeed'
 import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
-import { buildAirspaceCeilingFeatures, buildConflictFeatures, buildIrFootprintFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
+import { buildAirspaceCeilingFeatures, buildConflictFeatures, buildGnssUncertaintyFeatures, buildIrFootprintFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
 import { addScenarioBuildingLayer, removeScenarioBuildingLayer } from '@/components/scenarioBuildingLayers.target'
 import { airspaceCeilingCaption, airspaceForScenario } from '@/sim/mission/airspace'
 import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
@@ -429,6 +429,12 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         czSrc.setData({ type: 'FeatureCollection', features: buildConflictFeatures(d) })
       }
 
+      // GNSS uncertainty rings (WP-7) — centred on reported position, radius σ_H
+      const gnssSrc = map.getSource('gnss-uncertainty') as maplibregl.GeoJSONSource | undefined
+      if (gnssSrc) {
+        gnssSrc.setData({ type: 'FeatureCollection', features: buildGnssUncertaintyFeatures(d) })
+      }
+
       // IR sensor footprints (layer only visible in IR mode)
       const irSrc = map.getSource('ir-footprints') as maplibregl.GeoJSONSource | undefined
       if (irSrc) {
@@ -534,6 +540,24 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         map.addLayer({
           id: 'conflict-circle-inner', type: 'circle', source: 'conflict-zones',
           paint: { 'circle-radius': 18, 'circle-color': '#ff444422', 'circle-stroke-width': 1, 'circle-stroke-color': '#ff666688' },
+        })
+      }
+      // WP-7 GNSS uncertainty ring. A real polygon rather than a `circle` layer because the
+      // radius is in METRES and must scale with zoom like the ground does — a circle layer's
+      // radius is in screen pixels, which would show the same error as a different real-world
+      // area at every zoom level and make the figure meaningless.
+      if (!map.getSource('gnss-uncertainty')) {
+        map.addSource('gnss-uncertainty', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+        map.addLayer({
+          id: 'gnss-uncertainty-fill', type: 'fill', source: 'gnss-uncertainty',
+          paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.10 },
+        })
+        map.addLayer({
+          id: 'gnss-uncertainty-ring', type: 'line', source: 'gnss-uncertainty',
+          paint: {
+            'line-color': ['get', 'color'], 'line-width': 1,
+            'line-opacity': 0.65, 'line-dasharray': [2, 2],
+          },
         })
       }
       if (!map.getSource('next-wp-lines')) {

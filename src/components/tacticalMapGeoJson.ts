@@ -1,5 +1,5 @@
 import { offsetLatLng } from '@/utils/geometry'
-import type { DroneState, ObservedAirspace, Waypoint } from '@/types'
+import type { DroneState, GnssFixQuality, ObservedAirspace, Waypoint } from '@/types'
 import type { DeviceMode } from '@/hooks/useDeviceMode'
 
 type LngLatCoord = [number, number]
@@ -145,6 +145,59 @@ export function buildAirspaceCeilingFeatures(
         label: `${cell.ceilingFt}ft AGL · FAA UASFM eff ${airspace.mapEffective}`,
       },
     }
+  })
+}
+
+export interface GnssUncertaintyFeature {
+  type: 'Feature'
+  geometry: { type: 'Polygon'; coordinates: LngLatCoord[][] }
+  properties: {
+    id: string
+    color: string
+    radiusM: number
+    fixQuality: GnssFixQuality
+  }
+}
+
+/** Circle resolution. 24 segments is smooth at any zoom the uncertainty ring is legible at. */
+const UNCERTAINTY_STEPS = 24
+
+/**
+ * GNSS uncertainty ring around each drone's REPORTED position (REALISM_ROADMAP WP-7).
+ *
+ * Drawn at the 1σ horizontal error, σ_H = HDOP × σ_UERE, centred on where the aircraft says it
+ * is — not on the truth the sim flies. That is the whole point of the visual: as the drone
+ * descends between buildings the ring widens and the marker drifts off the real track, and the
+ * operator has to decide whether the position is still trustworthy.
+ *
+ * A drone with no fix has no meaningful radius to draw — the receiver is not claiming a position
+ * at all — so it is omitted here and surfaced as a GPS LOST state instead. An absent ring is
+ * never "no error"; it means either no fix or no constellation fixture for the scenario.
+ */
+export function buildGnssUncertaintyFeatures(drones: DroneState[]): GnssUncertaintyFeature[] {
+  return drones.flatMap((drone) => {
+    if (drone.fixQuality === undefined || drone.fixQuality === 'no_fix') return []
+    const radiusM = drone.gnssHorizontalErrorM ?? 0
+    // Sub-metre rings are visual noise at any usable zoom and say nothing an operator can act on.
+    if (!(radiusM > 1)) return []
+    const centre = drone.reportedPosition ?? drone.position
+
+    const ring: LngLatCoord[] = []
+    for (let i = 0; i <= UNCERTAINTY_STEPS; i += 1) {
+      const p = offsetLatLng(centre, (360 * i) / UNCERTAINTY_STEPS, radiusM)
+      ring.push([p.lng, p.lat])
+    }
+
+    return [{
+      type: 'Feature' as const,
+      geometry: { type: 'Polygon' as const, coordinates: [ring] },
+      properties: {
+        id: drone.id,
+        color: drone.fixQuality === 'degraded' ? '#ffaa00' : drone.color,
+        radiusM,
+        fixQuality: drone.fixQuality,
+      },
+    }]
   })
 }
 

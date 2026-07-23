@@ -18,8 +18,10 @@ import {
   selectRechargeStationForDrone,
 } from '@/sim/mission/rechargeStations'
 import { checkThermalDetections } from '@/sim/sensors/ThermalSim'
+import { evaluateGnss } from '@/sim/nav/gnss'
 import { occlusionEpoch, type TerrainOcclusionService } from '@/sim/terrain/OcclusionService'
 import { occlusionServiceFor } from '@/scenarios/terrainFixtures'
+import { constellationAt, constellationFor, type ConstellationFixture } from '@/scenarios/constellationFixtures'
 import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import { tickGroundUnit, computeGroundUnitEta } from '@/sim/mission/groundUnits'
 import { tickRecoveryTeam, tickRecoveryExtraction, needsRecovery, recoveryTransitionState, createRecoveryTeam } from '@/sim/mission/recoveryManager'
@@ -28,6 +30,9 @@ import type { DroneState, EventType, FullMissionFrame, LatLng, LaunchBayPlan, Mi
 
 const THERMAL_CHECK_INTERVAL = 50
 const SNAPSHOT_INTERVAL = 40
+/** 20 ticks = 1 Hz, matching OCCLUSION_UPDATE_HZ — see the GNSS pass for why (§4.5). */
+const GNSS_CHECK_INTERVAL = 20
+const FT_TO_M = 0.3048
 const FIXED_DT = 0.05
 const TELEMETRY_SAMPLE_INTERVAL = 10
 const TICK_INTERVAL_MS = 50
@@ -52,6 +57,7 @@ function isMissionComplete(drones: DroneState[]): boolean {
 const lastPositions = new Map<string, LatLng>()
 const onSceneTicksMap = new Map<string, number>()  // recoveryTeamId → ticks on scene
 let missionOcclusion: TerrainOcclusionService | undefined
+let missionConstellation: ConstellationFixture | undefined
 
 /**
  * One fixed-timestep tick (runs `simSpeed` physics sub-steps). Exported so tests and the
@@ -589,6 +595,65 @@ export function tick() {
       }
     }
 
+    // ── GNSS: sky occlusion → DOP → reported position (WP-7) ───────────────────
+    //
+    // Runs at the 1 Hz occlusion epoch, not the 20 Hz tick. §4.5's rule: satellite geometry and
+    // building shadows change slowly relative to the sim step, and skyVisibility() marches a ray
+    // per satellite, so this is a 20× saving for no fidelity loss. Between evaluations each
+    // drone keeps the fix it last computed.
+    //
+    // Truth is never touched. `drone.position` remains what the sim flies; only the reported
+    // fields change, which is exactly the gap the operator is being trained to notice.
+    if (missionConstellation && currentTick % GNSS_CHECK_INTERVAL === 0) {
+      const looks = constellationAt(missionConstellation, elapsedSec)
+      if (looks.length > 0) {
+        for (let i = 0; i < finalDrones.length; i += 1) {
+          const drone = finalDrones[i]
+          const groundM = missionOcclusion?.groundElevation(drone.position.lat, drone.position.lng) ?? 0
+          const gnss = evaluateGnss({
+            droneId: drone.id,
+            position: drone.position,
+            altMslM: groundM + drone.altitudeFt * FT_TO_M,
+            constellation: looks,
+            occlusion: missionOcclusion,
+            seed: scenario.seed,
+            tick: currentTick,
+            elapsedSec,
+            lastReported: drone.reportedPosition,
+          })
+
+          finalDrones[i] = {
+            ...drone,
+            reportedPosition: gnss.reportedPosition,
+            hdop: gnss.hdop,
+            satsVisible: gnss.satsVisible,
+            satsInView: gnss.satsInView,
+            gnssHorizontalErrorM: gnss.horizontalErrorM,
+            fixQuality: gnss.fixQuality,
+          }
+
+          // Emit only on transition. A degraded fix is a standing condition, not an event per
+          // second, and the chain-of-custody log is evidence rather than a sampler.
+          if (gnss.fixQuality !== (drone.fixQuality ?? 'fix')) {
+            useDroneStore.getState().emitEvent({
+              eventType: gnss.fixQuality === 'no_fix' ? 'gnss_fix_lost' : 'gnss_fix_changed',
+              droneId: drone.id,
+              tick: currentTick,
+              payload: {
+                fixQuality: gnss.fixQuality,
+                from: drone.fixQuality ?? 'fix',
+                satsVisible: gnss.satsVisible,
+                satsInView: gnss.satsInView,
+                hdop: gnss.hdop === null ? null : Math.round(gnss.hdop * 100) / 100,
+                horizontalErrorM: gnss.horizontalErrorM === null ? null : Math.round(gnss.horizontalErrorM * 10) / 10,
+                ...(gnss.lossReason ? { reason: gnss.lossReason } : {}),
+              },
+            })
+          }
+        }
+      }
+    }
+
     // ── Accumulate flight distance ─────────────────────────────────────────────
     let distanceDeltaM = 0
     for (const drone of finalDrones) {
@@ -754,6 +819,7 @@ export function stopSimLoop() {
 export function initFleet() {
   const { scenario, launchPlan, weatherState, scenarioVariant } = useDroneStore.getState()
   missionOcclusion = scenario ? occlusionServiceFor(scenario.id) : undefined
+  missionConstellation = constellationFor(scenario?.id)
   if (!scenario) return
   lastPositions.clear()
   onSceneTicksMap.clear()

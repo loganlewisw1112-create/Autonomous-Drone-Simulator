@@ -70,7 +70,21 @@ export interface DroneState {
   avoidStartSec?: number        // elapsedSec when drone entered 'avoid' for a traffic conflict
   avoidHeadingDeg?: number      // divergence heading held during the avoid maneuver
   avoidReturnState?: MissionState  // missionState to restore once the conflict clears
+
+  // ─── GNSS (REALISM_ROADMAP WP-7) ───────────────────────────────────────────
+  // `position` above stays GROUND TRUTH and is what the sim flies. These describe what the
+  // aircraft's receiver *reports*, which is all an operator ever sees. Absent when the
+  // scenario has no committed constellation fixture — never defaulted to a fake good fix.
+  reportedPosition?: LatLng     // truth perturbed by the GNSS error model; held during no_fix
+  hdop?: number | null          // horizontal dilution of precision; null when there is no fix
+  satsVisible?: number          // satellites above the mask AND unoccluded
+  satsInView?: number           // satellites above the mask before occlusion (open-sky count)
+  gnssHorizontalErrorM?: number | null  // 1σ horizontal error, σ_H = HDOP × σ_UERE
+  fixQuality?: GnssFixQuality
 }
+
+/** WP-7 receiver fix state. Mirrors `src/sim/nav/gnss.ts`, declared here to keep types leaf-level. */
+export type GnssFixQuality = 'fix' | 'degraded' | 'no_fix'
 
 export interface DroneCmd {
   targetHeadingDeg?: number
@@ -325,6 +339,8 @@ export type EventType =
   | 'drone_recovery_requested'
   | 'drone_recovered'
   | 'launch_site_repositioned'
+  | 'gnss_fix_lost'
+  | 'gnss_fix_changed'
 
 export interface MissionEvent {
   tick: number
