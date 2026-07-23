@@ -1,7 +1,18 @@
 import { offsetLatLng } from '@/utils/geometry'
 import type { DroneState, ObservedAirspace, Waypoint } from '@/types'
+import type { DeviceMode } from '@/hooks/useDeviceMode'
 
 type LngLatCoord = [number, number]
+
+export type BuildingRenderMode = 'fill-extrusion' | 'fill'
+
+/**
+ * WP-4 rendering cut line: desktop gets 2.5D prisms; both phone orientations get the same
+ * 2D footprints. Physics continues to use the full building index in every device mode.
+ */
+export function buildingRenderMode(deviceMode: DeviceMode): BuildingRenderMode {
+  return deviceMode === 'desktop' ? 'fill-extrusion' : 'fill'
+}
 
 export interface NextWaypointFeature {
   type: 'Feature'

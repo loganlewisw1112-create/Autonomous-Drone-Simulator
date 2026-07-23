@@ -17,13 +17,19 @@ import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
+import { gzipSync } from 'node:zlib'
 import { decodePng, terrariumToMeters } from './terrain.mjs'
 
 export const OVERTURE_BUILDINGS_SOURCE = 'Overture Maps Foundation — buildings theme'
 export const OVERTURE_BUILDINGS_LICENSE = 'ODbL 1.0; upstream attribution retained by Overture'
 export const OVERTURE_BUILDINGS_DOCS = 'https://docs.overturemaps.org/guides/buildings/'
 export const OVERTURE_ATTRIBUTION = '© OpenStreetMap contributors, Overture Maps Foundation'
+export const OVERTURE_DATA_RELEASE = '2026-06-17.0'
+export const OVERTURE_SCHEMA_VERSION = 'v1.17.0'
+export const OVERTURE_CLIENT_VERSION = '1.0.1'
+export const OVERTURE_STAC_COLLECTION =
+  `https://stac.overturemaps.org/${OVERTURE_DATA_RELEASE}/buildings/building/collection.json`
 
 const MAX_RING_VERTICES = 10
 const FLOOR_HEIGHT_M = 3
@@ -118,9 +124,9 @@ export function normalizeOvertureBuildings(collection, { groundElevation }) {
       id: feature.id ?? feature.properties?.id,
       geometry,
       properties: {
-        h: height.h,
+        h: Math.round(height.h * 10) / 10,
         hSrc: height.hSrc,
-        base: Math.round(base * 100) / 100,
+        base: Math.round(base * 10) / 10,
       },
     })
   }
@@ -179,8 +185,10 @@ function run(command, args) {
 async function downloadOvertureGeoJson(bbox, output) {
   const uvx = process.platform === 'win32' ? 'uvx.exe' : 'uvx'
   await run(uvx, [
+    '--from', `overturemaps==${OVERTURE_CLIENT_VERSION}`,
     'overturemaps', 'download',
     `--bbox=${bbox.join(',')}`,
+    `--release=${OVERTURE_DATA_RELEASE}`,
     '--type=building',
     '-f', 'geojson',
     '-o', output,
@@ -202,7 +210,21 @@ export async function writeBuildingFixture({ dir, scenarioId, inputPath }) {
     if (!inputPath) await downloadOvertureGeoJson(bbox, downloadedPath)
     const raw = JSON.parse(await readFile(sourcePath, 'utf8'))
     const normalized = normalizeOvertureBuildings(raw, { groundElevation })
-    const json = JSON.stringify(normalized.collection, null, 2) + '\n'
+    // GERS IDs are useful upstream join keys, but the runtime needs only geometry and
+    // {h,hSrc,base}. Omitting UUIDs saves about 100 KB gzipped in this AO. Five decimal
+    // coordinate places are roughly one metre here, aligned with the fixture's real accuracy.
+    const runtimeCollection = {
+      ...normalized.collection,
+      features: normalized.collection.features.map(({ id: _id, ...feature }) => ({
+        ...feature,
+        geometry: {
+          ...feature.geometry,
+          coordinates: roundCoordinates(feature.geometry.coordinates, 5),
+        },
+      })),
+    }
+    const json = JSON.stringify(runtimeCollection) + '\n'
+    const gzipBytes = gzipSync(json, { level: 9 }).byteLength
     await mkdir(dir, { recursive: true })
     await writeFile(new URL('buildings.json', dir), json)
 
@@ -217,7 +239,13 @@ export async function writeBuildingFixture({ dir, scenarioId, inputPath }) {
       attribution: OVERTURE_ATTRIBUTION,
       retrievedAt: new Date().toISOString().slice(0, 10),
       sha256: sha256(json),
-      input: inputPath ? basename(inputPath) : 'official overturemaps Python client, latest STAC release',
+      rawBytes: Buffer.byteLength(json),
+      gzipBytes,
+      input: inputPath ? basename(inputPath) : `overturemaps==${OVERTURE_CLIENT_VERSION}`,
+      dataRelease: OVERTURE_DATA_RELEASE,
+      schemaVersion: OVERTURE_SCHEMA_VERSION,
+      stacCollection: OVERTURE_STAC_COLLECTION,
+      client: { package: 'overturemaps', version: OVERTURE_CLIENT_VERSION },
       filters: 'measured height, or num_floors × 3m; unknown-height footprints excluded',
     }
     const manifest = {
@@ -227,10 +255,16 @@ export async function writeBuildingFixture({ dir, scenarioId, inputPath }) {
       sources: [...kept, source].sort((a, b) => a.fixture.localeCompare(b.fixture)),
     }
     await writeFile(manifestUrl, JSON.stringify(manifest, null, 2) + '\n')
-    return { ...normalized, bytes: Buffer.byteLength(json), sha256: source.sha256 }
+    return { ...normalized, bytes: Buffer.byteLength(json), gzipBytes, sha256: source.sha256 }
   } finally {
     await rm(temp, { recursive: true, force: true })
   }
+}
+
+function roundCoordinates(value, digits) {
+  if (!Array.isArray(value)) return value
+  if (typeof value[0] === 'number') return value.map((n) => Number(Number(n).toFixed(digits)))
+  return value.map((child) => roundCoordinates(child, digits))
 }
 
 function parseArgs(argv) {
@@ -249,11 +283,12 @@ async function cli() {
   const result = await writeBuildingFixture({ dir, scenarioId: args.id, inputPath: args.input })
   console.log(
     `buildings: ${result.stats.output}/${result.stats.input} retained · ` +
-    `${result.stats.noHeight} without height · ${(result.bytes / 1024).toFixed(1)} KB`,
+    `${result.stats.noHeight} without height · ${(result.bytes / 1024).toFixed(1)} KB raw · ` +
+    `${(result.gzipBytes / 1024).toFixed(1)} KB gzip`,
   )
 }
 
-const invoked = process.argv[1] ? pathToFileURL(fileURLToPath(pathToFileURL(process.argv[1]))).href : ''
+const invoked = process.argv[1] ? pathToFileURL(process.argv[1]).href : ''
 if (invoked === import.meta.url || process.argv[1]?.endsWith('buildings.mjs')) {
   cli().catch((error) => {
     console.error('building fixture failed:', error.message)

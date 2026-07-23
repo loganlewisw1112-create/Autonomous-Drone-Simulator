@@ -24,6 +24,7 @@ import {
   elevationAt,
   inflateRaw,
   inflateZlib,
+  loadTerrainRaster,
   nearestSampleAt,
   sampleCenterLatLng,
   terrariumToMeters,
@@ -107,6 +108,15 @@ describe('DEFLATE / PNG decode — checked against node:zlib', () => {
     const png = base64ToBytes(fixture.payload)
     const bad: TerrainHeader = { ...fixture.header, width: fixture.header.width + 1 }
     expect(() => decodeTerrariumPng(png, bad)).toThrow(/mismatch/)
+  })
+
+  it('rejects a cached payload reused with a different georeference', () => {
+    expect(loadTerrainRaster(fixture.payload, fixture.header)).toBe(raster)
+    const bad: TerrainHeader = {
+      ...fixture.header,
+      bounds: { ...fixture.header.bounds, west: fixture.header.bounds.west - 0.01 },
+    }
+    expect(() => loadTerrainRaster(fixture.payload, bad)).toThrow(/different geo header/)
   })
 })
 

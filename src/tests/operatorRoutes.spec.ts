@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
+import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
 import { buildOperatorCommandRoute, buildRouteSuggestions, validateOperatorRoute } from '@/sim/mission/operatorRoutes'
-import { defaultDroneStartPosition } from '@/sim/mission/routeAudit'
-import type { ScenarioConfig } from '@/types'
+import {
+  auditTerrainClearance,
+  defaultDroneStartPosition,
+  REQUIRED_STRUCTURE_CLEARANCE_FT,
+} from '@/sim/mission/routeAudit'
+import { createTerrainOcclusionService } from '@/sim/terrain/OcclusionService'
+import type { TerrainRaster } from '@/sim/terrain/terrainRaster'
+import type { ScenarioConfig, Waypoint } from '@/types'
 
 const portScenario = ALL_SCENARIOS.find((s) => s.id === 'demo_perimeter') ?? ALL_SCENARIOS[0]
 const rioGrande = ALL_SCENARIOS.find((s) => s.id === 'extreme_cbp_rio_grande_longrange') ?? ALL_SCENARIOS[0]
@@ -138,5 +145,144 @@ describe('operator retasking and route suggestions', () => {
 
     expect(suggestions[0]?.title).toBe('Forward recharge staging')
     expect(suggestions[0]?.route.length).toBeGreaterThan(0)
+  })
+})
+
+describe('operator terrain route warnings', () => {
+  function raster(elevations?: Float32Array): TerrainRaster {
+    const width = 101
+    const height = 11
+    const values = elevations ?? new Float32Array(width * height).fill(100)
+    return {
+      width,
+      height,
+      bounds: { west: 0, south: -0.001, east: 0.01, north: 0.001 },
+      metersPerPixel: 100,
+      surface: 'dtm-approx',
+      minElevationM: Math.min(...values),
+      maxElevationM: Math.max(...values),
+      elevations: values,
+    }
+  }
+
+  const waypoint = (id: string, lng: number, altitudeFt: number): Waypoint => ({
+    id,
+    position: { lat: 0, lng },
+    altitudeFt,
+  })
+
+  it('reports missing fixture coverage without rejecting an otherwise legal route', () => {
+    const scenario: ScenarioConfig = {
+      ...liveOriginScenario,
+      id: 'no-terrain-fixture',
+      geofences: [],
+    }
+    const route = [{
+      id: 'legal',
+      position: scenario.startPosition,
+      altitudeFt: 40,
+    }]
+    const result = validateOperatorRoute(scenario, 'uav-01', route)
+
+    expect(result.accepted).toBe(true)
+    expect(result.findings).toEqual([])
+    expect(result.terrainWarnings).toMatchObject([{
+      kind: 'no_fixture',
+      requiredClearanceFt: REQUIRED_STRUCTURE_CLEARANCE_FT,
+      surfaceClearanceFt: null,
+    }])
+  })
+
+  it('samples at raster resolution and reports the deepest structure-clearance warning', () => {
+    let surfaceLookups = 0
+    const service = createTerrainOcclusionService(raster(), {
+      structures: {
+        topAt: (_lat, lng) => {
+          surfaceLookups++
+          return lng >= 0.004 && lng <= 0.006 ? 115 : null
+        },
+        maxTopM: 115,
+      },
+    })
+    const warnings = auditTerrainClearance(
+      'synthetic',
+      'uav-01',
+      [waypoint('cross-building', 0.008, 50)],
+      { fromPosition: { lat: 0, lng: 0.002 }, service },
+    )
+
+    expect(surfaceLookups).toBeGreaterThanOrEqual(8)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatchObject({
+      kind: 'structure_clearance',
+      segmentId: 'start->cross-building',
+      altitudeAglFt: 50,
+      requiredClearanceFt: 20,
+    })
+    expect(warnings[0].structureHeightFt).toBeCloseTo(49.21, 1)
+    expect(warnings[0].surfaceClearanceFt).toBeCloseTo(0.79, 1)
+  })
+
+  it('keeps AGL canonical over rising terrain and warns on a low bare-ground route', () => {
+    const width = 101
+    const height = 11
+    const elevations = new Float32Array(width * height)
+    for (let row = 0; row < height; row++) {
+      for (let col = 0; col < width; col++) elevations[row * width + col] = 100 + col
+    }
+    const service = createTerrainOcclusionService(raster(elevations))
+    const warnings = auditTerrainClearance(
+      'synthetic-slope',
+      'uav-01',
+      [waypoint('slope-end', 0.009, 5)],
+      { fromPosition: { lat: 0, lng: 0.001 }, service },
+    )
+
+    expect(warnings).toMatchObject([{
+      kind: 'ground_clearance',
+      surfaceClearanceFt: 5,
+      requiredClearanceFt: REQUIRED_STRUCTURE_CLEARANCE_FT,
+    }])
+  })
+
+  it('warns explicitly when any sampled part of a route leaves fixture coverage', () => {
+    const service = createTerrainOcclusionService(raster())
+    const warnings = auditTerrainClearance(
+      'synthetic-outside',
+      'uav-01',
+      [waypoint('outside', 0.012, 120)],
+      { fromPosition: { lat: 0, lng: 0.008 }, service },
+    )
+
+    expect(warnings).toMatchObject([{
+      kind: 'outside_coverage',
+      segmentId: 'start->outside',
+      surfaceClearanceFt: null,
+      structureHeightFt: null,
+    }])
+  })
+
+  it('detects a committed demo_wildfire building using real terrain and Overture data', () => {
+    const fixture = buildingFixtureFor('demo_wildfire')!
+    const feature = fixture.features[0]
+    const coordinate = feature.geometry.type === 'Polygon'
+      ? feature.geometry.coordinates[0][0]
+      : feature.geometry.coordinates[0][0][0]
+    const [lng, lat] = coordinate
+    const altitudeFt = feature.properties.h / 0.3048
+    const warnings = auditTerrainClearance(
+      'demo_wildfire',
+      'uav-01',
+      [{ id: 'real-building', position: { lat, lng }, altitudeFt }],
+      { fromPosition: { lat, lng } },
+    )
+
+    expect(warnings.some((warning) => warning.kind === 'structure_clearance')).toBe(true)
+    const warning = warnings.find((candidate) => candidate.kind === 'structure_clearance')!
+    expect(warning.requiredClearanceFt).toBe(20)
+    // Fixture base is rounded independently from the decoded DEM, so roof-level AGL is close
+    // to, rather than bit-exactly, zero clearance.
+    expect(warning.surfaceClearanceFt).toBeLessThan(REQUIRED_STRUCTURE_CLEARANCE_FT)
+    expect(Math.abs(warning.surfaceClearanceFt!)).toBeLessThan(2)
   })
 })

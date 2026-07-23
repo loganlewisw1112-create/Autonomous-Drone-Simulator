@@ -51,6 +51,54 @@ export interface TaskRanges {
   identificationM: number
 }
 
+/** Weather fields used by the bounded LWIR atmosphere model. */
+export interface ThermalWeather {
+  activeHazards: readonly string[]
+  visibilityMi: number
+}
+
+/**
+ * Object/background contrast required by the live thermal gate. The roadmap's
+ * 2 C threshold scales only when a published NETD is worse than 50 mK. A null
+ * result is deliberate: unpublished NETD is unsupported, never guessed.
+ */
+export function thermalContrastThresholdC(sensor: ThermalSensorSpec | null): number | null {
+  if (!sensor || sensor.netdMk == null || !Number.isFinite(sensor.netdMk) || sensor.netdMk <= 0) {
+    return null
+  }
+  return 2 * Math.max(1, sensor.netdMk / 50)
+}
+
+/**
+ * LWIR range transmission for the only atmospheric terms sourced by WP-5.
+ * Fog and marine layer map monotonically into the documented 0.5..0.7 band.
+ * Clear air and unmodelled hazards remain 1; no rain/smoke coefficient is invented.
+ */
+export function thermalTransmission(weather?: ThermalWeather | null): number {
+  const obscured = weather?.activeHazards.some(
+    (hazard) => hazard === 'fog' || hazard === 'marine_layer',
+  ) ?? false
+  if (!obscured) return 1
+  const visibilityMi = Number.isFinite(weather?.visibilityMi)
+    ? Math.max(0, weather!.visibilityMi)
+    : 0
+  return 0.5 + 0.2 * Math.min(1, visibilityMi / 5)
+}
+
+/**
+ * Johnson detection range after atmospheric transmission. Unknown optics or
+ * NETD return null so a live caller can fail closed instead of fabricating support.
+ */
+export function effectiveDetectionRangeM(
+  sensor: ThermalSensorSpec | null,
+  targetSizeM: number,
+  transmission = 1,
+): number | null {
+  const ranges = platformTaskRanges(sensor, targetSizeM)
+  if (!ranges || thermalContrastThresholdC(sensor) == null) return null
+  return ranges.detectionM * Math.min(1, Math.max(0, transmission))
+}
+
 /**
  * Effective focal length for a payload: the published figure when the manufacturer gives one,
  * otherwise derived from the published horizontal FOV and the detector geometry. Null when

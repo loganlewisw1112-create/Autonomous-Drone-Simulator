@@ -1,8 +1,26 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { detectConflicts, applyConflictFlags, getAssignedAltitude, ALTITUDE_BANDS } from '@/sim/safety/DeconflictEngine'
 import { createDroneState } from '@/sim/drone/DroneEntity'
+import { createTerrainOcclusionService } from '@/sim/terrain/OcclusionService'
+import type { TerrainRaster } from '@/sim/terrain/terrainRaster'
 
 const BASE = { lat: 37.7695, lng: -122.4862 }
+
+const SLOPED_TERRAIN: TerrainRaster = {
+  width: 2,
+  height: 2,
+  bounds: {
+    west: BASE.lng - 0.0001,
+    south: BASE.lat - 0.0001,
+    east: BASE.lng + 0.0001,
+    north: BASE.lat + 0.0001,
+  },
+  metersPerPixel: 10,
+  surface: 'bare-earth',
+  minElevationM: 100,
+  maxElevationM: 110,
+  elevations: new Float32Array([110, 110, 100, 100]),
+}
 
 function makeDrone(id: string, lat: number, lng: number, altFt: number, state = 'navigate' as const) {
   return {
@@ -52,6 +70,29 @@ describe('DeconflictEngine', () => {
     ]
     const conflicts = detectConflicts(drones)
     expect(conflicts.length).toBe(0)
+  })
+
+  it('compares physical MSL separation when both predictions have terrain coverage', () => {
+    const terrain = createTerrainOcclusionService(SLOPED_TERRAIN)
+    const drones = [
+      { ...makeDrone('uav-01', BASE.lat - 0.00005, BASE.lng, 120), speedMs: 0 },
+      { ...makeDrone('uav-02', BASE.lat + 0.00005, BASE.lng, 120), speedMs: 0 },
+    ]
+
+    expect(detectConflicts(drones)).toHaveLength(1)
+    expect(detectConflicts(drones, terrain)).toHaveLength(0)
+  })
+
+  it('preserves the AGL comparison when either predicted position is outside coverage', () => {
+    const terrain = createTerrainOcclusionService(SLOPED_TERRAIN)
+    const ground = vi.spyOn(terrain, 'groundElevation')
+    const drones = [
+      { ...makeDrone('uav-01', BASE.lat + 0.00005, BASE.lng, 120), speedMs: 0 },
+      { ...makeDrone('uav-02', BASE.lat + 0.00011, BASE.lng, 120), speedMs: 0 },
+    ]
+
+    expect(detectConflicts(drones, terrain)).toHaveLength(1)
+    expect(ground).not.toHaveBeenCalled()
   })
 
   it('landed drones are excluded from conflict detection', () => {

@@ -4,6 +4,7 @@ import {
   type OcclusionOptions,
   type TerrainOcclusionService,
 } from '@/sim/terrain/OcclusionService'
+import { buildingIndexFor } from './buildingFixtures'
 import wildfireHeader from './fixtures/demo_wildfire/terrain.json'
 import wildfirePng from './fixtures/demo_wildfire/terrain.png?inline'
 
@@ -69,5 +70,9 @@ export function occlusionServiceFor(
   options?: OcclusionOptions,
 ): TerrainOcclusionService | undefined {
   const raster = terrainRasterFor(scenarioId)
-  return raster ? createTerrainOcclusionService(raster, options) : undefined
+  if (!raster) return undefined
+  return createTerrainOcclusionService(raster, {
+    ...options,
+    structures: options?.structures ?? buildingIndexFor(scenarioId),
+  })
 }

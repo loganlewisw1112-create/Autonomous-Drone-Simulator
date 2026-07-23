@@ -8,6 +8,8 @@ import { airspaceCeilingCaption, airspaceForScenario } from '@/sim/mission/airsp
 import { buildMissionOutcomeSummary } from '@/sim/demo/missionOutcome'
 import { buildUtmAirspaceState } from '@/sim/demo/utmEngine'
 import { platformForDrone, LEGACY_FAA_SPEED_LIMIT_MS } from '@/sim/drone/platformCatalog'
+import { occlusionServiceFor } from '@/scenarios/terrainFixtures'
+import { terrainAltitudeSnapshot } from '@/sim/terrain/altitude'
 import type { MissionEvent, ScenarioConfig } from '@/types'
 
 // Recharts is a ~530kB vendor chunk — keep it out of the first paint by lazy-loading
@@ -71,6 +73,14 @@ export function TelemetryPanel() {
     : drones[0]
 
   const history = selected ? (telemetryHistory[selected.id] ?? []) : []
+  const terrainScenarioId = scenario?.id
+  const terrainService = useMemo(
+    () => terrainScenarioId ? occlusionServiceFor(terrainScenarioId) : undefined,
+    [terrainScenarioId],
+  )
+  const selectedTerrain = selected
+    ? terrainAltitudeSnapshot(terrainService, selected.position, selected.altitudeFt)
+    : null
   const recentEvents = [...events].reverse().slice(0, 60)
 
   // Re-verify the whole hash chain whenever the event log changes. Synchronous and cheap
@@ -89,7 +99,8 @@ export function TelemetryPanel() {
     if (mavTickRef.current % 20 !== 0) return  // sample ~1Hz at 1× speed
     const lines: string[] = []
     for (const d of drones) {
-      for (const msg of encodeDroneTelemetry(d)) {
+      const terrain = terrainAltitudeSnapshot(terrainService, d.position, d.altitudeFt)
+      for (const msg of encodeDroneTelemetry(d, terrain.aircraftMslM)) {
         lines.push(formatMAVLinkLine(msg))
       }
     }
@@ -97,7 +108,7 @@ export function TelemetryPanel() {
       const next = [...prev, ...lines]
       return next.length > MAX_MAVLINK_LINES ? next.slice(next.length - MAX_MAVLINK_LINES) : next
     })
-  }, [drones, activeTab])
+  }, [drones, activeTab, terrainService])
 
   // Auto-scroll MAVLink feed
   useEffect(() => {
@@ -168,6 +179,24 @@ export function TelemetryPanel() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <TRow label="POSITION" value={`${selected.position.lat.toFixed(5)}, ${selected.position.lng.toFixed(5)}`} />
                 <TRow label="ALTITUDE" value={`${Math.round(selected.altitudeFt)} ft AGL`} warn={selected.altitudeFt > 390} />
+                {selectedTerrain?.coverage === 'available' ? (
+                  <>
+                    <TRow label="GROUND MSL" value={`${Math.round(selectedTerrain.groundMslM! * 3.28084)} ft`} />
+                    <TRow label="AIRCRAFT MSL" value={`${Math.round(selectedTerrain.aircraftMslM! * 3.28084)} ft`} />
+                    <TRow
+                      label="SURFACE CLR"
+                      value={`${Math.round(selectedTerrain.surfaceClearanceFt!)} ft`}
+                      warn={selectedTerrain.surfaceClearanceFt! < 20}
+                      crit={selectedTerrain.surfaceClearanceFt! < 0}
+                    />
+                  </>
+                ) : (
+                  <TRow
+                    label="TERRAIN"
+                    value={selectedTerrain?.coverage === 'outside' ? 'OUTSIDE FIXTURE' : 'NOT SOURCED'}
+                    warn
+                  />
+                )}
                 <TRow label="SPEED" value={`${selected.speedMs.toFixed(1)} m/s`} warn={selected.speedMs > certifiedSpeedLimitMs(scenario, selected.id) + 0.5} />
                 <TRow label="HEADING" value={`${Math.round(selected.headingDeg)}° (${compassDir(selected.headingDeg)})`} />
                 <TRow label="BATTERY" value={`${Math.round(selected.batteryPct)}%`} warn={selected.batteryPct < 25} crit={selected.batteryPct < 10} />

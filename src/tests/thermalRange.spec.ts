@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   pixelsAcrossTarget, rangeForPixels, platformTaskRanges, focalLengthFromHfov,
-  effectiveFocalLengthMm, JOHNSON_PIXELS,
+  effectiveFocalLengthMm, JOHNSON_PIXELS, thermalContrastThresholdC,
+  thermalTransmission, effectiveDetectionRangeM,
 } from '@/sim/sensors/thermalRange'
 import { PLATFORM_CATALOG, LEGACY_PLATFORM } from '@/sim/drone/platformCatalog'
 
@@ -53,6 +54,41 @@ describe('Johnson thermal range geometry', () => {
   it('derives focal length from a published HFOV (the practical bridge)', () => {
     // A 640 px, 12 µm sensor at 32.914° HFOV back-solves to a 13 mm lens.
     expect(focalLengthFromHfov(32.914, 640, 12)).toBeCloseTo(13, 1)
+  })
+})
+
+describe('live thermal range gates (WP-5)', () => {
+  it('scales the 2 C contrast threshold from published NETD', () => {
+    expect(thermalContrastThresholdC(PLATFORM_CATALOG.skydio_x10.thermal)).toBe(2)
+    expect(thermalContrastThresholdC(PLATFORM_CATALOG.parrot_anafi_usa.thermal)).toBe(2.4)
+    expect(thermalContrastThresholdC(PLATFORM_CATALOG.teal_2.thermal)).toBeNull()
+    expect(thermalContrastThresholdC(null)).toBeNull()
+  })
+
+  it('keeps clear LWIR at 1 and bounds fog/marine transmission to 0.5..0.7', () => {
+    expect(thermalTransmission()).toBe(1)
+    expect(thermalTransmission({ activeHazards: [], visibilityMi: 0 })).toBe(1)
+    expect(thermalTransmission({ activeHazards: ['fog'], visibilityMi: 0 })).toBe(0.5)
+    expect(thermalTransmission({ activeHazards: ['fog'], visibilityMi: 2.5 })).toBe(0.6)
+    expect(thermalTransmission({ activeHazards: ['marine_layer'], visibilityMi: 5 })).toBe(0.7)
+    expect(thermalTransmission({ activeHazards: ['marine_layer'], visibilityMi: 50 })).toBe(0.7)
+  })
+
+  it('does not invent rain or smoke transmission coefficients', () => {
+    expect(thermalTransmission({ activeHazards: ['rain'], visibilityMi: 0.1 })).toBe(1)
+    expect(thermalTransmission({ activeHazards: ['smoke'], visibilityMi: 0.1 })).toBe(1)
+  })
+
+  it('multiplies Johnson range by transmission and fails closed on unknown sensor data', () => {
+    const sensor = PLATFORM_CATALOG.skydio_x10.thermal
+    const clearRange = platformTaskRanges(sensor, 0.5)!.detectionM
+    expect(effectiveDetectionRangeM(sensor, 0.5, 1)).toBeCloseTo(clearRange, 10)
+    expect(effectiveDetectionRangeM(sensor, 0.5, 0.6)).toBeCloseTo(clearRange * 0.6, 10)
+
+    // Teal has optics but no published NETD; BRINC has neither published optics nor NETD.
+    expect(effectiveDetectionRangeM(PLATFORM_CATALOG.teal_2.thermal, 0.5)).toBeNull()
+    expect(effectiveDetectionRangeM(PLATFORM_CATALOG.brinc_lemur_2.thermal, 0.5)).toBeNull()
+    expect(effectiveDetectionRangeM(null, 0.5)).toBeNull()
   })
 })
 

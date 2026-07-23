@@ -21,7 +21,9 @@ const CLOCK_ORIGIN = new Date('2026-01-01T00:00:00Z')
 function peakSpeeds(scenario: ScenarioConfig, ticks: number): Record<string, number> {
   vi.setSystemTime(CLOCK_ORIGIN)
   useDroneStore.setState({
-    scenario,
+    // This test isolates propulsion. WP-5 thermal contacts now trigger a real
+    // inspect hold at sourced ranges, which is intentionally outside that scope.
+    scenario: { ...scenario, heatSources: [] },
     weatherState: getDefaultWeatherState(scenario.seed),
     launchPlan: null,
   })

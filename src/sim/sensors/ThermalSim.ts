@@ -1,81 +1,245 @@
 import { mulberry32 } from '@/utils/rng'
 import { haversineDistanceM, offsetLatLng } from '@/utils/geometry'
-import type { DroneState, HeatSource, ThermalDetection } from '@/types'
+import type { DronePlatformSpec } from '@/sim/drone/platformCatalog'
+import type { OcclusionService } from '@/sim/terrain/OcclusionService'
+import {
+  effectiveDetectionRangeM,
+  thermalContrastThresholdC,
+  thermalTransmission,
+} from '@/sim/sensors/thermalRange'
+import type {
+  DroneState,
+  HeatSource,
+  ThermalDetection,
+  WeatherVariantState,
+} from '@/types'
 
-// Thermal sensor model parameters.
-//
-// MODEL ASSUMPTIONS (documented deliberately — this is a teaching-grade sensor model, not a
-// radiometric payload simulation):
-//  - Detection range is deliberately conservative (~60 m at low altitude, decaying with height).
-//    Real uncooled radiometric payloads detect person-sized signatures at several hundred
-//    meters from 400 ft AGL; the short range here forces close-approach search behavior,
-//    which demos operator workflow better. Treat absolute ranges as gameplay values.
-//  - Reported positions carry seeded localization error (below) — a detection is a sensor
-//    estimate, never ground truth.
-//  - Confidence is proximity-scaled with seeded noise; weather degradation is applied
-//    downstream via WeatherVariantState.sensorConfidenceFactor.
-const SENSOR_RANGE_M = 60       // max detection range at cruise altitude
-const ALT_RANGE_FACTOR = 0.4    // per 100ft altitude, range reduces by this fraction
+// Legacy constants remain only for the four-argument compatibility path. Once
+// SimulationLoop supplies ThermalDetectionEnvironment, the sourced WP-5 model
+// below replaces this gameplay range completely.
+const LEGACY_SENSOR_RANGE_M = 60
+const LEGACY_ALT_RANGE_FACTOR = 0.4
 const BASE_CONFIDENCE = 0.85
 const NOISE_AMPLITUDE = 0.15
-const MAX_LOCALIZATION_ERROR_M = 9   // worst-case reported-position error at zero confidence
+const MAX_LOCALIZATION_ERROR_M = 9
+const FT_TO_M = 0.3048
+
+export interface ThermalDetectionEnvironment {
+  platform: DronePlatformSpec | null
+  weather: Pick<WeatherVariantState, 'activeHazards' | 'visibilityMi' | 'tempF'>
+  occlusion?: OcclusionService
+}
+
+export interface ThermalTargetGeometry {
+  criticalDimensionM: number
+  heightAglM: number
+}
+
+const SURFACE_TARGET_HEIGHT_M = 0.5
 
 /**
- * Effective sensor range in meters, degraded by altitude.
- * At 100ft cruise: full range. Above 200ft: significantly reduced.
+ * Resolve authored target geometry for the Johnson model. Heat-source radii
+ * already describe circular thermal footprints in every shipped scenario, so
+ * their diameter is the conservative critical dimension when no override is
+ * authored. Campfires use the same footprint and aim halfway up the modelled
+ * flame column; generic surface sources stay just above local ground for LOS.
  */
-function effectiveRangeM(altitudeFt: number): number {
-  const altFactor = Math.max(0, 1 - (altitudeFt / 100) * ALT_RANGE_FACTOR)
-  return SENSOR_RANGE_M * altFactor
+export function thermalTargetGeometry(source: HeatSource): ThermalTargetGeometry | null {
+  if (source.class === 'generic-person') {
+    return {
+      criticalDimensionM: source.criticalDimensionM ?? 0.5,
+      heightAglM: source.heightAglM ?? 1.7,
+    }
+  }
+  if (source.class === 'vehicle') {
+    return {
+      criticalDimensionM: source.criticalDimensionM ?? 2,
+      heightAglM: source.heightAglM ?? 1.5,
+    }
+  }
+  const criticalDimensionM = source.criticalDimensionM ?? source.radiusM * 2
+  if (criticalDimensionM <= 0) return null
+  const defaultHeightAglM = source.class === 'campfire'
+    ? Math.max(SURFACE_TARGET_HEIGHT_M, source.radiusM)
+    : SURFACE_TARGET_HEIGHT_M
+  return {
+    criticalDimensionM,
+    heightAglM: source.heightAglM ?? defaultHeightAglM,
+  }
+}
+
+/** Stable FNV-1a over the complete seed/tick/drone/source identity. */
+function hashIdentity(value: string): number {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return hash >>> 0
+}
+
+function sourceRng(seed: number, tick: number, droneId: string, sourceId: string) {
+  return mulberry32(hashIdentity(`${seed}|${tick}|${droneId}|${sourceId}`))
+}
+
+function legacyEffectiveRangeM(altitudeFt: number): number {
+  const altFactor = Math.max(0, 1 - (altitudeFt / 100) * LEGACY_ALT_RANGE_FACTOR)
+  return LEGACY_SENSOR_RANGE_M * altFactor
+}
+
+function celsiusFromFahrenheit(tempF: number): number {
+  return (tempF - 32) * 5 / 9
+}
+
+function endpointAltitudesMsl(
+  drone: DroneState,
+  source: HeatSource,
+  heightAglM: number,
+  occlusion?: OcclusionService,
+): { droneMslM: number; sourceMslM: number } {
+  const droneGroundM = occlusion?.groundElevation(drone.position.lat, drone.position.lng) ?? 0
+  const sourceGroundM = occlusion?.groundElevation(source.position.lat, source.position.lng) ?? 0
+  return {
+    droneMslM: droneGroundM + drone.altitudeFt * FT_TO_M,
+    sourceMslM: sourceGroundM + heightAglM,
+  }
+}
+
+/** True three-dimensional sensor-to-target range. */
+export function thermalSlantRangeM(
+  drone: DroneState,
+  source: HeatSource,
+  heightAglM: number,
+  occlusion?: OcclusionService,
+): number {
+  const horizontalM = haversineDistanceM(drone.position, source.position)
+  const { droneMslM, sourceMslM } = endpointAltitudesMsl(drone, source, heightAglM, occlusion)
+  return Math.hypot(horizontalM, droneMslM - sourceMslM)
+}
+
+function estimateDetection(
+  drone: DroneState,
+  source: HeatSource,
+  tick: number,
+  seed: number,
+  distanceM: number,
+  rangeM: number,
+  strict: boolean,
+): ThermalDetection | null {
+  const rng = sourceRng(seed, tick, drone.id, source.id)
+  const proximityFactor = 1 - Math.min(1, distanceM / rangeM)
+  const noise = (rng() - 0.5) * NOISE_AMPLITUDE
+  // Strict physics already passed binary range/contrast/LOS gates. Keep a
+  // bounded confidence estimate at the range edge rather than randomly erasing
+  // a physically valid boundary detection. Legacy retains its prior curve.
+  const signal = strict
+    ? BASE_CONFIDENCE * (0.5 + 0.5 * proximityFactor)
+    : BASE_CONFIDENCE * proximityFactor
+  const confidence = Math.min(1, Math.max(0, signal + noise))
+  if (confidence < 0.3) return null
+
+  const errorM = (1 - confidence) * MAX_LOCALIZATION_ERROR_M * rng()
+  const errorBearing = rng() * 360
+  const estimatedPosition = errorM > 0.01
+    ? offsetLatLng(source.position, errorBearing, errorM)
+    : source.position
+
+  return {
+    sourceId: source.id,
+    class: source.class,
+    position: estimatedPosition,
+    confidence,
+    tick,
+  }
+}
+
+function checkLegacyDetections(
+  drone: DroneState,
+  heatSources: HeatSource[],
+  tick: number,
+  seed: number,
+): ThermalDetection[] {
+  const rangeM = legacyEffectiveRangeM(drone.altitudeFt)
+  const detections: ThermalDetection[] = []
+  for (const source of [...heatSources].sort((a, b) => a.id.localeCompare(b.id))) {
+    const distanceM = haversineDistanceM(drone.position, source.position)
+    const effectiveRange = rangeM + source.radiusM
+    if (distanceM > effectiveRange) continue
+    const detection = estimateDetection(drone, source, tick, seed, distanceM, effectiveRange, false)
+    if (detection) detections.push(detection)
+  }
+  return detections
+}
+
+function checkStrictDetections(
+  drone: DroneState,
+  heatSources: HeatSource[],
+  tick: number,
+  seed: number,
+  environment: ThermalDetectionEnvironment,
+): ThermalDetection[] {
+  const sensor = environment.platform?.thermal ?? null
+  const contrastThresholdC = thermalContrastThresholdC(sensor)
+  if (contrastThresholdC == null) return []
+
+  const transmission = thermalTransmission(environment.weather)
+  const weatherBackgroundC = celsiusFromFahrenheit(environment.weather.tempF)
+  const detections: ThermalDetection[] = []
+
+  for (const source of [...heatSources].sort((a, b) => a.id.localeCompare(b.id))) {
+    const geometry = thermalTargetGeometry(source)
+    if (!geometry) continue
+    const rangeM = effectiveDetectionRangeM(sensor, geometry.criticalDimensionM, transmission)
+    if (rangeM == null) continue
+
+    const backgroundC = source.backgroundTempC ?? weatherBackgroundC
+    if (Math.abs(source.tempC - backgroundC) < contrastThresholdC) continue
+
+    const distanceM = thermalSlantRangeM(
+      drone,
+      source,
+      geometry.heightAglM,
+      environment.occlusion,
+    )
+    if (distanceM > rangeM) continue
+
+    if (environment.occlusion) {
+      const { droneMslM, sourceMslM } = endpointAltitudesMsl(
+        drone,
+        source,
+        geometry.heightAglM,
+        environment.occlusion,
+      )
+      const los = environment.occlusion.hasLineOfSight(
+        { ...drone.position, altMslM: droneMslM },
+        { ...source.position, altMslM: sourceMslM },
+      )
+      if (!los.clear) continue
+    }
+
+    const detection = estimateDetection(drone, source, tick, seed, distanceM, rangeM, true)
+    if (detection) detections.push(detection)
+  }
+  return detections
 }
 
 /**
- * Check for thermal detections from a drone's current position.
- * Uses seeded PRNG for deterministic false-positive noise.
- * Labels are generic (no biometric/identity data — simulation only).
+ * Check thermal detections. Four arguments preserve the historical gameplay
+ * model until the simulation loop supplies a fifth environment argument. The
+ * strict path fails closed on unknown optics/NETD and applies Johnson range,
+ * thermal contrast, 3D slant distance, atmosphere and terrain/building LOS.
  */
 export function checkThermalDetections(
   drone: DroneState,
   heatSources: HeatSource[],
   tick: number,
   seed: number,
+  environment?: ThermalDetectionEnvironment,
 ): ThermalDetection[] {
   if (drone.missionState === 'idle' || drone.missionState === 'landed' || drone.altitudeFt < 5) {
     return []
   }
-
-  const rng = mulberry32(seed ^ (tick * 1000003) ^ drone.id.charCodeAt(4))
-  const range = effectiveRangeM(drone.altitudeFt)
-  const detections: ThermalDetection[] = []
-
-  for (const source of heatSources) {
-    const distM = haversineDistanceM(drone.position, source.position)
-    if (distM > range + source.radiusM) continue
-
-    // Confidence degrades with distance and adds seeded noise
-    const proximityFactor = 1 - Math.min(1, distM / (range + source.radiusM))
-    const noise = (rng() - 0.5) * NOISE_AMPLITUDE
-    const confidence = Math.min(1, Math.max(0, BASE_CONFIDENCE * proximityFactor + noise))
-
-    // Only report above a minimum confidence threshold
-    if (confidence < 0.3) continue
-
-    // Localization error: low-confidence contacts localize worse. Seeded (same rng stream)
-    // so replays and same-seed runs reproduce identical estimates.
-    const errorM = (1 - confidence) * MAX_LOCALIZATION_ERROR_M * rng()
-    const errorBearing = rng() * 360
-    const estimatedPosition = errorM > 0.01
-      ? offsetLatLng(source.position, errorBearing, errorM)
-      : source.position
-
-    detections.push({
-      sourceId: source.id,
-      class: source.class,
-      position: estimatedPosition,
-      confidence,
-      tick,
-    })
-  }
-
-  return detections
+  return environment
+    ? checkStrictDetections(drone, heatSources, tick, seed, environment)
+    : checkLegacyDetections(drone, heatSources, tick, seed)
 }

@@ -356,6 +356,12 @@ export interface HeatSource {
   position: LatLng
   tempC: number
   radiusM: number
+  /** Johnson-model critical target dimension; class/footprint geometry is the fallback. */
+  criticalDimensionM?: number
+  /** Thermal aim-point height above local ground. */
+  heightAglM?: number
+  /** Authored local background temperature; live weather temperature is the fallback. */
+  backgroundTempC?: number
 }
 
 export interface ThermalDetection {

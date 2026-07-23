@@ -80,7 +80,8 @@ describe('avoid maneuver — production loop integration', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
     useDroneStore.setState({
-      scenario,
+      // Isolate avoidance from the now-live WP-5 automatic inspect hold.
+      scenario: { ...scenario, heatSources: [] },
       weatherState: getDefaultWeatherState(scenario.seed),
       launchPlan: null,
     })
