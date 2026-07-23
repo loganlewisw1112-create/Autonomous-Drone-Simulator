@@ -142,22 +142,30 @@ describe('mission objectives', () => {
     expect(progress.objectives.find((objective) => objective.kind === 'containment')?.completion).toBe(1)
   })
 
+  const SEARCH_AREA = [
+    { lat: 36.999, lng: -122.001 },
+    { lat: 36.999, lng: -121.999 },
+    { lat: 37.001, lng: -121.999 },
+    { lat: 37.001, lng: -122.001 },
+  ]
+  const TRACK = { 'uav-01': [{ lat: 37, lng: -122.0009 }, { lat: 37, lng: -121.9991 }] }
+
   it('converts track effort inside a search polygon into bounded POD progress', () => {
-    const item = scenario({
-      searchArea: [
-        { lat: 36.999, lng: -122.001 },
-        { lat: 36.999, lng: -121.999 },
-        { lat: 37.001, lng: -121.999 },
-        { lat: 37.001, lng: -122.001 },
-      ],
-    })
-    const progress = buildMissionProgress({
-      scenario: item,
-      drones: [drone()],
-      positionHistory: { 'uav-01': [{ lat: 37, lng: -122.0009 }, { lat: 37, lng: -121.9991 }] },
-    })
+    // The airframe must carry published thermal optics for a detection radius to exist at all.
+    const item = scenario({ searchArea: SEARCH_AREA, dronePlatforms: { 'uav-01': 'skydio_x10' } })
+    const progress = buildMissionProgress({ scenario: item, drones: [drone()], positionHistory: TRACK })
     const coverage = progress.objectives.find((objective) => objective.kind === 'sector_coverage')
     expect(coverage?.completion).toBeGreaterThan(0)
     expect(coverage?.completion).toBeLessThanOrEqual(1)
+  })
+
+  it('scores sector coverage 0 rather than inventing a radius for unpublished optics', () => {
+    // WP-6 removed a flat 60 m detection-radius fallback here. An airframe with no published
+    // thermal payload cannot earn search credit, and must not be handed a plausible default —
+    // the fabricated radius would have propagated through W, coverage and POD indistinguishably
+    // from a measured one. `podReporting.spec.ts` pins the same rule at the source.
+    const item = scenario({ searchArea: SEARCH_AREA, dronePlatforms: { 'uav-01': 'freefly_astro_max' } })
+    const progress = buildMissionProgress({ scenario: item, drones: [drone()], positionHistory: TRACK })
+    expect(progress.objectives.find((objective) => objective.kind === 'sector_coverage')?.completion).toBe(0)
   })
 })

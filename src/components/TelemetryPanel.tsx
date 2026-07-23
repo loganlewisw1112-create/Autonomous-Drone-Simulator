@@ -6,6 +6,7 @@ import { encodeDroneTelemetry, formatMAVLinkLine } from '@/utils/mavlink'
 import { buildComplianceState } from '@/sim/demo/complianceEngine'
 import { airspaceCeilingCaption, airspaceForScenario } from '@/sim/mission/airspace'
 import { buildMissionOutcomeSummary } from '@/sim/demo/missionOutcome'
+import { buildSectorPodReport, type SectorPodReport, type SectorSweep } from '@/sim/sensors/podReporting'
 import { buildUtmAirspaceState } from '@/sim/demo/utmEngine'
 import { platformForDrone, LEGACY_FAA_SPEED_LIMIT_MS } from '@/sim/drone/platformCatalog'
 import { occlusionServiceFor } from '@/scenarios/terrainFixtures'
@@ -60,11 +61,12 @@ export function TelemetryPanel() {
   const [mavlinkFeed, setMavlinkFeed] = useState<string[]>([])
   const mavFeedRef = useRef<HTMLDivElement>(null)
 
-  const { drones, ui, events, telemetryHistory, thermalContacts, metrics, elapsedSec, scenario, scenarioVariant, setSensorMode } = useDroneStore(
+  const { drones, ui, events, telemetryHistory, thermalContacts, metrics, elapsedSec, scenario, scenarioVariant, positionHistory, weatherState, setSensorMode } = useDroneStore(
     useShallow((s) => ({
       drones: s.drones, ui: s.ui, events: s.events, telemetryHistory: s.telemetryHistory,
       thermalContacts: s.thermalContacts, metrics: s.metrics, elapsedSec: s.elapsedSec,
-      scenario: s.scenario, scenarioVariant: s.scenarioVariant, setSensorMode: s.setSensorMode,
+      scenario: s.scenario, scenarioVariant: s.scenarioVariant, positionHistory: s.positionHistory,
+      weatherState: s.weatherState, setSensorMode: s.setSensorMode,
     })),
   )
 
@@ -136,6 +138,14 @@ export function TelemetryPanel() {
   const utm = useMemo(
     () => activeTab === 'readiness' ? buildUtmAirspaceState({ scenario, drones, elapsedSec }) : null,
     [activeTab, scenario, drones, elapsedSec],
+  )
+  // WP-6: sector POD. Same gating as the three above — it walks every drone's full position
+  // history and fires terrain LOS probes, so it must not run on the 20Hz tick from another tab.
+  const podReport = useMemo(
+    () => activeTab === 'readiness'
+      ? buildSectorPodReport({ scenario, drones, positionHistory, weather: weatherState, occlusion: terrainService })
+      : null,
+    [activeTab, scenario, drones, positionHistory, weatherState, terrainService],
   )
   // WP-3: the published-ceiling provenance line. Cheap (a static fixture lookup), but keyed off
   // the scenario so it recomputes only when the scenario changes, like the three above.
@@ -419,11 +429,18 @@ export function TelemetryPanel() {
             <div className="panel-label" style={{ marginBottom: 8 }}>Mission Outcome (measured)</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <MetricRow label="OUTCOME" value={outcome.headline} color={C_BLUE} />
-              <MetricRow label="SEARCH COVERAGE" value={`${Math.round(outcome.searchCoveragePct)}%`} color={C_GREEN} />
+              <MetricRow label="ROUTE PROGRESS" value={`${Math.round(outcome.searchCoveragePct)}%`} color={C_GREEN} />
               <MetricRow label="CONTACTS" value={`${outcome.detectedContacts} detected / ${outcome.resolvedContacts} actioned`} color={C_MAGENTA} />
               <MetricRow label="FLEET HEALTH" value={`${Math.round(outcome.fleetHealthScore)}%`} color={outcome.fleetHealthScore < 60 ? C_YELLOW : C_GREEN} />
             </div>
           </div>
+
+          {/* REALISM_ROADMAP WP-6 — probability of detection. The row above is route progress:
+              how much of the planned track has been flown. It is NOT a detection claim, which is
+              why it is no longer labelled "search coverage". POD is the detection claim, and it
+              is the metric a SAR planner reads: R_d → W = 1.645·R_d → coverage → POD. Absent
+              entirely for scenarios with no authored search area. */}
+          {podReport && podReport.sweeps.length > 0 && <SectorPodSection report={podReport} />}
 
           <div className="panel-section">
             <div className="panel-label" style={{ marginBottom: 8 }}>Compliance & Airspace Readiness</div>
@@ -464,6 +481,61 @@ function tabLabel(tab: Tab): string {
   if (tab === 'mavlink') return 'MAVLINK'
   if (tab === 'metrics') return 'METRICS'
   return 'READY'
+}
+
+/**
+ * WP-6 sector POD. Cumulative first — it is the number that answers "have we searched this
+ * sector well enough to move on?" — then the per-sweep breakdown that explains it.
+ *
+ * An unsourced sweep renders as UNSOURCED, never as 0% and never as a plausible-looking figure.
+ * The distinction is the whole point: 0% means the sweep genuinely detected nothing detectable,
+ * UNSOURCED means the platform's optics are unpublished so no honest claim can be made at all.
+ */
+function SectorPodSection({ report }: { report: SectorPodReport }) {
+  const cumulativePct = report.cumulativePod === null ? null : Math.round(report.cumulativePod * 100)
+  const areaKm2 = report.sectorAreaM2 / 1_000_000
+  return (
+    <div className="panel-section" data-testid="sector-pod-section">
+      <div className="panel-label" style={{ marginBottom: 8 }}>Probability of Detection (sector)</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <MetricRow
+          label="CUMULATIVE POD"
+          value={cumulativePct === null ? 'UNSOURCED' : `${cumulativePct}%`}
+          color={cumulativePct === null ? C_YELLOW : cumulativePct >= 80 ? C_GREEN : cumulativePct >= 50 ? C_YELLOW : C_RED}
+        />
+        <MetricRow label="SECTOR AREA" value={`${areaKm2.toFixed(2)} km²`} color={C_BLUE} />
+      </div>
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {report.sweeps.map((sweep) => <SweepRow key={sweep.droneId} sweep={sweep} />)}
+      </div>
+      <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--text-dim)', lineHeight: 1.35 }}>
+        POD = 1 − e^(−coverage), coverage = (track × W) / area, W = 1.645 · R_d (USCG/NASAR
+        detection experiments, R² = 0.827). R_d is the Johnson-criteria range for this platform's
+        published thermal optics after atmospheric transmission.
+        {report.unsourcedPlatforms.length > 0 && ` Excluded for unpublished optics: ${report.unsourcedPlatforms.join(', ')}.`}
+      </div>
+    </div>
+  )
+}
+
+function SweepRow({ sweep }: { sweep: SectorSweep }) {
+  const podPct = sweep.pod === null ? null : Math.round(sweep.pod * 100)
+  const detail = sweep.status === 'unsourced'
+    ? 'optics not published'
+    : sweep.status === 'no_effort'
+      ? 'not on task in sector'
+      : sweep.status === 'no_los'
+        ? 'swath occluded'
+        : `${(sweep.trackLengthM / 1000).toFixed(2)}km × ${Math.round(sweep.sweepWidthM)}m W${sweep.losFraction < 1 ? ` · ${Math.round(sweep.losFraction * 100)}% LOS` : ''}`
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 9, fontFamily: 'var(--font-mono)' }}>
+      <span style={{ minWidth: 56, color: 'var(--text-dim)' }}>{sweep.label}</span>
+      <strong style={{ minWidth: 40, color: podPct === null ? C_YELLOW : podPct >= 50 ? C_GREEN : C_YELLOW }}>
+        {podPct === null ? '—' : `${podPct}%`}
+      </strong>
+      <span style={{ flex: 1, color: 'var(--text-dim)' }}>{detail}</span>
+    </div>
+  )
 }
 
 function ReadinessPill({ label, value, tone }: { label: string; value: string; tone: 'good' | 'warn' | 'bad' }) {
