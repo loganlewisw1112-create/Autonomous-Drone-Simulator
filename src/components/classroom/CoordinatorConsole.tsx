@@ -15,9 +15,10 @@ import {
   type Bbox, type BackdropGeometry,
 } from '@/components/classroom/tileRenderer'
 import { StudentTile, TILE_ASPECT } from '@/components/classroom/StudentTile'
+import { FocusMap } from '@/components/classroom/FocusMap'
 import { ClassResults } from '@/components/classroom/ClassResults'
 import type { ClassConfig, RosterEntry, StudentId } from '@/classroom/protocol'
-import type { LatLng, ScenarioConfig } from '@/types'
+import type { DroneState, LatLng, ScenarioConfig } from '@/types'
 import './classroom.css'
 
 const SEVERITY_RANK: Record<AlertSeverity, number> = { crit: 0, warn: 1, none: 2 }
@@ -134,6 +135,17 @@ export function CoordinatorConsole() {
   const bbox = backdrop?.bbox ?? computeBbox([{ lat: 0, lng: 0 }])
   const bitmap = backdrop?.canvas ?? null
 
+  // The focus map draws the same mission geometry as the wall backdrop, but as real GeoJSON over
+  // a real basemap. Memoised on the scenario so panning the map never re-uploads the sources.
+  const focusGeometry = useMemo<BackdropGeometry>(
+    () => scenario ? scenarioGeometry(scenario) : {},
+    [scenario],
+  )
+  const focusFitPoints = useMemo<LatLng[]>(
+    () => scenario ? scenarioPoints(scenario) : [],
+    [scenario],
+  )
+
   return (
     <div className="cls-shell">
       <header className="cls-header">
@@ -199,7 +211,7 @@ export function CoordinatorConsole() {
         <aside className="cls-focus-pane">
           {rightPane === 'results'
             ? <ClassResults classId={classId ?? ''} />
-            : <FocusDetail bbox={bbox} backdrop={bitmap} />}
+            : <FocusDetail geometry={focusGeometry} fitPoints={focusFitPoints} bbox={bbox} backdrop={bitmap} />}
           <CommandHistory commands={commands} roster={roster} focusAssessment={focusAssessment} />
         </aside>
       </div>
@@ -434,21 +446,20 @@ function CommandButton({ danger = false, ...props }: React.ButtonHTMLAttributes<
   return <button className={`cls-command-btn${danger ? ' danger' : ''}`} type="button" {...props} />
 }
 
-function FocusDetail({ bbox, backdrop }: { bbox: Bbox; backdrop: CanvasImageSource | null }) {
-  const { focusedStudentId, focusFrame, focusAssessment, roster } = useClassroomStore(useShallow((state) => ({
-    focusedStudentId: state.focusedStudentId,
-    focusFrame: state.focusFrame,
-    focusAssessment: state.focusAssessment,
-    roster: state.roster,
-  })))
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const name = roster.find((entry) => entry.studentId === focusedStudentId)?.displayName ?? ''
+const NO_DRONES: DroneState[] = []
 
+/** The Canvas-2D plot, kept as the no-WebGL fallback for the focus pane. */
+function FocusPlot({ bbox, backdrop, drones }: {
+  bbox: Bbox
+  backdrop: CanvasImageSource | null
+  drones: readonly DroneState[]
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
   useEffect(() => {
     const canvas = canvasRef.current
     const context = canvas?.getContext('2d')
     if (!canvas || !context) return
-    const drones: GridDrone[] = (focusFrame?.drones ?? []).map((drone) => ({
+    const plotted: GridDrone[] = drones.map((drone) => ({
       id: drone.id,
       lat: drone.position.lat,
       lng: drone.position.lng,
@@ -456,19 +467,40 @@ function FocusDetail({ bbox, backdrop }: { bbox: Bbox; backdrop: CanvasImageSour
       batteryPct: drone.batteryPct,
       stateCode: stateToCode(drone.missionState),
     }))
-    // Same treatment as the wall tiles: draw at the pane's real width × DPR, and re-fit the
-    // window to that shape so the focused student's world is not stretched.
     const size = syncCanvasToDisplaySize(canvas, TILE_ASPECT)
     if (!size) return
-    renderTile(context, backdrop, drones, fitBboxToAspect(bbox, size.width, size.height), size.width, size.height)
-  }, [focusFrame, bbox, backdrop])
+    renderTile(context, backdrop, plotted, fitBboxToAspect(bbox, size.width, size.height), size.width, size.height)
+  }, [drones, bbox, backdrop])
+  return <canvas ref={canvasRef} />
+}
+
+function FocusDetail({ geometry, fitPoints, bbox, backdrop }: {
+  geometry: BackdropGeometry
+  fitPoints: LatLng[]
+  bbox: Bbox
+  backdrop: CanvasImageSource | null
+}) {
+  const { focusedStudentId, focusFrame, focusAssessment, roster } = useClassroomStore(useShallow((state) => ({
+    focusedStudentId: state.focusedStudentId,
+    focusFrame: state.focusFrame,
+    focusAssessment: state.focusAssessment,
+    roster: state.roster,
+  })))
+  const name = roster.find((entry) => entry.studentId === focusedStudentId)?.displayName ?? ''
 
   if (!focusedStudentId) return <div className="cls-muted">Click a tile to watch a student in full detail.</div>
 
   return (
     <div className="cls-focus-detail">
       <div className="cls-focus-title">{name}</div>
-      <canvas ref={canvasRef} />
+      {/* A real basemap, not the Canvas-2D plot the wall uses. One focused student costs one
+          WebGL context, which is affordable — the §16.2 limit is per TILE, not per console. */}
+      <FocusMap
+        geometry={geometry}
+        drones={focusFrame?.drones ?? NO_DRONES}
+        fitPoints={fitPoints}
+        fallback={<FocusPlot bbox={bbox} backdrop={backdrop} drones={focusFrame?.drones ?? NO_DRONES} />}
+      />
       {!focusFrame ? (
         <div className="cls-muted">Waiting for the focus stream…</div>
       ) : (
