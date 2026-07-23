@@ -121,6 +121,39 @@ export function parseMapMode(search: string): MapMode {
   return new URLSearchParams(search).get('map') === 'fallback' ? 'fallback' : 'remote'
 }
 
+export interface FallbackDecisionInput {
+  /** The style JSON has parsed — MapLibre has a real basemap to draw. */
+  styleParsed: boolean
+  /** Permanent layers already registered; the map is fully up. */
+  mapReady: boolean
+  /** Already downgraded once; the switch is one-way. */
+  alreadyFallenBack: boolean
+}
+
+/**
+ * Should a fallback trigger (timeout or error) actually downgrade the basemap?
+ *
+ * Extracted for the same reason `parseMapMode` was: it previously lived inline in an effect
+ * closure that cannot be imported by a spec, which is exactly how the bug below survived.
+ *
+ * The rule is `styleParsed`. That is NOT the same as MapLibre's `load` event, which additionally
+ * waits for every visible tile to RENDER — and gating on `load` was the defect:
+ *
+ *  1. The 4.5 s timer fired against full render. The style parses in ~25 ms, but rendering all
+ *     visible tiles routinely exceeds 4.5 s on a slow link, a cold cache, or a background tab.
+ *     A working basemap was thrown away for a flat rectangle — needing no network fault at all,
+ *     which is why this was the failure people actually saw.
+ *  2. Any `error` event did the same, so one 404 tile, a missing glyph range or a sprite hiccup
+ *     was equally fatal.
+ *
+ * Once the style is in, MapLibre retries tiles itself, and a map missing a tile beats no map.
+ */
+export function shouldFallBackToLocalStyle(input: FallbackDecisionInput): boolean {
+  if (input.alreadyFallenBack) return false
+  if (input.mapReady) return false
+  return !input.styleParsed
+}
+
 export const LOCAL_DEMO_MAP_STYLE: maplibregl.StyleSpecification = {
   version: 8,
   name: 'Local demo fallback',
@@ -636,15 +669,37 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       useDroneStore.getState().setMapReady(true)
     }
 
-    const switchToFallbackStyle = () => {
-      if (mapStyleLoadedRef.current || usingFallbackStyleRef.current) return
+    // `style.load` fires when the style JSON has parsed — the honest "we have a basemap" signal.
+    // See `shouldFallBackToLocalStyle` for why this, and not `map.on('load')`, is the gate.
+    let styleParsed = false
+    map.on('style.load', () => { styleParsed = true })
+
+    const switchToFallbackStyle = (reason: string) => {
+      if (!shouldFallBackToLocalStyle({
+        styleParsed,
+        mapReady: mapStyleLoadedRef.current,
+        alreadyFallenBack: usingFallbackStyleRef.current,
+      })) return
       usingFallbackStyleRef.current = true
       pendingMode = 'fallback'   // map.on('load') will fire again for the new style; read this
+      // Never silent. A flat blue rectangle where a city should be is the single most alarming
+      // thing this app can show, and it used to happen with no way to tell why.
+      console.warn(`[TacticalMap] basemap unavailable — using offline fallback (${reason})`)
       map.setStyle(LOCAL_DEMO_MAP_STYLE)
     }
 
-    const fallbackTimer = forceLocalMapStyle ? 0 : window.setTimeout(switchToFallbackStyle, MAP_FALLBACK_MS)
-    map.on('error', switchToFallbackStyle)
+    const fallbackTimer = forceLocalMapStyle
+      ? 0
+      : window.setTimeout(() => switchToFallbackStyle('style did not load within timeout'), MAP_FALLBACK_MS)
+
+    map.on('error', (event) => {
+      if (styleParsed) {
+        // Basemap is up; this is a tile/glyph/sprite problem. Report it and keep the map.
+        console.warn('[TacticalMap] map resource error (basemap retained):', event.error?.message ?? event.error)
+        return
+      }
+      switchToFallbackStyle(`style load failed: ${event.error?.message ?? 'unknown error'}`)
+    })
 
     map.on('styleimagemissing', (event) => {
       if (map.hasImage(event.id)) return
