@@ -1,0 +1,14 @@
+# Normalise line endings in the repository to LF.
+#
+# This is not cosmetic. `tools/fixtures/*.mjs` and `scripts/*.mjs` open with a `#!` shebang, and
+# `buildingFixtureTool.spec.ts` imports one of them directly. When Git checks those files out with
+# CRLF (the Windows default under core.autocrlf), the `\r` immediately after the shebang makes
+# esbuild fail the whole module with "SyntaxError: Invalid or unexpected token" — so the suite is
+# green on Linux CI and red on a Windows clone, for a file nobody edited. Pinning LF removes the
+# platform from the equation.
+* text=auto eol=lf
+
+# Fixture payloads are byte-budgeted and SHA-256 pinned in their provenance manifests; any
+# end-of-line rewriting would invalidate the recorded hash.
+*.png binary
+src/scenarios/fixtures/** -text

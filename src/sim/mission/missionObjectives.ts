@@ -1,6 +1,6 @@
-import { platformForDrone } from '@/sim/drone/platformCatalog'
-import { cumulativePod, probabilityOfDetection } from '@/sim/sensors/sweepWidth'
-import { platformTaskRanges } from '@/sim/sensors/thermalRange'
+import { buildSectorPodReport } from '@/sim/sensors/podReporting'
+import type { ThermalWeather } from '@/sim/sensors/thermalRange'
+import type { OcclusionService } from '@/sim/terrain/OcclusionService'
 import type {
   DroneState,
   LatLng,
@@ -10,10 +10,9 @@ import type {
   ScenarioConfig,
   ThermalContactState,
 } from '@/types'
-import { haversineDistanceM, pointInPolygon } from '@/utils/geometry'
+import { haversineDistanceM } from '@/utils/geometry'
 
 const DEFAULT_SECTOR_TARGET = 0.8
-const DEFAULT_DETECTION_RADIUS_M = 60
 const FEATURE_VISIT_RADIUS_M = 75
 
 const DEFAULT_WEIGHTS: Record<MissionObjectiveKind, number> = {
@@ -37,6 +36,10 @@ export interface MissionProgressInput {
   events?: readonly MissionEvent[]
   positionHistory?: Readonly<Record<string, readonly LatLng[]>>
   elapsedSec?: number
+  /** WP-6: shortens the detection radius sector POD is scored against. Omitted ⇒ clear air. */
+  weather?: ThermalWeather | null
+  /** WP-6: terrain/building occlusion. Omitted ⇒ the swept swath is assumed visible. */
+  occlusion?: OcclusionService
 }
 
 export interface MissionProgress {
@@ -111,25 +114,25 @@ function contactProgress(objective: MissionObjective, input: MissionProgressInpu
   return withCompletion(objective, completed, sourceIds.length)
 }
 
+/**
+ * Sector coverage scored as cumulative POD (WP-6), not as area swept.
+ *
+ * Delegates wholly to `buildSectorPodReport` so the objective percentage and the READY-tab POD
+ * are the same number computed once — an objective that disagreed with the panel reporting it
+ * would be worse than either alone. A null cumulative POD means no drone on task has published
+ * optics; that scores 0 rather than inventing a detection radius to score against.
+ */
 function sectorProgress(objective: MissionObjective, input: MissionProgressInput): MissionObjectiveProgress {
   const polygon = input.scenario.searchArea ?? []
   if (polygon.length < 3) return withCompletion(objective, 0, 1)
-  const areaM2 = polygonAreaM2(polygon)
-  const pods = (input.drones ?? []).map((drone) => {
-    const history = input.positionHistory?.[drone.id] ?? []
-    let effortM = 0
-    for (let index = 1; index < history.length; index += 1) {
-      const from = history[index - 1]
-      const to = history[index]
-      if (pointInPolygon(from, polygon) || pointInPolygon(to, polygon)) {
-        effortM += haversineDistanceM(from, to)
-      }
-    }
-    const thermal = platformForDrone(input.scenario, drone.id).thermal
-    const radius = thermal ? platformTaskRanges(thermal, 0.5)?.detectionM ?? DEFAULT_DETECTION_RADIUS_M : DEFAULT_DETECTION_RADIUS_M
-    return probabilityOfDetection({ detectionRadiusM: radius, trackLengthM: effortM, sectorAreaM2: areaM2 }).pod
+  const report = buildSectorPodReport({
+    scenario: input.scenario,
+    drones: input.drones ?? [],
+    positionHistory: input.positionHistory ?? {},
+    weather: input.weather ?? null,
+    occlusion: input.occlusion,
   })
-  const pod = cumulativePod(pods)
+  const pod = report.cumulativePod ?? 0
   const target = positiveTarget(objective.target, DEFAULT_SECTOR_TARGET)
   return { ...objective, completion: clamp01(pod / target), completed: pod, total: target }
 }
@@ -207,25 +210,6 @@ function normalizeObjectives(source: readonly MissionObjective[]): MissionObject
     target: objective.target === undefined ? undefined : clamp01(objective.target),
     sourceIds: objective.sourceIds ? [...new Set(objective.sourceIds)].sort() : undefined,
   }))
-}
-
-function polygonAreaM2(points: readonly LatLng[]): number {
-  if (points.length < 3) return 0
-  const meanLatRad = points.reduce((sum, point) => sum + point.lat, 0) / points.length * Math.PI / 180
-  const metersPerDegreeLat = 111_320
-  const metersPerDegreeLng = metersPerDegreeLat * Math.cos(meanLatRad)
-  const origin = points[0]
-  let area = 0
-  for (let index = 0; index < points.length; index += 1) {
-    const current = points[index]
-    const next = points[(index + 1) % points.length]
-    const currentX = (current.lng - origin.lng) * metersPerDegreeLng
-    const currentY = (current.lat - origin.lat) * metersPerDegreeLat
-    const nextX = (next.lng - origin.lng) * metersPerDegreeLng
-    const nextY = (next.lat - origin.lat) * metersPerDegreeLat
-    area += currentX * nextY - nextX * currentY
-  }
-  return Math.abs(area) / 2
 }
 
 function positiveTarget(value: number | undefined, fallback: number): number {
