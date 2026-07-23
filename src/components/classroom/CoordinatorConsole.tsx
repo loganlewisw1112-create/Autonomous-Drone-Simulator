@@ -11,17 +11,22 @@ import {
 } from '@/classroom/controlPolicy'
 import type { MissionAssessment } from '@/classroom/missionAssessment'
 import {
-  computeBbox, drawBackdrop, renderTile, type Bbox, type BackdropGeometry,
+  computeBbox, drawBackdrop, fitBboxToAspect, renderTile, syncCanvasToDisplaySize,
+  type Bbox, type BackdropGeometry,
 } from '@/components/classroom/tileRenderer'
-import { StudentTile } from '@/components/classroom/StudentTile'
+import { StudentTile, TILE_ASPECT } from '@/components/classroom/StudentTile'
 import { ClassResults } from '@/components/classroom/ClassResults'
 import type { ClassConfig, RosterEntry, StudentId } from '@/classroom/protocol'
 import type { LatLng, ScenarioConfig } from '@/types'
 import './classroom.css'
 
 const SEVERITY_RANK: Record<AlertSeverity, number> = { crit: 0, warn: 1, none: 2 }
-const BACKDROP_W = 360
-const BACKDROP_H = 240
+// Shared backdrop bitmap. Drawn once per class and blitted by every tile, so it must be big
+// enough to survive being scaled UP into the focus pane (which is several hundred px wide on a
+// projector) without going soft — the old 360×240 was the same size as a tile and blurred badly
+// the moment it was enlarged. 3:2 to match TILE_ASPECT exactly.
+const BACKDROP_W = 1080
+const BACKDROP_H = 720
 let commandCounter = 0
 
 interface SiteOption {
@@ -90,7 +95,10 @@ export function CoordinatorConsole() {
   const scenario = useMemo(() => config ? scenarioForConfig(config) : null, [config])
   const backdrop = useMemo(() => {
     if (!scenario) return null
-    const bbox = computeBbox(scenarioPoints(scenario))
+    // The bbox the tiles project with must be the SAME one the backdrop was drawn with, or the
+    // static geometry and the live drones disagree about where north is. Both are aspect-fitted
+    // here once, and every tile re-fits to its own width from this same source window.
+    const bbox = fitBboxToAspect(computeBbox(scenarioPoints(scenario)), BACKDROP_W, BACKDROP_H)
     const canvas = document.createElement('canvas')
     canvas.width = BACKDROP_W
     canvas.height = BACKDROP_H
@@ -437,8 +445,9 @@ function FocusDetail({ bbox, backdrop }: { bbox: Bbox; backdrop: CanvasImageSour
   const name = roster.find((entry) => entry.studentId === focusedStudentId)?.displayName ?? ''
 
   useEffect(() => {
-    const context = canvasRef.current?.getContext('2d')
-    if (!context) return
+    const canvas = canvasRef.current
+    const context = canvas?.getContext('2d')
+    if (!canvas || !context) return
     const drones: GridDrone[] = (focusFrame?.drones ?? []).map((drone) => ({
       id: drone.id,
       lat: drone.position.lat,
@@ -447,7 +456,11 @@ function FocusDetail({ bbox, backdrop }: { bbox: Bbox; backdrop: CanvasImageSour
       batteryPct: drone.batteryPct,
       stateCode: stateToCode(drone.missionState),
     }))
-    renderTile(context, backdrop, drones, bbox, BACKDROP_W, BACKDROP_H)
+    // Same treatment as the wall tiles: draw at the pane's real width × DPR, and re-fit the
+    // window to that shape so the focused student's world is not stretched.
+    const size = syncCanvasToDisplaySize(canvas, TILE_ASPECT)
+    if (!size) return
+    renderTile(context, backdrop, drones, fitBboxToAspect(bbox, size.width, size.height), size.width, size.height)
   }, [focusFrame, bbox, backdrop])
 
   if (!focusedStudentId) return <div className="cls-muted">Click a tile to watch a student in full detail.</div>
@@ -455,7 +468,7 @@ function FocusDetail({ bbox, backdrop }: { bbox: Bbox; backdrop: CanvasImageSour
   return (
     <div className="cls-focus-detail">
       <div className="cls-focus-title">{name}</div>
-      <canvas ref={canvasRef} width={BACKDROP_W} height={BACKDROP_H} />
+      <canvas ref={canvasRef} />
       {!focusFrame ? (
         <div className="cls-muted">Waiting for the focus stream…</div>
       ) : (
