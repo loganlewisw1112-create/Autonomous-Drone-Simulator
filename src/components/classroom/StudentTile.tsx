@@ -3,10 +3,15 @@ import { useClassroomStore } from '@/classroom/classroomStore'
 import {
   alertSeverity, decodeDrone, frameActiveDroneCount, frameLowestBattery, type GridDrone, type GridFrame,
 } from '@/classroom/gridFrame'
-import { renderTile, lerpDrones, type Bbox } from '@/components/classroom/tileRenderer'
+import {
+  fitBboxToAspect, lerpDrones, renderTile, syncCanvasToDisplaySize, type Bbox,
+} from '@/components/classroom/tileRenderer'
 
-const W = 240
-const H = 160
+/**
+ * Tile aspect ratio — 3:2, matching the proportions of the student's own map pane so the
+ * instructor is looking at the same shape of world the student is.
+ */
+export const TILE_ASPECT = 3 / 2
 
 // One student's live tile. Canvas 2D over the shared backdrop bitmap — never a
 // MapLibre instance (24 WebGL contexts would fail late on someone else's laptop).
@@ -40,10 +45,18 @@ export function StudentTile({
   useEffect(() => {
     let raf = 0
     const draw = () => {
-      const ctx = canvasRef.current?.getContext('2d')
-      if (ctx) {
-        const alpha = Math.min(1, (performance.now() - stamp.current) / 1000)
-        renderTile(ctx, backdrop, lerpDrones(prev.current, next.current, alpha), bbox, W, H)
+      const canvas = canvasRef.current
+      const ctx = canvas?.getContext('2d')
+      if (canvas && ctx) {
+        // Re-synced every frame rather than on a ResizeObserver: it is a couple of integer
+        // compares when nothing changed, and it means the tile is always crisp immediately after
+        // a column reflow, a window resize or a monitor change, with no transient blur.
+        const size = syncCanvasToDisplaySize(canvas, TILE_ASPECT)
+        if (size) {
+          const alpha = Math.min(1, (performance.now() - stamp.current) / 1000)
+          const fitted = fitBboxToAspect(bbox, size.width, size.height)
+          renderTile(ctx, backdrop, lerpDrones(prev.current, next.current, alpha), fitted, size.width, size.height)
+        }
       }
       raf = requestAnimationFrame(draw)
     }
@@ -58,7 +71,9 @@ export function StudentTile({
 
   return (
     <div className={`cls-tile ${severity} ${selected ? 'selected' : ''}`} onClick={onClick} title={name}>
-      <canvas ref={canvasRef} width={W} height={H} />
+      {/* No width/height attributes: the backing store is owned by syncCanvasToDisplaySize,
+          which sizes it to the tile's real layout width × devicePixelRatio. */}
+      <canvas ref={canvasRef} />
       <div className="cls-tile-chrome">
         <span className="cls-tile-name">{name}</span>
         <span>T+{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>

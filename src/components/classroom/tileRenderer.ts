@@ -62,6 +62,54 @@ export function computeBbox(points: LatLng[], marginFrac = 0.12): Bbox {
   }
 }
 
+/**
+ * Expand a bbox so it fills a canvas of `width`×`height` WITHOUT distorting geography.
+ *
+ * Two corrections, and the tiles were missing both:
+ *
+ *  1. **Longitude compression.** A degree of longitude is `cos(lat)` as wide as a degree of
+ *     latitude — about 0.79 at the Bay Area latitudes these scenarios use. Projecting raw degrees
+ *     linearly into a box stretches everything east-west by ~27%.
+ *  2. **Aspect mismatch.** The scenario's own extents are whatever shape the mission happens to
+ *     be. Stretching that independently on each axis to fill a 3:2 tile squashes or elongates the
+ *     whole picture, which is what made the wall look "zoomed in and wrong" — the drones were in
+ *     the right relative places, but nothing was the right SHAPE.
+ *
+ * Only ever grows the window, never crops, so every point that was visible stays visible.
+ */
+export function fitBboxToAspect(bbox: Bbox, width: number, height: number): Bbox {
+  if (!(width > 0) || !(height > 0)) return bbox
+
+  const midLat = (bbox.minLat + bbox.maxLat) / 2
+  const lngScale = Math.max(0.05, Math.cos((midLat * Math.PI) / 180))
+
+  const latSpan = bbox.maxLat - bbox.minLat
+  const lngSpan = bbox.maxLng - bbox.minLng
+  if (!(latSpan > 0) || !(lngSpan > 0)) return bbox
+
+  // Work in equal-distance units: latitude degrees, with longitude scaled to match.
+  const targetAspect = width / height
+  const currentAspect = (lngSpan * lngScale) / latSpan
+
+  let nextLatSpan = latSpan
+  let nextLngSpan = lngSpan
+  if (currentAspect > targetAspect) {
+    // Too wide for the tile — add latitude (vertical) headroom.
+    nextLatSpan = (lngSpan * lngScale) / targetAspect
+  } else {
+    // Too tall — add longitude (horizontal) headroom.
+    nextLngSpan = (latSpan * targetAspect) / lngScale
+  }
+
+  const midLng = (bbox.minLng + bbox.maxLng) / 2
+  return {
+    minLat: midLat - nextLatSpan / 2,
+    maxLat: midLat + nextLatSpan / 2,
+    minLng: midLng - nextLngSpan / 2,
+    maxLng: midLng + nextLngSpan / 2,
+  }
+}
+
 // Linear projection. lng grows left→right; lat is INVERTED so maxLat sits at the
 // top (y=0), matching screen coordinates. Intentionally NOT clamped — an off-map
 // point projects outside [0,width]×[0,height] so callers can cull it.
@@ -92,6 +140,95 @@ function strokePolyline(ctx: CanvasRenderingContext2D, poly: LatLng[], bbox: Bbo
 
 // Drawn ONCE per class into an offscreen canvas; every tile then blits the
 // resulting bitmap in renderTile(), so this cost is amortised across all tiles.
+/**
+ * Nice round ground distance for a scale bar roughly `targetPx` wide — 1/2/5 × 10^n metres, the
+ * standard progression, so the bar always reads as a number a person can reason with.
+ */
+export function scaleBarMetres(metresPerPixel: number, targetPx: number): number {
+  const raw = Math.max(1, metresPerPixel * targetPx)
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)))
+  const norm = raw / pow
+  const step = norm >= 5 ? 5 : norm >= 2 ? 2 : 1
+  return step * pow
+}
+
+/** Ground metres per horizontal pixel for a fitted bbox. */
+export function metresPerPixel(bbox: Bbox, width: number): number {
+  const midLat = (bbox.minLat + bbox.maxLat) / 2
+  const spanM = (bbox.maxLng - bbox.minLng) * 111_320 * Math.cos((midLat * Math.PI) / 180)
+  return width > 0 ? spanM / width : 0
+}
+
+/**
+ * Reference graticule, scale bar and north arrow.
+ *
+ * Without these the tile is mission geometry floating in an empty void, which is most of why the
+ * wall read as "zoomed in and wrong": there was nothing to judge distance or orientation against.
+ * The wall cannot show streets — §16.2 rules out ~40 live WebGL basemaps — so it earns legibility
+ * the way a tactical plot does instead, with a measured grid rather than a picture.
+ */
+function drawReferenceFrame(ctx: CanvasRenderingContext2D, bbox: Bbox, width: number, height: number): void {
+  const mpp = metresPerPixel(bbox, width)
+  if (!(mpp > 0)) return
+
+  // Graticule at the same round interval as the scale bar, so the grid IS the scale.
+  const gridM = scaleBarMetres(mpp, Math.max(48, width / 6))
+  const gridPx = gridM / mpp
+  if (gridPx >= 12) {
+    ctx.strokeStyle = 'rgba(138, 148, 166, 0.10)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    for (let x = gridPx; x < width; x += gridPx) {
+      ctx.moveTo(Math.round(x) + 0.5, 0)
+      ctx.lineTo(Math.round(x) + 0.5, height)
+    }
+    for (let y = gridPx; y < height; y += gridPx) {
+      ctx.moveTo(0, Math.round(y) + 0.5)
+      ctx.lineTo(width, Math.round(y) + 0.5)
+    }
+    ctx.stroke()
+  }
+
+  const pad = Math.max(6, Math.round(width * 0.025))
+  const barPx = gridPx
+  const label = gridM >= 1000 ? `${(gridM / 1000).toFixed(gridM % 1000 === 0 ? 0 : 1)} km` : `${gridM} m`
+  const fontPx = Math.max(9, Math.min(13, Math.round(width / 34)))
+
+  // Scale bar, bottom-left.
+  const y = height - pad
+  ctx.strokeStyle = 'rgba(214, 224, 238, 0.75)'
+  ctx.lineWidth = Math.max(1, Math.round(width / 320))
+  ctx.beginPath()
+  ctx.moveTo(pad, y)
+  ctx.lineTo(pad + barPx, y)
+  ctx.moveTo(pad, y - 4)
+  ctx.lineTo(pad, y)
+  ctx.moveTo(pad + barPx, y - 4)
+  ctx.lineTo(pad + barPx, y)
+  ctx.stroke()
+
+  ctx.fillStyle = 'rgba(214, 224, 238, 0.75)'
+  ctx.font = `${fontPx}px var(--font-mono, monospace)`
+  ctx.textBaseline = 'bottom'
+  ctx.fillText(label, pad, y - 5)
+
+  // North arrow, top-right. Orientation is fixed (the projection is north-up), but saying so
+  // removes the question rather than leaving the instructor to assume it.
+  const nx = width - pad
+  const ny = pad + fontPx
+  ctx.beginPath()
+  ctx.moveTo(nx, ny - fontPx)
+  ctx.lineTo(nx - fontPx * 0.32, ny)
+  ctx.lineTo(nx + fontPx * 0.32, ny)
+  ctx.closePath()
+  ctx.fill()
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  ctx.fillText('N', nx, ny + 2)
+  ctx.textAlign = 'start'
+  ctx.textBaseline = 'alphabetic'
+}
+
 export function drawBackdrop(ctx: CanvasRenderingContext2D, geo: BackdropGeometry, bbox: Bbox, width: number, height: number): void {
   ctx.fillStyle = '#0b0f17'
   ctx.fillRect(0, 0, width, height)
@@ -159,6 +296,43 @@ export function drawDroneGlyph(ctx: CanvasRenderingContext2D, d: GridDrone, bbox
   ctx.restore()
 }
 
+/**
+ * Match a canvas's backing store to the size it is actually DISPLAYED at, times the device
+ * pixel ratio, and scale the context so drawing code keeps working in CSS pixels.
+ *
+ * This is the fix for the blurry wall. The tiles drew into a fixed 240×160 bitmap and the CSS
+ * then stretched it with `width: 100%` to fill a grid column that is routinely 300–400 px wide —
+ * and on a HiDPI screen the browser upscales again on top of that. The result was a soft, smeared
+ * map. Nothing was wrong with the drawing; it was being resampled twice.
+ *
+ * Returns the CSS-pixel size to draw at, or null when the element has no layout yet.
+ */
+export function syncCanvasToDisplaySize(
+  canvas: HTMLCanvasElement,
+  aspect: number,
+): { width: number; height: number } | null {
+  const cssWidth = canvas.clientWidth
+  if (!(cssWidth > 0)) return null
+  const cssHeight = Math.max(1, Math.round(cssWidth / aspect))
+
+  // Cap DPR: beyond 2 the extra pixels are invisible but the per-frame fill cost is real, and
+  // this is a hot path running on up to ~40 tiles at once.
+  const dpr = Math.min(2, Math.max(1, typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1))
+  const backingWidth = Math.round(cssWidth * dpr)
+  const backingHeight = Math.round(cssHeight * dpr)
+
+  if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+    canvas.width = backingWidth
+    canvas.height = backingHeight
+  }
+  canvas.style.height = `${cssHeight}px`
+
+  const ctx = canvas.getContext('2d')
+  // setTransform (not scale) so repeated frames never compound the ratio.
+  if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  return { width: cssWidth, height: cssHeight }
+}
+
 // Per-tile, per-frame hot path (40 tiles × animation frames) — keep it cheap:
 // blit the shared backdrop bitmap, then stamp each drone glyph. No allocations.
 export function renderTile(ctx: CanvasRenderingContext2D, backdrop: CanvasImageSource | null, drones: GridDrone[], bbox: Bbox, width: number, height: number): void {
@@ -168,6 +342,11 @@ export function renderTile(ctx: CanvasRenderingContext2D, backdrop: CanvasImageS
     ctx.fillStyle = '#0b0f17'
     ctx.fillRect(0, 0, width, height)
   }
+  // Drawn per tile rather than baked into the shared backdrop: the backdrop is blitted at whatever
+  // size the tile happens to be, which would scale the label text and hairlines along with it and
+  // leave them either soft or the wrong weight. Cheap enough — a couple of dozen line segments and
+  // two short strings, against a Canvas2D budget that already absorbs the whole wall.
+  drawReferenceFrame(ctx, bbox, width, height)
   for (const d of drones) drawDroneGlyph(ctx, d, bbox, width, height)
 }
 
