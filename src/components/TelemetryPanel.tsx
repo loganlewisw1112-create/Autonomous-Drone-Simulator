@@ -10,6 +10,8 @@ import { buildSectorPodReport, type SectorPodReport, type SectorSweep } from '@/
 import { buildUtmAirspaceState } from '@/sim/demo/utmEngine'
 import { platformForDrone, LEGACY_FAA_SPEED_LIMIT_MS } from '@/sim/drone/platformCatalog'
 import { occlusionServiceFor } from '@/scenarios/terrainFixtures'
+import { laneForScenario } from '@/scenarios/nistLanes'
+import { scoreLane } from '@/sim/mission/laneScoring'
 import { terrainAltitudeSnapshot } from '@/sim/terrain/altitude'
 import type { MissionEvent, ScenarioConfig } from '@/types'
 
@@ -150,6 +152,12 @@ export function TelemetryPanel() {
   // WP-3: the published-ceiling provenance line. Cheap (a static fixture lookup), but keyed off
   // the scenario so it recomputes only when the scenario changes, like the three above.
   const ceilingCaption = useMemo(() => airspaceCeilingCaption(airspaceForScenario(scenario?.id)), [scenario?.id])
+  // WP-9 lane score: a fold over the evidence events, so it costs nothing until READY is open.
+  const laneScore = useMemo(() => {
+    if (activeTab !== 'readiness') return null
+    const lane = laneForScenario(scenario?.id)
+    return lane ? scoreLane(lane, events, elapsedSec) : null
+  }, [activeTab, scenario?.id, events, elapsedSec])
 
   return (
     <div className="telemetry-panel">
@@ -441,6 +449,36 @@ export function TelemetryPanel() {
               is the metric a SAR planner reads: R_d → W = 1.645·R_d → coverage → POD. Absent
               entirely for scenarios with no authored search area. */}
           {podReport && podReport.sweeps.length > 0 && <SectorPodSection report={podReport} />}
+
+          {/* WP-9 — the standards-referenced lane score. Only rendered on a lane trial; the
+              citation ships with the number so it is never a bare score. */}
+          {laneScore && (
+            <div className="panel-section">
+              <div className="panel-label" style={{ marginBottom: 8 }}>NIST Standard Test Method</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <MetricRow
+                  label="LANE SCORE"
+                  value={`${laneScore.score} / ${laneScore.maxScore}`}
+                  color={laneScore.score >= 80 ? C_GREEN : laneScore.score >= 50 ? C_YELLOW : C_RED}
+                />
+                <MetricRow
+                  label="TARGETS"
+                  value={`${laneScore.targetsComplete} complete / ${laneScore.targetsAttempted} attempted of ${laneScore.perTarget.length}`}
+                  color={C_BLUE}
+                />
+                <MetricRow
+                  label="TIME LIMIT"
+                  value={laneScore.withinTimeLimit
+                    ? `${Math.round(laneScore.timeLimitSec / 60)} min — within limit`
+                    : `${Math.round(laneScore.timeLimitSec / 60)} min — EXCEEDED${laneScore.featuresRejectedLate > 0 ? ` (${laneScore.featuresRejectedLate} features not counted)` : ''}`}
+                  color={laneScore.withinTimeLimit ? C_GREEN : C_YELLOW}
+                />
+              </div>
+              <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--text-dim)', lineHeight: 1.35 }}>
+                {laneScore.standardRef}
+              </div>
+            </div>
+          )}
 
           <div className="panel-section">
             <div className="panel-label" style={{ marginBottom: 8 }}>Compliance & Airspace Readiness</div>

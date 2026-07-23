@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { portPerimeter } from '@/scenarios/demoScenarios'
-import { ALL_SCENARIOS } from '@/scenarios/catalog'
+import { INCIDENT_SCENARIOS } from '@/scenarios/catalog'
 import { auditScenarioRoutes, buildSafeDroneRoutes, defaultDroneStartPosition } from '@/sim/mission/routeAudit'
 
 function expectSamePosition(actual: { lat: number; lng: number }, expected: { lat: number; lng: number }) {
@@ -16,9 +16,9 @@ describe('route audit and safe mission routing', () => {
   })
 
   it('builds geofence-safe baseline routes for every simulator scenario', () => {
-    expect(ALL_SCENARIOS).toHaveLength(21)
+    expect(INCIDENT_SCENARIOS).toHaveLength(21)
 
-    for (const scenario of ALL_SCENARIOS) {
+    for (const scenario of INCIDENT_SCENARIOS) {
       const routes = buildSafeDroneRoutes(scenario)
       const findings = auditScenarioRoutes(scenario, { routes })
       expect(findings, scenario.id).toEqual([])
@@ -26,7 +26,7 @@ describe('route audit and safe mission routing', () => {
   })
 
   it('uses launch and recovery site metadata as route source of truth', () => {
-    const scenario = ALL_SCENARIOS.find((item) => item.id === 'extreme_multiagency_sf_pursuit')
+    const scenario = INCIDENT_SCENARIOS.find((item) => item.id === 'extreme_multiagency_sf_pursuit')
     expect(scenario).toBeTruthy()
     if (!scenario) return
 
@@ -48,7 +48,7 @@ describe('route audit and safe mission routing', () => {
   })
 
   it('does not duplicate RTB recovery waypoints when safe routes are rebuilt', () => {
-    const scenario = ALL_SCENARIOS.find((item) => item.id === 'extreme_cbp_rio_grande_longrange') ?? ALL_SCENARIOS[0]
+    const scenario = INCIDENT_SCENARIOS.find((item) => item.id === 'extreme_cbp_rio_grande_longrange') ?? INCIDENT_SCENARIOS[0]
     const once = buildSafeDroneRoutes(scenario)
     const twice = buildSafeDroneRoutes({ ...scenario, perDroneWaypoints: once })
 
@@ -58,7 +58,7 @@ describe('route audit and safe mission routing', () => {
   })
 
   it('audits every staged recharge station instead of only the first station', () => {
-    const rioGrande = ALL_SCENARIOS.find((scenario) => scenario.id === 'extreme_cbp_rio_grande_longrange')
+    const rioGrande = INCIDENT_SCENARIOS.find((scenario) => scenario.id === 'extreme_cbp_rio_grande_longrange')
     expect(rioGrande).toBeTruthy()
     if (!rioGrande) return
 

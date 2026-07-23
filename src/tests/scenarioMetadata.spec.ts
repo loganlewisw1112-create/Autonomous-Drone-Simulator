@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ALL_SCENARIOS } from '@/scenarios/catalog'
+import { INCIDENT_SCENARIOS } from '@/scenarios/catalog'
 
 const CITY_LAUNCH_KINDS = new Set(['rooftop', 'police_rooftop', 'mobile_command'])
 const GENERIC_OR_WATER_LABEL = /\b(generic|default|ocean|open water|bay water|bridge[- ]adjacent|unknown)\b/i
@@ -15,9 +15,9 @@ function isCityScenario(scenarioName: string, description: string): boolean {
 
 describe('multiagency scenario metadata', () => {
   it('upgrades every scenario with mission brief, dispatch timeline, route briefs, and operational features', () => {
-    expect(ALL_SCENARIOS).toHaveLength(21)
+    expect(INCIDENT_SCENARIOS).toHaveLength(21)
 
-    for (const scenario of ALL_SCENARIOS) {
+    for (const scenario of INCIDENT_SCENARIOS) {
       expect(scenario.missionBrief?.agencies.length, scenario.id).toBeGreaterThan(0)
       expect(scenario.missionBrief?.commandIntent, scenario.id).toContain('SIMULATION ONLY')
       expect(scenario.dispatchTimeline?.length, scenario.id).toBeGreaterThanOrEqual(3)
@@ -32,7 +32,7 @@ describe('multiagency scenario metadata', () => {
   })
 
   it('requires every scenario drone to declare explicit launch and recovery sites', () => {
-    for (const scenario of ALL_SCENARIOS) {
+    for (const scenario of INCIDENT_SCENARIOS) {
       for (let i = 0; i < scenario.droneCount; i++) {
         const id = droneId(i)
         const launchId = scenario.defaultLaunchAssignments?.[id]
@@ -61,7 +61,7 @@ describe('multiagency scenario metadata', () => {
   })
 
   it('gives every mobile catalog site a bounded relocation radius and setup time', () => {
-    const mobileSites = ALL_SCENARIOS.flatMap((scenario) => [
+    const mobileSites = INCIDENT_SCENARIOS.flatMap((scenario) => [
       ...Object.values(scenario.launchSites ?? {}),
       ...Object.values(scenario.recoverySites ?? {}),
     ]).filter((site) => site.mobile)
@@ -74,7 +74,7 @@ describe('multiagency scenario metadata', () => {
   })
 
   it('keeps city scenario launch sites on named rooftops or command units, never generic water points', () => {
-    const cityScenarios = ALL_SCENARIOS.filter((scenario) => isCityScenario(scenario.name, scenario.description))
+    const cityScenarios = INCIDENT_SCENARIOS.filter((scenario) => isCityScenario(scenario.name, scenario.description))
     expect(cityScenarios.length).toBeGreaterThan(0)
 
     for (const scenario of cityScenarios) {
@@ -93,7 +93,7 @@ describe('multiagency scenario metadata', () => {
   })
 
   it('stages SF pursuit UAV-03, UAV-04, and UAV-05 from simulated Jack London Square rooftops', () => {
-    const scenario = ALL_SCENARIOS.find((item) => item.id === 'extreme_multiagency_sf_pursuit')
+    const scenario = INCIDENT_SCENARIOS.find((item) => item.id === 'extreme_multiagency_sf_pursuit')
     expect(scenario).toBeTruthy()
     if (!scenario) return
 
@@ -113,7 +113,7 @@ describe('multiagency scenario metadata', () => {
   })
 
   it('models Rio Grande as a long-range battery and staged US-83 recharge operation', () => {
-    const scenario = ALL_SCENARIOS.find((item) => item.id === 'extreme_cbp_rio_grande_longrange')
+    const scenario = INCIDENT_SCENARIOS.find((item) => item.id === 'extreme_cbp_rio_grande_longrange')
     expect(scenario).toBeTruthy()
     if (!scenario) return
 

@@ -2,20 +2,28 @@
 
 **Autonomous Drone Mission Simulator · 22 July 2026**
 
-**Execution update:** WP-4 through WP-8 are complete. Terrain/building occlusion, AGL/MSL
-conversion, route/live surface safety, target-specific thermal physics, the desktop/mobile
-rendering split, SAR probability of detection, GNSS occlusion → DOP → reported position error,
-and the RF link budget are wired and covered by artifact-level CI.
+**Execution update:** WP-4 through WP-9 are complete — **all of Tranche C**. Terrain/building
+occlusion, AGL/MSL conversion, route/live surface safety, target-specific thermal physics, the
+desktop/mobile rendering split, SAR probability of detection, GNSS occlusion → DOP → reported
+position error, the RF link budget, and NIST standard test-method lanes are wired and covered by
+artifact-level CI.
 
 WP-6 retired the fabricated "TIME SAVED"-class KPI problem in the search metric. WP-7 closes what
 the Damman article names as the largest remaining gap — **GPS degradation is now simulated rather
 than absent**, from a real published almanac. WP-8 makes **comms loss a consequence of aircraft
 placement rather than a timer**, satisfying §22 point 5.
 
+WP-9 adds the bridge to the Coordinator dashboard: two standards-referenced lanes producing the
+one legitimately auto-scorable number in the product, reported into the class comparison table.
+
 WP-4/5/6/7 are scoped to the pinned `demo_wildfire` fixture (it is the AO carrying terrain,
-buildings and a constellation); WP-8 applies catalog-wide, since clutter class derives from each
-scenario's existing weather location tag. The next dependency-ordered package is **WP-9 NIST
-lanes**, which now has both the occlusion service and the shipped classroom build as consumers.
+buildings and a constellation, and which the obstructed lane reuses); WP-8 applies catalog-wide,
+since clutter class derives from each scenario's existing weather location tag.
+
+**Tranche C is complete.** What remains is Tranche D polish — **WP-10** (Dryden turbulence) and
+**WP-11** (battery discharge), both already shipped as pure tested modules and needing only
+determinism-sensitive live wiring — plus **WP-12**, still blocked on authenticated air-traffic
+data. §22 points 1-6 now hold; points 7 and 8 remain protected.
 
 Applies to **all three builds**: Mobile, Windows, Coordinator/classroom.
 Grounded in 16 external research passes and cross-referenced against the codebase
@@ -57,7 +65,7 @@ formats and byte budgets closed.
 | WP-3/4 | **DONE for the first realism AO** | `demo_wildfire` carries pinned terrain and Overture buildings, exact LOS, surface safety, provenance and fixture-budget enforcement. |
 | WP-7 GNSS | **DONE + LIVE** | Real CelesTrak YUMA almanac → IS-GPS-200 propagation → frozen az/el → `skyVisibility()` → DOP → σ_H → reported position. Loss of fix on <4 sats or HDOP > 20. Truth retained; error is band-limited noise from sim time, so no RNG state and replay stays byte-identical. `demo_wildfire` only. |
 | WP-8 RF | **DONE + LIVE** | §18.4 log-distance with per-scenario clutter, WP-4 NLOS penalty, seeded shadow fading and a one-hop relay solver. Comms-loss windows and weather demoted from overrides to dB impairments — placement decides. Clutter exponent blends toward free space by height above clutter (stated modelling choice). |
-| WP-9 | **UNBLOCKED** | WP-4's live occlusion service is available; this is now implementation work rather than a dependency blocker. |
+| WP-9 NIST lanes | **DONE + LIVE** | Open + obstructed lanes scored 0-100 on the published rubric (20x5 features, 20-min limit), gated on one-arcminute acuity AND WP-4 line of sight. Folded from evidence events, so chain-verified and replay-identical. Reported alongside the mission score, never merged into it. Measured: open 80/100, obstructed 44/100 — the gap is entirely terrain. |
 | WP-12 | **BLOCKED** | OpenSky still needs authenticated access or an approved alternative source. |
 | WP-6 SAR POD | **DONE + LIVE** | `sensors/podReporting.ts` closes R_d → W → coverage → POD against the live WP-5 range and reports per-sector + cumulative POD on the READY tab. Derived from `positionHistory`; no sim-tick change, no new kernel state. Removed the fabricated 60 m radius fallback the old sector objective used. |
 | WP-10/11 | **MODULE DONE** | Pure, tested, deterministic modules shipped: `weather/dryden.ts` (turbulence), `drone/battery.ts` (discharge curve). Change no live behaviour yet — live wiring into the loop is the deferred, determinism-sensitive step (WP-5 pattern). |
@@ -767,6 +775,53 @@ override.
 
 ---
 
+## WP-9 · NIST standard test-method scenarios `[Tranche C]` `[needs WP-4]` — **DONE + LIVE**
+
+**Status:** complete. Two lanes ship — **open** and **obstructed** — scored 0-100 against the
+published rubric and surfaced in the READY tab, the after-action package and the Coordinator
+comparison table.
+
+- `src/sim/mission/laneScoring.ts` (new) — the rubric (20 targets x 5 features = 100, 20-minute
+  limit) plus the resolution model. A feature counts only when it is **resolvable** (subtends one
+  arcminute, the standard definition of 20/20 acuity that acuity targets are dimensioned against)
+  **and** the aircraft has clear line of sight to it (WP-4). Neither is a proximity trigger.
+- `src/scenarios/nistLanes.ts` (new) — lane definitions and scenarios, registered in the catalog.
+- Scoring is a **fold over evidence events**, so it inherits the tamper-evident chain and replays
+  identically. Instructor interventions are excluded from a participant's lane score.
+- `MissionAssessment.nistLane` reports **alongside** `total`, never folded into it — see below.
+
+**Why it is reported separately.** The mission score is this project's own rubric and stays
+advisory; the lane score is published, standardised and agency-recognised. Averaging them would
+contaminate the one number that can survive a training officer's scrutiny.
+
+**Measured.** Flying the open-lane brief unchanged scores **80/100** with no target completed —
+the finest feature needs ~17 m standoff, so the last point on every target must be bought with a
+deliberate descent. The obstructed lane scores **44/100** with the same aircraft and rubric, a
+ragged 1-4 features per target. That 36-point gap is **entirely terrain**.
+
+**⚠ A design trap worth recording.** The obstructed lane was first built as an overflight, like
+the open lane, and scored **identically to it**. An aircraft directly above a target always has
+line of sight — terrain cannot mask a nadir view — so no amount of DEM relief would have shown
+up. The obstructed lane therefore flies a **transect** and observes at slant. Every target sits
+inside the largest feature's acuity range of that transect by construction, so a miss is always
+terrain's doing and never simply distance. `laneScoring.spec.ts` asserts both properties, and the
+integration test asserts the open lane's per-target profile is flat while the obstructed lane's is
+ragged — a uniform profile would mean range was deciding, which is the failure mode that assertion
+exists to catch.
+
+**Scope, stated.** These implement the published *rubric* and the acuity basis; they are **not** a
+reproduction of any NIST apparatus drawing, and the target coordinates are this project's own
+layout. The defensible claim is "implements the NIST sUAS standard test-method rubric, referenced
+by NFPA 2400 and ASTM F38.03" — not "is a certified NIST lane" — and the citation ships with the
+score so it is never a bare number. The confined lane is not built.
+
+**Catalog note.** `ALL_SCENARIOS` now includes the lanes; `INCIDENT_SCENARIOS` excludes them.
+Lanes are standardised skills trials, not incidents — they have no commanding agency, dispatch
+timeline or observed weather, and asserting incident invariants over them would force fabricated
+metadata onto the one scenario type whose value is that it is standards-defined.
+
+**Original WP-9 target below (unchanged).**
+
 ## WP-9 · NIST standard test-method scenarios `[Tranche C]` `[needs WP-4]`
 
 The strongest cross-cutting finding, and the bridge to the Coordinator dashboard.
@@ -797,14 +852,20 @@ Operations) **and ASTM F38.03** (Training for Remote Pilot in Command endorsemen
 **Obstructed and confined lanes are only buildable properly once WP-4 lands** — another reason
 terrain and structures are the keystone.
 
-**Files:** `src/scenarios/nistLanes.ts` (new) · `src/sim/mission/laneScoring.ts` (new) ·
-`src/scenarios/catalog.ts`
+**Files (as built):** `src/scenarios/nistLanes.ts` (new) · `src/sim/mission/laneScoring.ts` (new) ·
+`src/scenarios/catalog.ts` · `src/classroom/missionAssessment.ts` ·
+`src/components/classroom/ClassResults.tsx` (NIST/100 + overtime columns) ·
+`src/components/TelemetryPanel.tsx` (READY tab) · `src/sim/SimulationLoop.ts` (identification pass)
 
-**Accept:** an open-lane scenario scores 0–100 against the published rubric; the score appears
-in the after-action package and in the Coordinator comparison table; time limit enforced.
+**Accept — all met:** an open-lane scenario scores 0-100 against the published rubric; the score
+appears in the after-action package and in the Coordinator comparison table; time limit enforced,
+with late finds reported rather than silently dropped.
 
-**Test:** `laneScoring.spec.ts` — a scripted perfect run scores 100; a run identifying 3 of 5
-features on 20 targets scores as specified.
+**Test:** `laneScoring.spec.ts` (15) — a scripted perfect run scores 100; 3 of 5 features on 20
+targets scores exactly 60; the acuity model, time-limit enforcement, idempotency and lane/scenario
+binding · `laneTrial.integration.spec.ts` (3) — a real aircraft flown down a real lane through the
+production loop, scoring against the chain-verified events, twice identically, with the obstructed
+lane measurably harder purely because of terrain.
 
 ---
 

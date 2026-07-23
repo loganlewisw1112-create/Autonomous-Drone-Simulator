@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { ALL_SCENARIOS } from '@/scenarios/catalog'
+import { INCIDENT_SCENARIOS } from '@/scenarios/catalog'
 import { PLATFORM_CATALOG, type PlatformId } from '@/sim/drone/platformCatalog'
 import { mixedFleet, explicitFleet, droneIdAt } from '@/scenarios/platformAssignments'
 
 const VALID_IDS = new Set(Object.keys(PLATFORM_CATALOG))
 
 function platformsOf(scenarioId: string): Record<string, PlatformId> {
-  const scenario = ALL_SCENARIOS.find((s) => s.id === scenarioId)
+  const scenario = INCIDENT_SCENARIOS.find((s) => s.id === scenarioId)
   if (!scenario) throw new Error(`unknown scenario ${scenarioId}`)
   if (!scenario.dronePlatforms) throw new Error(`${scenarioId} has no dronePlatforms`)
   return scenario.dronePlatforms
@@ -38,11 +38,11 @@ describe('platformAssignments helpers', () => {
 
 describe('scenario platform doctrine', () => {
   it('covers all 21 catalog scenarios', () => {
-    expect(ALL_SCENARIOS).toHaveLength(21)
+    expect(INCIDENT_SCENARIOS).toHaveLength(21)
   })
 
   it('every scenario assigns a platform to exactly uav-01..uav-NN', () => {
-    for (const scenario of ALL_SCENARIOS) {
+    for (const scenario of INCIDENT_SCENARIOS) {
       expect(scenario.dronePlatforms, `${scenario.id} missing dronePlatforms`).toBeDefined()
       const expectedIds = Array.from({ length: scenario.droneCount }, (_, i) => droneIdAt(i))
       expect(Object.keys(scenario.dronePlatforms!).sort(), scenario.id).toEqual(expectedIds.sort())
@@ -50,7 +50,7 @@ describe('scenario platform doctrine', () => {
   })
 
   it('every assigned platform id exists in the catalog', () => {
-    for (const scenario of ALL_SCENARIOS) {
+    for (const scenario of INCIDENT_SCENARIOS) {
       for (const [droneId, platformId] of Object.entries(scenario.dronePlatforms ?? {})) {
         expect(VALID_IDS.has(platformId), `${scenario.id}/${droneId} → ${platformId}`).toBe(true)
       }
@@ -58,7 +58,7 @@ describe('scenario platform doctrine', () => {
   })
 
   it('never assigns a federally banned vendor', () => {
-    for (const scenario of ALL_SCENARIOS) {
+    for (const scenario of INCIDENT_SCENARIOS) {
       for (const platformId of Object.values(scenario.dronePlatforms ?? {})) {
         expect(PLATFORM_CATALOG[platformId].vendor.toLowerCase()).not.toContain('dji')
       }
@@ -97,7 +97,7 @@ describe('scenario platform doctrine', () => {
   })
 
   it('Rio Grande keeps its tuned battery profile alongside platform assignments', () => {
-    const scenario = ALL_SCENARIOS.find((s) => s.id === 'extreme_cbp_rio_grande_longrange')!
+    const scenario = INCIDENT_SCENARIOS.find((s) => s.id === 'extreme_cbp_rio_grande_longrange')!
     expect(scenario.dronePlatforms).toBeDefined()
     // The explicit fleet battery profile must survive — rechargeStations gives it
     // precedence over the platform endurance multiplier.
