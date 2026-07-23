@@ -16,6 +16,7 @@ import {
 } from '@/components/classroom/tileRenderer'
 import { StudentTile, TILE_ASPECT } from '@/components/classroom/StudentTile'
 import { FocusMap } from '@/components/classroom/FocusMap'
+import { captureBasemap } from '@/components/classroom/basemapSnapshot'
 import { ClassResults } from '@/components/classroom/ClassResults'
 import type { ClassConfig, RosterEntry, StudentId } from '@/classroom/protocol'
 import type { DroneState, LatLng, ScenarioConfig } from '@/types'
@@ -94,18 +95,55 @@ export function CoordinatorConsole() {
   const [targetMode, setTargetMode] = useState<'focused' | 'all'>('focused')
 
   const scenario = useMemo(() => config ? scenarioForConfig(config) : null, [config])
-  const backdrop = useMemo(() => {
-    if (!scenario) return null
-    // The bbox the tiles project with must be the SAME one the backdrop was drawn with, or the
-    // static geometry and the live drones disagree about where north is. Both are aspect-fitted
-    // here once, and every tile re-fits to its own width from this same source window.
-    const bbox = fitBboxToAspect(computeBbox(scenarioPoints(scenario)), BACKDROP_W, BACKDROP_H)
-    const canvas = document.createElement('canvas')
-    canvas.width = BACKDROP_W
-    canvas.height = BACKDROP_H
-    const context = canvas.getContext('2d')
-    if (context) drawBackdrop(context, scenarioGeometry(scenario), bbox, BACKDROP_W, BACKDROP_H)
-    return { canvas, bbox }
+
+  /**
+   * The wall backdrop: a real basemap with the mission geometry drawn over it, composited once
+   * and blitted by every tile.
+   *
+   * Synchronous first pass so the wall is never blank, then a second pass once the shared basemap
+   * capture resolves (see basemapSnapshot for why one capture serves all 40 tiles). If the capture
+   * fails — no WebGL, no network — the first pass simply stands, which is the old behaviour.
+   */
+  const [backdrop, setBackdrop] = useState<{ canvas: HTMLCanvasElement; bbox: Bbox } | null>(null)
+
+  useEffect(() => {
+    if (!scenario) {
+      setBackdrop(null)
+      return
+    }
+    let cancelled = false
+
+    const geometry = scenarioGeometry(scenario)
+    const requested = fitBboxToAspect(computeBbox(scenarioPoints(scenario)), BACKDROP_W, BACKDROP_H)
+
+    const compose = (bbox: Bbox, basemap: HTMLCanvasElement | null) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = BACKDROP_W
+      canvas.height = BACKDROP_H
+      const context = canvas.getContext('2d')
+      if (!context) return null
+      if (basemap) {
+        context.drawImage(basemap, 0, 0, BACKDROP_W, BACKDROP_H)
+        // Knock the basemap back so it reads as context rather than competing with the mission
+        // geometry and drone glyphs drawn on top of it.
+        context.fillStyle = 'rgba(11, 15, 23, 0.45)'
+        context.fillRect(0, 0, BACKDROP_W, BACKDROP_H)
+      }
+      drawBackdrop(context, geometry, bbox, BACKDROP_W, BACKDROP_H, { fillBackground: !basemap })
+      return { canvas, bbox }
+    }
+
+    setBackdrop(compose(requested, null))
+
+    captureBasemap({ bbox: requested, width: BACKDROP_W, height: BACKDROP_H }).then((snapshot) => {
+      if (cancelled || !snapshot) return
+      // Project against the bounds MapLibre SETTLED on, not the ones it was asked for — fitBounds
+      // snaps to its own zoom, and using the requested window would offset every glyph.
+      const composed = compose(snapshot.bounds, snapshot.image)
+      if (composed) setBackdrop(composed)
+    })
+
+    return () => { cancelled = true }
   }, [scenario])
 
   const scenarioName = config && config.kind === 'catalog'

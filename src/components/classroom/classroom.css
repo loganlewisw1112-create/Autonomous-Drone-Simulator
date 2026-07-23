@@ -62,23 +62,33 @@
 .cls-alert-pill.crit { background: rgba(255, 77, 77, 0.16); color: #ff8080; border: 1px solid #ff4d4d; }
 .cls-alert-pill.warn { background: rgba(255, 176, 32, 0.14); color: #ffc766; border: 1px solid #ffb020; }
 
-.cls-body { display: flex; flex: 1 1 auto; min-height: 0; }
+/* `min-width: 0` on the body AND every column is load-bearing, not defensive. Flex items default
+   to `min-width: auto`, so any child wider than its share — the focus pane's drone table, a long
+   scenario name — pushes the whole row past the viewport instead of scrolling inside its own
+   column. That is what was clipping the command rail off the left edge and "End class" off the
+   right. */
+.cls-body { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; overflow: hidden; }
+.cls-body > * { min-width: 0; }
 
 .cls-wall {
   flex: 1 1 auto;
   overflow-y: auto;
   padding: 12px;
   display: grid;
-  /* Tiles are sized so an instructor can actually READ a student's map from a normal seating
-     distance. 320px minimum (was 240) is about where drone glyphs, route lines and the geofence
-     outline stop being suggestive and start being legible. `auto-fit` still collapses the column
-     count for a small class, so four students fill the wall instead of huddling top-left. */
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  /* Tiles are sized so an instructor can READ a student's map from a normal seating distance —
+     320px is about where drone glyphs, route lines and the geofence outline stop being
+     suggestive and start being legible.
+     The MAXIMUM matters as much as the minimum: with `1fr` a single student stretched to fill the
+     entire wall, producing one ~950px tile and a vast empty field below it. Capping at 440px
+     keeps a one-student class looking like a tile rather than a mistake, and keeps a full class
+     packing as many students per row as will fit. */
+  grid-template-columns: repeat(auto-fit, minmax(320px, 440px));
+  justify-content: start;
   gap: 14px;
   align-content: start;
 }
 /* Compact is for a full room, where seeing everyone at once beats seeing anyone in detail. */
-.cls-wall.compact { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.cls-wall.compact { grid-template-columns: repeat(auto-fit, minmax(230px, 300px)); }
 
 .cls-focus-pane {
   /* Where the instructor watches one student properly, so it gets real width — 380px could not
