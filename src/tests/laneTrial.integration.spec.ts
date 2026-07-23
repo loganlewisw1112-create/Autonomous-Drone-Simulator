@@ -22,6 +22,15 @@ const TICK_MS = 50
 /** 10 minutes of sim time — inside the 20-minute limit, enough to fly the whole grid. */
 const TRIAL_TICKS = 10 * 60 * 20
 
+/**
+ * Each trial below drives 12,000 production ticks with live terrain ray-marching, and two of
+ * these tests fly two trials apiece. That is legitimately long-running work, not a hang, so
+ * they carry an explicit budget — vitest's 5 s default is a local-hardware assumption and it
+ * fails on a shared CI runner.
+ */
+const TRIAL_TIMEOUT_MS = 60_000
+
+
 function flyLane(scenarioId: string): { score: LaneScore; laneEvents: number; chainOk: boolean } {
   const scenario = ALL_SCENARIOS.find((s) => s.id === scenarioId)!
   const lane = laneForScenario(scenarioId)!
@@ -75,7 +84,7 @@ describe('NIST lane trial through the production loop (WP-9)', () => {
 
     // The score is backed by the same tamper-evident chain as the rest of the after-action pack.
     expect(chainOk).toBe(true)
-  })
+  }, TRIAL_TIMEOUT_MS)
 
   it('is deterministic: the same trial flown twice scores identically', () => {
     const first = flyLane('nist_open_lane')
@@ -83,7 +92,7 @@ describe('NIST lane trial through the production loop (WP-9)', () => {
     const second = flyLane('nist_open_lane')
     expect(second.score).toEqual(first.score)
     expect(second.laneEvents).toBe(first.laneEvents)
-  })
+  }, TRIAL_TIMEOUT_MS)
 
   it('terrain masking makes the obstructed lane harder — the WP-4 dependency, measured', () => {
     // Precondition: the obstructed lane must actually have a committed DEM bound to it, or this
@@ -112,5 +121,5 @@ describe('NIST lane trial through the production loop (WP-9)', () => {
     // Terrain degrades the trial; it does not make it unflyable.
     expect(obstructed.score.score).toBeGreaterThan(0)
     expect(Math.min(...obstructed.score.perTarget.map((t) => t.featuresIdentified))).toBeGreaterThan(0)
-  })
+  }, TRIAL_TIMEOUT_MS)
 })
