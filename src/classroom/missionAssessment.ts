@@ -1,4 +1,6 @@
 import { buildMissionProgress, type MissionObjectiveProgress } from '@/sim/mission/missionObjectives'
+import { scoreLane, type LaneScore } from '@/sim/mission/laneScoring'
+import { laneForScenario } from '@/scenarios/nistLanes'
 import { batteryReservePctForDrone } from '@/sim/mission/rechargeStations'
 import { verifyChain } from '@/utils/chainOfCustody'
 import type {
@@ -57,6 +59,15 @@ export interface MissionAssessment {
   total: number
   band: AssessmentBand
   interventions: AssessmentIntervention[]
+  /**
+   * NIST lane result (WP-9), present only on lane trials.
+   *
+   * Reported ALONGSIDE `total`, never folded into it. The two are different kinds of claim: the
+   * mission score is this project's own rubric and stays advisory, while the lane score is a
+   * published, standards-referenced number. Averaging them would contaminate the one figure that
+   * can survive a training officer's scrutiny.
+   */
+  nistLane?: LaneScore
 }
 
 export interface MissionAssessmentInput {
@@ -127,6 +138,11 @@ export function buildMissionAssessment(input: MissionAssessmentInput): MissionAs
   const uncappedTotal = clampScore(tier1 + tier2, 100)
   const total = Math.min(uncappedTotal, cap)
 
+  // Lane scoring folds the participant's own evidence events, so an instructor intervention
+  // cannot inflate a standards-referenced score.
+  const lane = laneForScenario(input.scenario.id)
+  const nistLane = lane ? scoreLane(lane, participantEvents, input.elapsedSec) : undefined
+
   return {
     progressPercent: progress.percent,
     objectives: progress.objectives,
@@ -137,6 +153,7 @@ export function buildMissionAssessment(input: MissionAssessmentInput): MissionAs
     total,
     band: bandFor(total),
     interventions,
+    ...(nistLane ? { nistLane } : {}),
   }
 }
 

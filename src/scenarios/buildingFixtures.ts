@@ -9,6 +9,10 @@ import wildfireBuildings from './fixtures/demo_wildfire/buildings.json'
 // fixtures, these are committed data and never fetched while the simulator is running.
 const BUILDINGS: Record<string, BuildingFeatureCollection> = {
   demo_wildfire: wildfireBuildings as unknown as BuildingFeatureCollection,
+  // WP-9's obstructed lane is laid out in this same AO — terrain masking is the whole
+  // content of that trial — so it reuses the identical committed fixture rather than
+  // shipping a second copy of the same bytes.
+  nist_obstructed_lane: wildfireBuildings as unknown as BuildingFeatureCollection,
 }
 
 const INDEXES = new Map<string, BuildingIndex>()

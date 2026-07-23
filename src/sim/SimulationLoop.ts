@@ -22,6 +22,13 @@ import { evaluateGnss } from '@/sim/nav/gnss'
 import { occlusionEpoch, type TerrainOcclusionService } from '@/sim/terrain/OcclusionService'
 import { occlusionServiceFor } from '@/scenarios/terrainFixtures'
 import { constellationAt, constellationFor, type ConstellationFixture } from '@/scenarios/constellationFixtures'
+import { laneForScenario } from '@/scenarios/nistLanes'
+import {
+  featureRangesM,
+  LANE_FEATURE_EVENT,
+  resolvableFeatureIndex,
+  type NistLaneDefinition,
+} from '@/sim/mission/laneScoring'
 import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import { tickGroundUnit, computeGroundUnitEta } from '@/sim/mission/groundUnits'
 import { tickRecoveryTeam, tickRecoveryExtraction, needsRecovery, recoveryTransitionState, createRecoveryTeam } from '@/sim/mission/recoveryManager'
@@ -32,6 +39,11 @@ const THERMAL_CHECK_INTERVAL = 50
 const SNAPSHOT_INTERVAL = 40
 /** 20 ticks = 1 Hz, matching OCCLUSION_UPDATE_HZ — see the GNSS pass for why (§4.5). */
 const GNSS_CHECK_INTERVAL = 20
+/** 5 ticks = 4 Hz. Fine enough that a transiting aircraft cannot skip past a target.
+ *  Guarded by a range reject, so the ray march only runs for targets actually in reach. */
+const LANE_CHECK_INTERVAL = 5
+/** Largest feature's acuity range — nothing is resolvable beyond it. */
+const LANE_MAX_FEATURE_RANGE_M = Math.max(...featureRangesM())
 const FT_TO_M = 0.3048
 const FIXED_DT = 0.05
 const TELEMETRY_SAMPLE_INTERVAL = 10
@@ -58,6 +70,10 @@ const lastPositions = new Map<string, LatLng>()
 const onSceneTicksMap = new Map<string, number>()  // recoveryTeamId → ticks on scene
 let missionOcclusion: TerrainOcclusionService | undefined
 let missionConstellation: ConstellationFixture | undefined
+let missionLane: NistLaneDefinition | undefined
+/** Per-run memo preventing duplicate identification EVENTS. The score is always refolded
+ *  from the events themselves, so this can never be the source of truth. */
+const laneIdentified = new Set<string>()
 
 /**
  * One fixed-timestep tick (runs `simSpeed` physics sub-steps). Exported so tests and the
@@ -595,6 +611,70 @@ export function tick() {
       }
     }
 
+    // ── NIST lane: feature identification (WP-9) ───────────────────────────────
+    //
+    // A feature counts when the aircraft is close enough for it to be RESOLVABLE (the acuity
+    // range from laneScoring) and has clear line of sight to the target face (WP-4). Neither is
+    // a proximity trigger and neither is scripted.
+    //
+    // Identifications are emitted as evidence events, so the score is a fold over the same
+    // tamper-evident chain as the rest of the after-action package and replays identically.
+    // `laneIdentified` is a per-run memo that only prevents duplicate EVENTS; the score itself is
+    // always recomputed from events, so nothing here can desynchronise it.
+    if (missionLane && currentTick % LANE_CHECK_INTERVAL === 0) {
+      for (const drone of finalDrones) {
+        if (drone.altitudeFt < 2) continue
+        const droneGroundM = missionOcclusion?.groundElevation(drone.position.lat, drone.position.lng) ?? 0
+        const droneMslM = droneGroundM + drone.altitudeFt * FT_TO_M
+
+        for (const target of missionLane.targets) {
+          const targetGroundM = missionOcclusion?.groundElevation(target.position.lat, target.position.lng) ?? 0
+          const targetMslM = targetGroundM + target.heightAglM
+          const horizontalM = haversineDistanceM(drone.position, target.position)
+          const slantRangeM = Math.hypot(horizontalM, droneMslM - targetMslM)
+
+          // Cheap reject before paying for a ray march: nothing is resolvable past the largest
+          // feature's range, and the lane has 20 targets checked several times a second.
+          if (slantRangeM > LANE_MAX_FEATURE_RANGE_M) continue
+
+          const los = missionOcclusion
+            ? missionOcclusion.hasLineOfSight(
+                { ...drone.position, altMslM: droneMslM },
+                { ...target.position, altMslM: targetMslM },
+              ).clear
+            : true
+
+          const best = resolvableFeatureIndex({
+            observer: { position: drone.position, altMslM: droneMslM },
+            target,
+            targetMslM,
+            hasLineOfSight: los,
+            slantRangeM,
+          })
+          if (best < 0) continue
+
+          // Features are cumulative: resolving index k means every larger feature is resolved too.
+          for (let index = 0; index <= best; index += 1) {
+            const key = `${target.id}#${index}`
+            if (laneIdentified.has(key)) continue
+            laneIdentified.add(key)
+            useDroneStore.getState().emitEvent({
+              eventType: LANE_FEATURE_EVENT,
+              droneId: drone.id,
+              tick: currentTick,
+              payload: {
+                laneId: missionLane.id,
+                targetId: target.id,
+                featureIndex: index,
+                elapsedSec: Math.round(elapsedSec * 10) / 10,
+                slantRangeM: Math.round(slantRangeM * 10) / 10,
+              },
+            })
+          }
+        }
+      }
+    }
+
     // ── GNSS: sky occlusion → DOP → reported position (WP-7) ───────────────────
     //
     // Runs at the 1 Hz occlusion epoch, not the 20 Hz tick. §4.5's rule: satellite geometry and
@@ -820,6 +900,8 @@ export function initFleet() {
   const { scenario, launchPlan, weatherState, scenarioVariant } = useDroneStore.getState()
   missionOcclusion = scenario ? occlusionServiceFor(scenario.id) : undefined
   missionConstellation = constellationFor(scenario?.id)
+  missionLane = laneForScenario(scenario?.id)
+  laneIdentified.clear()
   if (!scenario) return
   lastPositions.clear()
   onSceneTicksMap.clear()
