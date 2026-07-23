@@ -8,7 +8,7 @@
  * Neither shows up as a test failure anywhere else, so they are pinned here.
  */
 import { describe, expect, it } from 'vitest'
-import { ALL_SCENARIOS } from '@/scenarios/catalog'
+import { INCIDENT_SCENARIOS } from '@/scenarios/catalog'
 import { observedWeatherFor } from '@/scenarios/observedWeather'
 
 // The onboarding tutorials must stay launchable in any weather (tools/fixtures/scenarios.json).
@@ -17,11 +17,11 @@ const TUTORIAL_IDS = ['demo_basic', 'demo_sar']
 // WP-2's stated acceptance criterion.
 const WP2_MINIMUM = 12
 
-const withObserved = ALL_SCENARIOS.filter((s) => observedWeatherFor(s.id) !== undefined)
+const withObserved = INCIDENT_SCENARIOS.filter((s) => observedWeatherFor(s.id) !== undefined)
 
 describe('observed weather fixtures (WP-2)', () => {
   it('clears the ">=12 of 21 scenarios" acceptance bar', () => {
-    expect(ALL_SCENARIOS.length).toBe(21)
+    expect(INCIDENT_SCENARIOS.length).toBe(21)
     expect(withObserved.length).toBeGreaterThanOrEqual(WP2_MINIMUM)
     // Exact, not just the floor: the map is hand-written, and a mistyped scenario id binds the
     // fixture to nothing while its intended scenario silently keeps its invented weather. That

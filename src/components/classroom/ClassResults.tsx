@@ -8,6 +8,11 @@ const COLUMNS: Array<{ key: string; label: string; get: (r: ClassRunResult) => s
   { key: 'outcome', label: 'Outcome', get: (r) => outcome(r) },
   { key: 'score', label: 'Score', get: (r) => r.assessment.total },
   { key: 'band', label: 'Band', get: (r) => r.assessment.band },
+  // WP-9: the one standards-referenced, auto-scorable number in the table. Kept in its own
+  // column rather than merged into Score — see MissionAssessment.nistLane for why. '—' on
+  // non-lane runs is honest: this scenario simply was not a lane trial.
+  { key: 'nist', label: 'NIST/100', get: (r) => r.assessment.nistLane?.score ?? '—' },
+  { key: 'nistTime', label: 'NIST-OT', get: (r) => nistOvertime(r) },
   { key: 'progress', label: 'Progress%', get: (r) => Math.round(r.assessment.progressPercent) },
   { key: 'lifeSafety', label: 'Safety', get: (r) => r.assessment.lifeSafety.status },
   { key: 'durationSec', label: 'Dur(s)', get: (r) => r.summary.durationSec },
@@ -24,6 +29,13 @@ const COLUMNS: Array<{ key: string; label: string; get: (r: ClassRunResult) => s
 function outcome(r: ClassRunResult): string {
   return r.summary.completionReason === 'all_drones_complete' ? 'complete'
     : r.summary.completionReason === 'operator_ended' ? 'ended' : '—'
+}
+
+/** Features found after the NIST time limit — earned, but not counted toward the score. */
+function nistOvertime(r: ClassRunResult): string | number {
+  const lane = r.assessment.nistLane
+  if (!lane) return '—'
+  return lane.featuresRejectedLate > 0 ? `+${lane.featuresRejectedLate} late` : 'ok'
 }
 
 function minBattery(r: ClassRunResult): number {

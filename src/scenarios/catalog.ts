@@ -1,6 +1,7 @@
 import { demoBasic, demoSAR } from '@/scenarios/demoBasic'
 import { suspectSearch, vehiclePursuit, sarCoastal, portPerimeter, wildfireRecon } from '@/scenarios/demoScenarios'
 import { EXTREME_SCENARIOS } from '@/scenarios/extremeScenarios'
+import { NIST_LANE_SCENARIOS } from '@/scenarios/nistLanes'
 import { auditScenarioRoutes, buildSafeDroneRoutes, droneIdForIndex, relocatePointOutsideGeofences } from '@/sim/mission/routeAudit'
 import { getWeatherProfile } from '@/sim/weather/weatherEngine'
 import { haversineDistanceM } from '@/utils/geometry'
@@ -30,6 +31,7 @@ const RAW_SCENARIOS: ScenarioConfig[] = [
   portPerimeter,
   wildfireRecon,
   ...EXTREME_SCENARIOS,
+  ...NIST_LANE_SCENARIOS,
 ]
 
 // Recognized agency tokens, scanned in name-then-description order. This replaces a fragile
@@ -48,6 +50,17 @@ const MOBILE_SITE_DEFAULTS: Partial<Record<LaunchRecoverySite['kind'], { radiusM
 }
 
 export const ALL_SCENARIOS: ScenarioConfig[] = RAW_SCENARIOS.map((scenario) => enhanceScenarioForOperations(scenario))
+
+/**
+ * Incident scenarios — everything except the WP-9 NIST proficiency lanes.
+ *
+ * The lanes are standardised skills trials, not incidents: they have no commanding agency, no
+ * dispatch timeline and no observed weather, and asserting incident invariants over them would
+ * force fabricated metadata onto a scenario whose whole value is that it is standards-defined.
+ */
+export const INCIDENT_SCENARIOS: ScenarioConfig[] = ALL_SCENARIOS.filter(
+  (scenario) => !NIST_LANE_SCENARIOS.some((lane) => lane.id === scenario.id),
+)
 
 export const SCENARIO_OPTIONS = ALL_SCENARIOS.map((scenario) => ({
   id: scenario.id,

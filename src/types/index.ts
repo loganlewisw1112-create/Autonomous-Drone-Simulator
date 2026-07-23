@@ -353,6 +353,7 @@ export type EventType =
   | 'launch_site_repositioned'
   | 'gnss_fix_lost'
   | 'gnss_fix_changed'
+  | 'lane_feature_identified'
 
 export interface MissionEvent {
   tick: number

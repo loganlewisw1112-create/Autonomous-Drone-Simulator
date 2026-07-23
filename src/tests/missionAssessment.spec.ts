@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ALL_SCENARIOS } from '@/scenarios/catalog'
+import { INCIDENT_SCENARIOS } from '@/scenarios/catalog'
 import { buildMissionAssessment, type MissionAssessmentInput } from '@/classroom/missionAssessment'
 import type { DroneState, EventType, MissionEvent, MissionMetrics, ScenarioConfig, ThermalContactState } from '@/types'
 
@@ -160,8 +160,8 @@ describe('classroom mission assessment', () => {
   })
 
   it('derives and assesses objectives for every catalog scenario', () => {
-    expect(ALL_SCENARIOS).toHaveLength(21)
-    for (const item of ALL_SCENARIOS) {
+    expect(INCIDENT_SCENARIOS).toHaveLength(21)
+    for (const item of INCIDENT_SCENARIOS) {
       const assessment = buildMissionAssessment(input({
         scenario: item,
         drones: [],

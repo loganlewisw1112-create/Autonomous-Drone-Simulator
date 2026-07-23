@@ -27,6 +27,10 @@ const CONSTELLATIONS: Record<string, ConstellationFixture> = {
   // Grizzly Peak / East Bay Hills — the same AO that carries the WP-4 terrain and buildings,
   // so GNSS occlusion has real geometry to be occluded by.
   demo_wildfire: wildfireConstellation as ConstellationFixture,
+  // WP-9's obstructed lane is laid out in this same AO — terrain masking is the whole
+  // content of that trial — so it reuses the identical committed fixture rather than
+  // shipping a second copy of the same bytes.
+  nist_obstructed_lane: wildfireConstellation as ConstellationFixture,
 }
 
 /** The frozen constellation for a scenario, or undefined when none is sourced yet. */

@@ -36,6 +36,10 @@ const TERRAIN: Record<string, TerrainFixture> = {
   // aircraft placement a real decision". 503 m of relief across the AO makes it the scenario
   // where terrain occlusion is most visibly load-bearing.
   demo_wildfire: { payload: wildfirePng, header: wildfireHeader },
+  // WP-9's obstructed lane is laid out in this same AO — terrain masking is the whole
+  // content of that trial — so it reuses the identical committed fixture rather than
+  // shipping a second copy of the same bytes.
+  nist_obstructed_lane: { payload: wildfirePng, header: wildfireHeader },
 }
 
 /** The frozen terrain fixture for a scenario, or undefined when none is sourced yet. */
