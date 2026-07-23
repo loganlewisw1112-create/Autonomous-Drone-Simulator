@@ -8,7 +8,7 @@
       37.92125777937478
     ]
   },
-  "generatedAt": "2026-07-22",
+  "generatedAt": "2026-07-23",
   "sources": [
     {
       "fixture": "buildings.json",
@@ -31,6 +31,32 @@
       "filters": "measured height, or num_floors × 3m; unknown-height footprints excluded"
     },
     {
+      "fixture": "constellation.json",
+      "source": "CelesTrak — GPS YUMA almanac (US Space Force / NAVCEN)",
+      "url": "https://celestrak.org/GPS/almanac/Yuma/2026/almanac.yuma.week0379.589824.txt",
+      "license": "GPS almanac data is a product of the US Space Force / NAVCEN — US federal government work, public domain. Redistributed by CelesTrak (https://celestrak.org/), which permits use with attribution.",
+      "attribution": "GPS almanac courtesy of CelesTrak; source data US Space Force NAVCEN",
+      "retrievedAt": "2026-07-23",
+      "sha256": "d75f129f2f558c67daa359f2766ea640eb287254f5fef9889121ba80112d3d62",
+      "rawBytes": 8396,
+      "almanacWeek": 379,
+      "almanacToa": 589824,
+      "satellites": "31 healthy of 32 in almanac",
+      "epochUtc": "2026-07-15T21:00:00.000Z",
+      "epochStepSec": 300,
+      "dateKind": "representative",
+      "note": "Representative East Bay fire-season afternoon (14:00 PDT) over the Grizzly Peak AO.",
+      "propagation": "IS-GPS-200 almanac algorithm (no harmonic corrections); az/el at the AO reference position"
+    },
+    {
+      "fixture": "terrain-refpoints.json",
+      "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
+      "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
+      "license": "US Geological Survey — US federal government work, public domain",
+      "retrievedAt": "2026-07-22",
+      "sha256": "3667e89f66481deade9603adc76ad334bdb9becb4aaed6355e051f63f5cc38c0"
+    },
+    {
       "fixture": "terrain.json",
       "source": "derived header (this pipeline)",
       "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
@@ -47,14 +73,6 @@
       "retrievedAt": "2026-07-22",
       "detail": "z14 664×665px from 12 tiles, 7.54 m/px, 0.25 m vertical quantum, surface dtm-approx",
       "sha256": "1379458b15bc74b3672dbc423b43fff9a70481932b254a1ca2f656d4dbfe8f3a"
-    },
-    {
-      "fixture": "terrain-refpoints.json",
-      "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
-      "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
-      "license": "US Geological Survey — US federal government work, public domain",
-      "retrievedAt": "2026-07-22",
-      "sha256": "3667e89f66481deade9603adc76ad334bdb9becb4aaed6355e051f63f5cc38c0"
     }
   ]
 }

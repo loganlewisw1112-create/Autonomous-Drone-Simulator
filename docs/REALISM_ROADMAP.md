@@ -2,13 +2,14 @@
 
 **Autonomous Drone Mission Simulator · 22 July 2026**
 
-**Execution update:** WP-4, WP-5 and WP-6 are complete for the pinned `demo_wildfire` realism
-fixture. Terrain/building occlusion, AGL/MSL conversion, route/live surface safety, target-
-specific thermal physics, the desktop/mobile rendering split, and SAR probability of detection
-are wired and covered by artifact-level CI. WP-6 also retires the fabricated "TIME SAVED"-class
-KPI problem in the search metric: the READY tab now reports POD, and the old route figure is
-labelled route progress rather than coverage. The next dependency-ordered package is
-**WP-7 GNSS geometry**, followed by WP-8 RF propagation and WP-9 NIST lanes.
+**Execution update:** WP-4, WP-5, WP-6 and WP-7 are complete for the pinned `demo_wildfire`
+realism fixture. Terrain/building occlusion, AGL/MSL conversion, route/live surface safety,
+target-specific thermal physics, the desktop/mobile rendering split, SAR probability of
+detection, and GNSS occlusion → DOP → reported position error are wired and covered by
+artifact-level CI. WP-6 retired the fabricated "TIME SAVED"-class KPI problem in the search
+metric; WP-7 closes what the Damman article names as the largest remaining gap — **GPS
+degradation is now simulated rather than absent**, from a real published almanac. The next
+dependency-ordered package is **WP-8 RF propagation**, followed by WP-9 NIST lanes.
 
 Applies to **all three builds**: Mobile, Windows, Coordinator/classroom.
 Grounded in 16 external research passes and cross-referenced against the codebase
@@ -48,7 +49,8 @@ formats and byte budgets closed.
 | WP-0 fixture pipeline | **BUILT (weather)** | `tools/fixtures/` CLI (`npm run fixtures`) fetches real geodata at authoring time and freezes it with a provenance manifest (source URL, date, licence, SHA-256). Network egress verified in this environment. Weather source (Open-Meteo ERA5) live; terrain/airspace/etc. fetchers extend the same framework. |
 | WP-2 weather | **DONE (incident scenarios)** | Real ERA5 baselines frozen + wired: `buildWeatherState` takes an optional observed baseline the seeded dials perturb around. Fort Myers now carries Ian's real 59kt/110kt. Applied to incident scenarios only, not the demo tutorial. |
 | WP-3/4 | **DONE for the first realism AO** | `demo_wildfire` carries pinned terrain and Overture buildings, exact LOS, surface safety, provenance and fixture-budget enforcement. |
-| WP-7/8/9 | **UNBLOCKED** | WP-4's live occlusion service is available; these are now implementation work rather than dependency blockers. |
+| WP-7 GNSS | **DONE + LIVE** | Real CelesTrak YUMA almanac → IS-GPS-200 propagation → frozen az/el → `skyVisibility()` → DOP → σ_H → reported position. Loss of fix on <4 sats or HDOP > 20. Truth retained; error is band-limited noise from sim time, so no RNG state and replay stays byte-identical. `demo_wildfire` only. |
+| WP-8/9 | **UNBLOCKED** | WP-4's live occlusion service is available; these are now implementation work rather than dependency blockers. |
 | WP-12 | **BLOCKED** | OpenSky still needs authenticated access or an approved alternative source. |
 | WP-6 SAR POD | **DONE + LIVE** | `sensors/podReporting.ts` closes R_d → W → coverage → POD against the live WP-5 range and reports per-sector + cumulative POD on the READY tab. Derived from `positionHistory`; no sim-tick change, no new kernel state. Removed the fabricated 60 m radius fallback the old sector objective used. |
 | WP-10/11 | **MODULE DONE** | Pure, tested, deterministic modules shipped: `weather/dryden.ts` (turbulence), `drone/battery.ts` (discharge curve). Change no live behaviour yet — live wiring into the loop is the deferred, determinism-sensitive step (WP-5 pattern). |
@@ -561,7 +563,53 @@ the 2026-07-02 audit as a diligence risk. POD is defensible; that KPI was not.
 
 ---
 
-## WP-7 · GNSS occlusion → computed DOP `[Tranche C]` `[needs WP-4]` **CONFIRMED**
+## WP-7 · GNSS occlusion → computed DOP `[Tranche C]` `[needs WP-4]` — **DONE + LIVE**
+
+**Status:** complete, Tier 2 exactly as specified. `sky occlusion → DOP → σ_H → reported position`
+runs in the live loop at the 1 Hz occlusion epoch.
+
+- `tools/fixtures/constellation.mjs` (new) fetches a **real published YUMA almanac** from
+  CelesTrak (US Space Force / NAVCEN, public domain), propagates every healthy satellite with the
+  IS-GPS-200 almanac algorithm, and freezes az/el epochs for the AO. `demo_wildfire` carries
+  almanac week 379, 31 healthy satellites, 13 epochs at 5 min, 8.2 KB.
+- `src/sim/nav/dop.ts` (new) — geometry matrix, 4×4 inversion, HDOP/VDOP/PDOP/GDOP.
+- `src/sim/nav/gnss.ts` (new) — elevation mask → `skyVisibility()` → DOP → σ_H → reported
+  position, with `no_fix` on <4 satellites or HDOP > 20.
+- Live: `SimulationLoop` GNSS pass, `FleetPanel` GPS readout + GPS LOST/DEGRADED warnings,
+  `TacticalMap` uncertainty ring, `gnss_fix_lost` / `gnss_fix_changed` evidence events.
+
+**Truth is retained.** `drone.position` remains what the sim flies. The model writes only
+`reportedPosition`/`hdop`/`satsVisible`/`fixQuality`, so the operator sees the track drift from
+where the aircraft actually is — which is the training content.
+
+**Determinism.** The error is **band-limited noise evaluated from sim time**, not an accumulating
+random walk and not a per-tick RNG draw. There is no persistent RNG state to desynchronise under
+sub-stepping, so replay stays byte-identical — and because the signal is continuous, the accept
+criterion that a reported position never jumps more than 3σ between fixes falls out of the
+construction rather than needing a clamp.
+
+**⚠ §18.3's reference table could not be reproduced, and was not faked.** The table gives HDOP for
+six named geometries but **not the azimuth/elevation sets that produced them**. Many geometries
+answer to "open sky, 8 satellites", spanning a wide HDOP range; each row can be hit individually
+by tuning a spread parameter, but that is fitting to an unverifiable number, not reproducing it —
+the same failure mode as WP-6's fabricated 60 m radius. `dop.spec.ts` therefore pins geometries
+**the repo owns and states outright**, with the HDOP each actually produces, and asserts the
+*bands* the accept criteria are written in.
+
+The stronger validation is independent of that table entirely: the committed fixture — real
+almanac, real orbital propagation, real AO — yields open-sky **HDOP 0.85–1.09** across the whole
+mission window, inside the literature's 0.8–1.5 open-sky band, with nothing tuned to make it so.
+**Recommend replacing the §18.3 table with those measured values**, or recording the az/el sets
+behind the originals.
+
+**Known scope, stated:** one AO (`demo_wildfire`, the same one carrying WP-4's terrain and
+buildings) and a one-hour constellation window that clamps rather than extrapolates past its end.
+Other scenarios have no constellation fixture and correctly show no GNSS state at all — never a
+defaulted good fix.
+
+---
+
+### Original WP-7 target (unchanged below)
 
 **Why this matters.** The Damman article anchoring the project's positioning names *"lost
 link, GPS degradation, communication failure"* as the three abnormal scenarios that define
@@ -625,15 +673,19 @@ about whether to trust the track. That is the training content.
 `satsVisible`, `fixQuality` to `DroneState`) · `FleetPanel.tsx` · `TacticalMap.tsx`
 (uncertainty circle)
 
-**Accept:** HDOP in open sky is 0.8–1.5; in a modelled dense canyon it exceeds 4 and horizontal
-error exceeds 10 m, matching the literature; `<4` satellites **or HDOP > 20** produces a visible
-loss-of-fix state rather than a wild position; reported position never jumps more than σ_H × 3
-between consecutive fixes; determinism holds.
+**Accept — all met:** HDOP in open sky is 0.8–1.5 (measured 0.85–1.09 against the real almanac);
+in a modelled dense canyon it exceeds 4 and horizontal error exceeds 10 m, matching the
+literature; `<4` satellites **or HDOP > 20** produces a visible loss-of-fix state rather than a
+wild position; reported position never jumps more than σ_H × 3 between consecutive fixes;
+determinism holds.
 
-**Test:** `dop.spec.ts` — the six geometries in §18.3 reproduce their tabulated HDOP within
-1 % · `gnss.spec.ts` — open-sky and canyon positions produce expected error bands, and the
-degenerate geometry produces loss-of-fix rather than a 9 km error · determinism test with GNSS
-active.
+**Test:** `dop.spec.ts` (9) — pinned geometries with their true HDOP plus the accept bands; see
+the note above on why §18.3's table is not the fixture · `gnss.spec.ts` (17) — open-sky and
+canyon error bands, degenerate geometry producing loss-of-fix rather than a 9 km error, position
+hold through an outage, truth never mutated, 3σ continuity over a 600 s walk, determinism under
+a different tick number, and the committed fixture validated end to end against real terrain ·
+`tacticalMapGeoJson.spec.ts` (6) — the uncertainty ring is drawn at σ_H around the *reported*
+position and omitted entirely when there is no fix.
 
 ---
 
