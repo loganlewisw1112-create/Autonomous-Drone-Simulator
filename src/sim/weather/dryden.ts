@@ -89,3 +89,99 @@ export function lowAltitudeDryden(windAt20ftMs: number, altitudeFt: number): { l
 export function exceedsGustLimit(sustainedWindMs: number, gustMs: number, gustToleranceMs: number): boolean {
   return sustainedWindMs + Math.abs(gustMs) > gustToleranceMs
 }
+
+// ─── Live wiring (WP-10) ───────────────────────────────────────────────────────
+//
+// THE DETERMINISM PROBLEM, AND HOW IT IS SOLVED.
+//
+// `drydenSeries` is an AR(1) recursion driven by a stateful PRNG. Stepping it once per tick from
+// inside the loop would put persistent RNG state in the simulation kernel — exactly what this
+// project's determinism guarantee forbids, because sub-stepping and replay would consume draws in
+// a different order and diverge. (See how WP-7's GNSS error and WP-8's shadow fading avoid the
+// same trap.)
+//
+// The fix is to make the gust a pure function of tick index. A NORMALISED series (σ = 1, nominal
+// correlation) is generated once per (seed, aircraft) and memoised, then scaled per tick by the
+// live σ from `lowAltitudeDryden`. So:
+//
+//   • the SHAPE — the Dryden spectrum and its correlation structure — comes from the cached series
+//   • the INTENSITY tracks altitude and wind live, tick by tick
+//   • `gustAtTick` is pure: the same tick always yields the same gust, however it was reached
+//
+// STATED SIMPLIFICATION. The correlation time L/V varies with airspeed and altitude in the full
+// model; the cached shape fixes it at a nominal cruise. Intensity — which is what the couplings
+// WP-10 actually cares about (battery burn, wind-limit abort) respond to — remains fully live.
+// Buying exact time-varying correlation would cost the determinism guarantee, which is a far more
+// valuable property than the second-order spectral detail it would buy.
+
+/** Nominal airspeed for the cached gust shape (m/s). */
+const NOMINAL_AIRSPEED_MS = 10
+/** Nominal Dryden length scale for the cached shape (m), mid-band for low-altitude flight. */
+const NOMINAL_LENGTH_SCALE_M = 200
+/** Series length: 30 min at 20 Hz, comfortably past any single sortie. */
+const SERIES_STEPS = 30 * 60 * 20
+
+/**
+ * Memo of normalised gust series, keyed by seed + aircraft. A pure cache: the same key always
+ * yields the same array, so a warm read is bit-identical to a cold one and eviction could only
+ * ever cost a recomputation. `gustFieldCacheSize` exists for tests and observability only.
+ */
+const normalizedSeriesCache = new Map<string, readonly number[]>()
+
+/** Unit-variance Dryden gust shape for one aircraft. Deterministic in (seed, droneId). */
+export function normalizedGustSeries(seed: number, droneId: string): readonly number[] {
+  const key = `${seed}|${droneId}`
+  const cached = normalizedSeriesCache.get(key)
+  if (cached) return cached
+  const series = drydenSeries(hashSeed(key), {
+    sigmaMs: 1,
+    lengthScaleM: NOMINAL_LENGTH_SCALE_M,
+    airspeedMs: NOMINAL_AIRSPEED_MS,
+    dtSec: 0.05,
+  }, SERIES_STEPS)
+  normalizedSeriesCache.set(key, series)
+  return series
+}
+
+/**
+ * Gust (m/s) felt by one aircraft at one tick.
+ *
+ * Pure in every argument. Altitude and the 20 ft wind set σ through the MIL-F-8785C low-altitude
+ * relation, so gust magnitude falls with altitude exactly as the standard specifies — which is
+ * WP-10's stated acceptance check.
+ */
+export function gustAtTick(
+  seed: number,
+  droneId: string,
+  tick: number,
+  windAt20ftMs: number,
+  altitudeFt: number,
+): number {
+  const { sigmaMs } = lowAltitudeDryden(windAt20ftMs, altitudeFt)
+  if (!(sigmaMs > 0)) return 0
+  const series = normalizedGustSeries(seed, droneId)
+  // Wrapping keeps a long mission inside the cached series. The wrap point is a seam in the
+  // correlation, not in the statistics, and it is half an hour of sim time out.
+  const index = ((Math.floor(tick) % series.length) + series.length) % series.length
+  return series[index] * sigmaMs
+}
+
+/** Observability only — never an input to any result. */
+export function gustFieldCacheSize(): number {
+  return normalizedSeriesCache.size
+}
+
+/** Test seam: drops the pure memo. Cannot change any answer, only force recomputation. */
+export function clearGustFieldCache(): void {
+  normalizedSeriesCache.clear()
+}
+
+/** Stable FNV-1a, matching the hashing used by the thermal, GNSS and RF models. */
+function hashSeed(value: string): number {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return hash >>> 0
+}
