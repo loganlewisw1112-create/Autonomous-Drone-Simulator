@@ -1,6 +1,7 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { PLATFORM_CATALOG } from '@/sim/drone/platformCatalog'
+import { CLEAN_MARGIN_DB } from '@/sim/safety/commsModel'
 import type { DroneState, GnssFixQuality, MissionState, RecoveryTeamState } from '@/types'
 
 function batteryColor(pct: number): string {
@@ -14,6 +15,13 @@ function signalLabel(dbm: number): string {
   if (dbm > -80) return 'GOOD'
   if (dbm > -90) return 'WEAK'
   return 'LOST'
+}
+
+/** WP-8 link margin → tactical palette. CLEAN_MARGIN_DB (20 dB) is where packet loss starts. */
+function linkColor(marginDb: number): string {
+  if (marginDb <= 0) return 'var(--accent-red)'
+  if (marginDb < CLEAN_MARGIN_DB) return 'var(--accent-yellow)'
+  return 'var(--accent-green)'
 }
 
 /** WP-7 fix quality → tactical palette. No fix reads as red: it is an abnormal, not a caution. */
@@ -92,6 +100,19 @@ function DroneCard({ drone, recoveryTeam }: { drone: DroneState; recoveryTeam?: 
           <div className="telem-row">
             <span className="telem-key">FLT</span>
             <span className="telem-val" style={{ color: 'var(--text-secondary)' }}>{fmtTime(flightSec)}</span>
+          </div>
+        )}
+        {/* WP-8 link budget. SIG above is the computed RSSI; this is why it is what it is —
+            the margin the link is holding, whether terrain is blocking it, and which aircraft
+            is carrying the hop. NLOS and a relay are the two things the operator can act on. */}
+        {drone.linkMarginDb !== undefined && (
+          <div className="telem-row">
+            <span className="telem-key">LINK</span>
+            <span className="telem-val" style={{ color: linkColor(drone.linkMarginDb) }}>
+              {`${Math.round(drone.linkMarginDb)}dB`}
+              {drone.linkLos === false ? ' NLOS' : ''}
+              {drone.linkViaRelayId ? ` ↺${drone.linkViaRelayId.replace(/^uav-/, '')}` : ''}
+            </span>
           </div>
         )}
         {/* WP-7 GNSS. Absent entirely for scenarios with no committed constellation fixture —

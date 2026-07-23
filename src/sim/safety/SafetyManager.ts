@@ -5,6 +5,11 @@ import {
   terrainAltitudeSnapshot,
   type TerrainCoverage,
 } from '@/sim/terrain/altitude'
+import { clutterForLocationTag, reportedSignalDbm, resolveLink } from '@/sim/safety/commsModel'
+
+const FT_TO_M = 0.3048
+/** Ground control station antenna height above local ground, m. */
+const GCS_MAST_HEIGHT_M = 2
 
 export interface SurfaceClearanceCoverage {
   droneId: string
@@ -125,36 +130,95 @@ export function applyGeofenceFlags(
   })
 }
 
-/** Simulate RF signal degradation during comms-loss windows with optional weather penalty. */
+/** Authored RF interference during a comms-loss window, dB (see `applyCommsModel`). */
+const BLACKOUT_INTERFERENCE_DB = 22
+
+/** Maximum weather-driven attenuation, dB, at zero comms reliability. */
+const MAX_WEATHER_INTERFERENCE_DB = 15
+
+/** A drone must be airborne and holding its own usable link before it can relay for another. */
+const RELAY_ELIGIBLE_STATES = new Set<DroneState['missionState']>([
+  'navigate', 'sar_grid', 'hover', 'thermal_hold', 'inspect', 'avoid', 'return_to_base',
+])
+const RELAY_MIN_ALT_FT = 20
+
+/**
+ * RF link budget (REALISM_ROADMAP WP-8 / §18.4).
+ *
+ * Replaces the previous model, which was a timer: authored blackout windows plus a weather factor
+ * ramping signal up and down regardless of where the aircraft was. Signal is now computed from
+ * range, altitude, scenario clutter class, true terrain/building LOS (WP-4) and relay placement.
+ *
+ * The authored inputs are retained but demoted from overrides to **impairments in dB**, added to
+ * the path loss like any other attenuation:
+ *  - a comms-loss window is real authored RF interference (the wildfire scenario's smoke/RF event
+ *    at T+80s is a scripted *event*, and remains one) — but it can no longer force a link down on
+ *    its own, and an aircraft parked next to the operator will ride it out;
+ *  - weather reliability becomes attenuation rather than a ceiling on recovery.
+ *
+ * What changes for the operator: comms loss becomes a consequence of where they put the aircraft,
+ * and repositioning a relay measurably restores margin downstream.
+ */
 export function applyCommsModel(
   drones: DroneState[],
   elapsedSec: number,
   scenario: ScenarioConfig,
   weather?: WeatherVariantState,
+  occlusion?: TerrainOcclusionService,
 ): DroneState[] {
   const inBlackout = scenario.commsLossWindows.some(
     (w) => elapsedSec >= w.startSec && elapsedSec < w.startSec + w.durationSec,
   )
+  const weatherDb = weather
+    ? Math.max(0, 1 - weather.commsReliabilityFactor) * MAX_WEATHER_INTERFERENCE_DB
+    : 0
+  const interferenceDb = (inBlackout ? BLACKOUT_INTERFERENCE_DB : 0) + weatherDb
+
+  const clutter = scenario.rfClutter ?? clutterForLocationTag(scenario.weatherProfile?.locationTag)
+
+  // The ground control station sits at the scenario start position, on a short mast.
+  const gcsGroundM = occlusion?.groundElevation(scenario.startPosition.lat, scenario.startPosition.lng) ?? 0
+  const groundStation = {
+    position: scenario.startPosition,
+    altMslM: gcsGroundM + GCS_MAST_HEIGHT_M,
+  }
+
+  const altMslFor = (drone: DroneState) =>
+    (occlusion?.groundElevation(drone.position.lat, drone.position.lng) ?? 0) + drone.altitudeFt * FT_TO_M
+
+  // Any other airborne aircraft can carry a hop. These fleets fly meshed C2, and restricting
+  // relaying to an aircraft flagged 'relay' would make the capability depend on scenario
+  // authoring rather than on where the operator actually put the aircraft.
+  const relayPool = drones
+    .filter((d) => RELAY_ELIGIBLE_STATES.has(d.missionState) && d.altitudeFt >= RELAY_MIN_ALT_FT)
+    .map((d) => ({ id: d.id, position: d.position, altMslM: altMslFor(d) }))
 
   return drones.map((drone) => {
     if (['landed', 'idle'].includes(drone.missionState)) return drone
 
-    // Urban environments have dense RF infrastructure; use a higher ceiling if provided.
-    // Weather lowers the recovery ceiling once instead of compounding signal loss every tick.
-    const signalCeiling = weather?.commsSignalCeilingDbm ?? -55
-    const weatherPenaltyDbm = weather ? Math.max(0, 1 - weather.commsReliabilityFactor) * 15 : 0
-    const recoveryCeiling = signalCeiling - weatherPenaltyDbm
-    let signalDbm = drone.signalDbm
-    if (inBlackout) {
-      signalDbm = Math.max(-98, signalDbm - 3)
-    } else {
-      signalDbm = Math.min(recoveryCeiling, signalDbm + 0.5)
-    }
+    const link = resolveLink(
+      {
+        from: groundStation,
+        to: { position: drone.position, altMslM: altMslFor(drone) },
+        clutter,
+        seed: scenario.seed,
+        linkId: drone.id,
+        occlusion,
+        interferenceDb,
+      },
+      relayPool.filter((candidate) => candidate.id !== drone.id),
+    )
 
+    const signalDbm = reportedSignalDbm(link.rssiDbm)
     return {
       ...drone,
       signalDbm,
       bvlosFlag: signalDbm < -90,
+      linkMarginDb: link.marginDb,
+      linkPacketLossPct: link.packetLossPct,
+      linkLatencyMs: link.controlLatencyMs,
+      linkViaRelayId: link.viaRelayId,
+      linkLos: link.los,
     }
   })
 }
