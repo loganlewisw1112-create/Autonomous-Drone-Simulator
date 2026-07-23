@@ -295,7 +295,7 @@ export function tick() {
 
     // ── Safety passes ──────────────────────────────────────────────────────────
     const withGeo = applyGeofenceFlags(updatedDrones, scenario.geofences)
-    const withComms = applyCommsModel(withGeo, elapsedSec, scenario, weatherState)
+    const withComms = applyCommsModel(withGeo, elapsedSec, scenario, weatherState, missionOcclusion)
     const conflicts = detectConflicts(withComms, missionOcclusion)
     const flaggedDrones = applyConflictFlags(withComms, conflicts)
     const surfaceSafety = applySurfaceClearanceSafety(flaggedDrones, missionOcclusion)

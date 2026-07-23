@@ -81,10 +81,22 @@ export interface DroneState {
   satsInView?: number           // satellites above the mask before occlusion (open-sky count)
   gnssHorizontalErrorM?: number | null  // 1σ horizontal error, σ_H = HDOP × σ_UERE
   fixQuality?: GnssFixQuality
+
+  // ─── RF link budget (REALISM_ROADMAP WP-8) ─────────────────────────────────
+  // `signalDbm` above is now the computed RSSI rather than a scripted ramp. These expose the
+  // terms behind it so the operator can see WHY the link is what it is.
+  linkMarginDb?: number         // rssi − receiver sensitivity; negative cannot close the link
+  linkPacketLossPct?: number
+  linkLatencyMs?: number
+  linkViaRelayId?: string | null  // aircraft carrying the hop, or null when direct to the GCS
+  linkLos?: boolean             // false when terrain/structures block the path (NLOS penalty applied)
 }
 
 /** WP-7 receiver fix state. Mirrors `src/sim/nav/gnss.ts`, declared here to keep types leaf-level. */
 export type GnssFixQuality = 'fix' | 'degraded' | 'no_fix'
+
+/** WP-8 RF clutter class (§18.4). Mirrors `src/sim/safety/commsModel.ts`, kept leaf-level. */
+export type ClutterClass = 'open' | 'rural' | 'suburban' | 'urban' | 'dense_urban'
 
 export interface DroneCmd {
   targetHeadingDeg?: number
@@ -688,6 +700,12 @@ export interface ScenarioConfig {
   operationalFeatures?: OperationalFeature[]
   missionObjectives?: MissionObjective[]
   weatherProfile?: ScenarioWeatherProfile
+  /**
+   * WP-8 RF clutter class (§18.4). Omitted ⇒ derived from `weatherProfile.locationTag`, which is
+   * defensible for most scenarios; set explicitly where that tag is too coarse — Times Square and
+   * the Financial District are dense urban, not the plain 'urban' their weather tag implies.
+   */
+  rfClutter?: ClutterClass
   // ── Custom-mission authoring (designer) ──
   // When true, enhanceScenarioForOperations preserves `authoredRoutes` as the
   // per-drone waypoints instead of overwriting them with derived safe routes.

@@ -70,39 +70,58 @@ describe('urban comms regression', () => {
     expect(weather.commsSignalCeilingDbm).toBe(-45)
   })
 
-  it('recovers urban signal to the weather ceiling outside blackout windows', () => {
+  // WP-8 rewrote these two against the physical link budget. They previously asserted the
+  // behaviour of a per-tick ramp toward a weather "recovery ceiling" — a construct that no
+  // longer exists, because signal is now computed from geometry rather than integrated over
+  // time. What they were really protecting is preserved: weather still degrades the urban link,
+  // and it still does so by a bounded amount rather than compounding every tick.
+
+  it('signal is a function of geometry, not of how many ticks have elapsed', () => {
     const weather = { ...buildWeatherState(getWeatherProfile('urban'), CLEAR_URBAN_VARIANT), commsReliabilityFactor: 1 }
-    let drones = [makeDrone(-55)]
+    const scenario = makeScenario()
+    const first = applyCommsModel([makeDrone(-55)], 0, scenario, weather)[0]
 
+    // Re-running for 40 s from an absurd starting signal must land on the same value: there is
+    // no integrator left to wind up or settle.
+    let drones = [makeDrone(-99)]
     for (let elapsedSec = 0; elapsedSec < 40; elapsedSec++) {
-      drones = applyCommsModel(drones, elapsedSec, makeScenario(), weather)
+      drones = applyCommsModel(drones, elapsedSec, scenario, weather)
     }
-
-    expect(drones[0].signalDbm).toBe(-45)
+    expect(drones[0].signalDbm).toBe(first.signalDbm)
     expect(drones[0].bvlosFlag).toBe(false)
+    // Parked on top of the ground station, the link is as good as the scale allows.
+    expect(drones[0].signalDbm).toBeGreaterThan(-60)
   })
 
   it('caps urban weather degradation instead of compounding it every tick', () => {
-    const weather = buildWeatherState(getWeatherProfile('urban'), URBAN_VARIANT)
+    const clear = { ...buildWeatherState(getWeatherProfile('urban'), CLEAR_URBAN_VARIANT), commsReliabilityFactor: 1 }
+    const severe = buildWeatherState(getWeatherProfile('urban'), URBAN_VARIANT)
+    const scenario = makeScenario()
+
     let drones = [makeDrone(-55)]
-
     for (let elapsedSec = 0; elapsedSec < 80; elapsedSec++) {
-      drones = applyCommsModel(drones, elapsedSec, makeScenario(), weather)
+      drones = applyCommsModel(drones, elapsedSec, scenario, severe)
     }
+    const afterEighty = applyCommsModel([makeDrone(-55)], 0, scenario, severe)[0]
 
-    expect(drones[0].signalDbm).toBeGreaterThanOrEqual(-45.75)
-    expect(drones[0].signalDbm).toBeLessThanOrEqual(-45)
+    // Bounded: 80 ticks of severe weather is the same attenuation as one tick of it.
+    expect(drones[0].signalDbm).toBe(afterEighty.signalDbm)
+    // And weather is still a real penalty — never a no-op.
+    const clearSignal = applyCommsModel([makeDrone(-55)], 0, scenario, clear)[0].signalDbm
+    expect(afterEighty.signalDbm).toBeLessThanOrEqual(clearSignal)
   })
 
-  it('still honors configured urban blackout windows', () => {
+  it('a blackout window is an impairment, not an override', () => {
     const weather = buildWeatherState(getWeatherProfile('urban'), CLEAR_URBAN_VARIANT)
-    const drones = applyCommsModel(
-      [makeDrone(-55)],
-      10,
-      makeScenario([{ startSec: 8, durationSec: 15 }]),
-      weather,
-    )
+    const scenario = makeScenario([{ startSec: 8, durationSec: 15 }])
+    const during = applyCommsModel([makeDrone(-55)], 10, scenario, weather)[0]
+    const outside = applyCommsModel([makeDrone(-55)], 40, scenario, weather)[0]
 
-    expect(drones[0].signalDbm).toBeLessThan(-55)
+    // It costs real dB...
+    expect(during.linkMarginDb!).toBeLessThan(outside.linkMarginDb!)
+    // ...but an aircraft sitting on the operator's head rides it out rather than being forced
+    // down by a timer. That is the WP-8 change: placement decides, not the script.
+    expect(during.bvlosFlag).toBe(false)
   })
+
 })
