@@ -14,6 +14,8 @@ import { mixedFleet } from './platformAssignments'
  */
 export const suspectSearch: ScenarioConfig = {
   id: 'demo_suspect_search',
+  // WP-8 §18.4: the Financial District is dense urban, not the plain 'urban' its weather tag implies.
+  rfClutter: 'dense_urban',
   name: 'SFPD — Suspect Grid Search',
   description:
     'Armed robbery at Embarcadero Center. Three drones sweep Financial District in an E-W lawnmower grid. UAV-01 (100ft) thermal ID; UAV-02 (120ft) alley coverage; UAV-03 (140ft) overwatch/relay. Comms degraded by Salesforce Tower RF shadow at T+40s.',
