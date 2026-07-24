@@ -20,7 +20,7 @@ export function ClassroomHome() {
             <div style={{ fontSize: 18, fontWeight: 700 }}>Classroom</div>
             <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4, lineHeight: 1.45 }}>
               Sign in or create an account. Students can self-register.
-              Instructor accounts need an access code once at setup (supervised).
+              New instructor accounts show a one-time unlock field at signup only.
             </div>
           </div>
           <ClassroomAuthForm allowRoleSwitch />
