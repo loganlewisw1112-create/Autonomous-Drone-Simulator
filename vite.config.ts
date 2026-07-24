@@ -39,10 +39,9 @@ export default defineConfig(({ mode }) => {
     ?? loadLocalInstructorAccessHash(process.cwd()))?.trim()
   if (instructorHash && /^[0-9a-fA-F]{64}$/.test(instructorHash)) {
     const hex = instructorHash.toLowerCase()
-    // Expose via both the usual Vite env key and a global define so every chunk
-    // (including lazy ClassroomEntry) sees the same digest at runtime.
+    // Expose via Vite env and a bare define identifier so every chunk sees the digest.
     defineEnv['import.meta.env.VITE_INSTRUCTOR_ACCESS_HASH'] = JSON.stringify(hex)
-    defineEnv['globalThis.__INSTRUCTOR_ACCESS_HASH__'] = JSON.stringify(hex)
+    defineEnv.__INSTRUCTOR_ACCESS_HASH__ = JSON.stringify(hex)
   }
 
   return ({

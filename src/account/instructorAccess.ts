@@ -33,10 +33,11 @@ export function timingSafeEqualHex(a: string, b: string): boolean {
  */
 function buildTimeInstructorAccessHash(): string | undefined {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const defined = (globalThis as any).__INSTRUCTOR_ACCESS_HASH__ as unknown
-    if (typeof defined === 'string' && defined.trim()) return defined
-  } catch { /* ignore */ }
+    // Replaced at build time by vite.config `define.__INSTRUCTOR_ACCESS_HASH__`.
+    if (typeof __INSTRUCTOR_ACCESS_HASH__ === 'string' && __INSTRUCTOR_ACCESS_HASH__.trim()) {
+      return __INSTRUCTOR_ACCESS_HASH__
+    }
+  } catch { /* ignore when define is absent (unit tests) */ }
   const fromEnv = import.meta.env.VITE_INSTRUCTOR_ACCESS_HASH
   return typeof fromEnv === 'string' ? fromEnv : undefined
 }
