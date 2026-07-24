@@ -41,6 +41,23 @@ describe('authStore classroom roles', () => {
     expect(useAuthStore.getState().activeAccount?.instructorUnlocked).toBe(false)
   }, 20000)
 
+  it('treats legacy instructors without pending unlock as already unlocked', async () => {
+    await useAuthStore.getState().signUp(
+      'legacy-teach', 'Legacy', 'password123', false,
+      { role: 'instructor' },
+    )
+    const { getAccountByUsername, putAccount } = await import('@/account/accountDb')
+    const record = await getAccountByUsername('legacy-teach')
+    expect(record).toBeTruthy()
+    delete record!.instructorUnlockPending
+    delete record!.instructorUnlockedAt
+    await putAccount(record!)
+    useAuthStore.setState({ activeAccount: null, sessionKey: null })
+    const ok = await useAuthStore.getState().signIn('legacy-teach', 'password123', false)
+    expect(ok).toBe(true)
+    expect(useAuthStore.getState().activeAccount?.instructorUnlocked).toBe(true)
+  }, 20000)
+
   it('unlocks an instructor when the access code matches the build hash', async () => {
     await useAuthStore.getState().signUp(
       'teach1b', 'Instructor', 'password123', false,
