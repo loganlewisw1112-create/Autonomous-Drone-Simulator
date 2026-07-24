@@ -30,11 +30,16 @@ export interface ActiveAccount {
   displayName: string
   /** Present for classroom instructor/student profiles; absent on solo operators. */
   role?: AccountRole
+  /** True after one-time supervised unlock on the Start a training class page. */
+  instructorUnlocked?: boolean
 }
 
 export interface SignUpOptions {
   role?: AccountRole
-  /** Required when role is `instructor` — checked against VITE_INSTRUCTOR_ACCESS_HASH. */
+  /**
+   * Optional at signup. Preferred path: create the instructor profile first, then
+   * enter the access code once on the Start a training class page.
+   */
   accessCode?: string
 }
 
@@ -61,6 +66,8 @@ interface AuthState {
     options?: SignUpOptions,
   ) => Promise<boolean>
   signIn: (username: string, password: string, rememberMe: boolean) => Promise<boolean>
+  /** One-time supervised unlock for an already-signed-in instructor account. */
+  unlockInstructor: (accessCode: string) => Promise<boolean>
   signOut: () => void
   restoreRememberedSession: () => Promise<void>
   savePrefs: (prefs: AccountPrefs) => Promise<void>
@@ -72,6 +79,9 @@ function toActive(account: AccountRecord): ActiveAccount {
     username: account.username,
     displayName: account.displayName,
     role: account.role,
+    instructorUnlocked: account.role === 'instructor'
+      ? typeof account.instructorUnlockedAt === 'number'
+      : undefined,
   }
 }
 
@@ -126,15 +136,17 @@ export const useAuthStore = create<AuthState>()(
         if (!accountStorageAvailable()) { set({ authError: 'Device storage unavailable — accounts need IndexedDB' }); return false }
 
         const role = options?.role
-        if (role === 'instructor') {
+        let instructorUnlockedAt: number | undefined
+        if (role === 'instructor' && options?.accessCode?.trim()) {
           if (!configuredInstructorAccessHash()) {
-            set({ authError: 'Instructor signup is not configured on this build (missing access hash)' })
+            set({ authError: 'Instructor unlock is not configured on this build (missing access hash)' })
             return false
           }
-          if (!verifyInstructorAccessCode(options?.accessCode ?? '')) {
+          if (!verifyInstructorAccessCode(options.accessCode)) {
             set({ authError: 'Invalid instructor access code' })
             return false
           }
+          instructorUnlockedAt = Date.now()
         }
 
         const existing = await getAccountByUsername(name)
@@ -152,6 +164,7 @@ export const useAuthStore = create<AuthState>()(
           kdfParams,
           checkBlob: makeCheckBlob(key),
           ...(role ? { role } : {}),
+          ...(instructorUnlockedAt !== undefined ? { instructorUnlockedAt } : {}),
         }
         const ok = await putAccount(record)
         if (!ok) { set({ authError: 'Could not save the profile to device storage' }); return false }
@@ -160,6 +173,39 @@ export const useAuthStore = create<AuthState>()(
         set({
           activeAccount: toActive(record),
           sessionKey: key, prefs: {}, authError: null, showSignIn: false,
+        })
+        return true
+      },
+
+      unlockInstructor: async (accessCode) => {
+        const { activeAccount } = get()
+        if (!activeAccount || activeAccount.role !== 'instructor') {
+          set({ authError: 'Sign in as an instructor to unlock' })
+          return false
+        }
+        if (activeAccount.instructorUnlocked) {
+          set({ authError: null })
+          return true
+        }
+        if (!configuredInstructorAccessHash()) {
+          set({ authError: 'Instructor unlock is not configured on this build (missing access hash)' })
+          return false
+        }
+        if (!verifyInstructorAccessCode(accessCode)) {
+          set({ authError: 'Invalid instructor access code' })
+          return false
+        }
+        const record = await getAccountByUsername(activeAccount.username)
+        if (!record || record.role !== 'instructor') {
+          set({ authError: 'Instructor profile not found on this device' })
+          return false
+        }
+        record.instructorUnlockedAt = Date.now()
+        const ok = await putAccount(record)
+        if (!ok) { set({ authError: 'Could not save unlock status to device storage' }); return false }
+        set({
+          activeAccount: toActive(record),
+          authError: null,
         })
         return true
       },

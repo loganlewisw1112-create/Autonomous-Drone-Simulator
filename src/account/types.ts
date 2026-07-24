@@ -47,6 +47,11 @@ export interface AccountRecord {
   prefsBlob?: CipherBlob   // encrypted AccountPrefs
   /** Set on classroom instructor/student sign-up. Omitted on solo operator accounts. */
   role?: AccountRole
+  /**
+   * Set after the supervised access code is accepted on the instructor
+   * "Start a training class" page. Absent until that one-time unlock finishes.
+   */
+  instructorUnlockedAt?: number
 }
 
 export interface AccountPrefs {
