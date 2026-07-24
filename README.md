@@ -8,16 +8,17 @@ Three independent Vercel apps, one codebase, separated by build-time env vars.
 |---|---|---|
 | **Mobile** | **[Launch Mobile Simulator](https://autonomous-drone-simulator-mobile.vercel.app/)** | Any phone or tablet, portrait or landscape |
 | **Windows** | **[Launch Windows Simulator](https://autonomous-drone-simulator.vercel.app/)** | Windows PC only |
-| **Classroom** | **[Launch Classroom (Instructor / Student)](https://autonomous-drone-simulator-classroom.vercel.app/)** | Any modern desktop or laptop browser |
+| **Classroom** | **[Launch Classroom](https://autonomous-drone-simulator-classroom.vercel.app/)** | Any modern desktop or laptop browser — opens the instructor/student chooser |
 
 ### Classroom demo links
 
 | Role | Open |
 |---|---|
+| **Home (chooser)** | **[Classroom home](https://autonomous-drone-simulator-classroom.vercel.app/)** |
 | **Instructor console** | **[Start a class](https://autonomous-drone-simulator-classroom.vercel.app/?coordinator=1)** |
 | **Student join** | **[Join a class](https://autonomous-drone-simulator-classroom.vercel.app/?join=)** |
 
-The hosted classroom build is the **client showcase** (create class, join gate, coordinator wall UI). A live multi-student session still needs the LAN relay on the instructor machine — `npm run classroom` — because the WebSocket relay cannot run on Vercel serverless. Same-room students open the instructor's LAN URL; remote demos can show the classroom UI from the Vercel link above.
+The hosted classroom build is the **client showcase** (home chooser, create class, join gate, coordinator wall UI). A live multi-student session still needs the LAN relay on the instructor machine — `npm run classroom` — because the WebSocket relay cannot run on Vercel serverless. Same-room students open the instructor's LAN URL; remote demos can show the classroom UI from the Vercel link above.
 
 The Windows link is platform-locked. Open it on a phone, macOS, or anything that isn't Windows and you get an **ERROR — WINDOWS VERSION ONLY** screen with a button through to the mobile version instead.
 

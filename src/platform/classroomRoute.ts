@@ -11,7 +11,7 @@
 
 export type ClassroomRoute =
   | { kind: 'app' }
-  | { kind: 'classroom'; mode: 'instructor' | 'student'; initialClassId?: string }
+  | { kind: 'classroom'; mode: 'home' | 'instructor' | 'student'; initialClassId?: string }
 
 /**
  * @param search `location.search`, e.g. `?join=ABC123`
@@ -21,16 +21,25 @@ export function resolveClassroomRoute(search: string, enabled: boolean): Classro
   if (!enabled) return { kind: 'app' }
 
   const params = new URLSearchParams(search)
+  // Maintainer escape hatch: classroom builds still need a way to open the ordinary Ops Center
+  // (LAN smoke of the shared App shell without instructor/student chrome).
+  if (params.get('app') === '1') return { kind: 'app' }
+
   const coordinator = params.get('coordinator') === '1'
   // Presence, not truthiness. `?join=` with no code is how a student reaches the JoinGate to
   // type a code read aloud — the normal LAN flow, since nothing hands them a pre-filled link.
   const hasJoin = params.has('join')
-  if (!hasJoin && !coordinator) return { kind: 'app' }
 
   // ?coordinator=1 wins if somehow both are present: an instructor console mis-rendered as a
   // student is a far worse failure than the reverse.
   if (coordinator) return { kind: 'classroom', mode: 'instructor' }
+  if (hasJoin) {
+    const code = params.get('join') || undefined
+    return { kind: 'classroom', mode: 'student', initialClassId: code }
+  }
 
-  const code = params.get('join') || undefined
-  return { kind: 'classroom', mode: 'student', initialClassId: code }
+  // Dedicated classroom deploys (and `npm run classroom`) open on `/` with no params. That used
+  // to fall through to the ordinary desktop Ops Center, which made the classroom Vercel URL look
+  // identical to the Windows build. Home is a chooser — no WebSocket until the user picks a role.
+  return { kind: 'classroom', mode: 'home' }
 }
