@@ -81,8 +81,12 @@ export function OperatorCommandPanel() {
     .slice(0, 6)
 
   const THERMAL_HOLD_MIN_SEC = 10
+  const THERMAL_HOLD_TIMEOUT_SEC = 30
   const thermalHoldRemaining = selectedDrone.missionState === 'thermal_hold' && selectedDrone.thermalHoldStartSec !== undefined
     ? Math.max(0, THERMAL_HOLD_MIN_SEC - (elapsedSec - selectedDrone.thermalHoldStartSec))
+    : 0
+  const thermalHoldAutoResume = selectedDrone.missionState === 'thermal_hold' && selectedDrone.thermalHoldStartSec !== undefined
+    ? Math.max(0, THERMAL_HOLD_TIMEOUT_SEC - (elapsedSec - selectedDrone.thermalHoldStartSec))
     : 0
   const resumeBlocked = thermalHoldRemaining > 0
 
@@ -158,7 +162,9 @@ export function OperatorCommandPanel() {
           ⚠ THERMAL HOLD —{' '}
           {resumeBlocked
             ? `Resume available in ${Math.ceil(thermalHoldRemaining)}s`
-            : 'Awaiting PIC/MC resume'}
+            : thermalHoldAutoResume > 0
+              ? `Awaiting PIC/MC resume · auto-resume in ${Math.ceil(thermalHoldAutoResume)}s`
+              : 'Auto-resuming flight plan'}
         </div>
       )}
 

@@ -1,0 +1,40 @@
+{
+  "scenarioId": "hist_helene_asheville_2024",
+  "area": {
+    "aoBbox": [
+      -82.5786181963379,
+      35.57254222062522,
+      -82.5233818036621,
+      35.617457779374774
+    ]
+  },
+  "generatedAt": "2026-07-24",
+  "sources": [
+    {
+      "fixture": "terrain-refpoints.json",
+      "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
+      "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
+      "license": "US Geological Survey — US federal government work, public domain",
+      "retrievedAt": "2026-07-24",
+      "sha256": "01588dfb1dcbaecd41ffdedae74bcbff17e42d818c6cc35985265cb2debd7e93"
+    },
+    {
+      "fixture": "terrain.json",
+      "source": "derived header (this pipeline)",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+      "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "retrievedAt": "2026-07-24",
+      "sha256": "9c6273fb4643dffe1b52a0564d588e5e8c85b7567d534f0912e2ae40a350ff61"
+    },
+    {
+      "fixture": "terrain.png",
+      "source": "AWS Open Data — Terrain Tiles (Tilezen/Mapzen joerd), Terrarium RGB encoding",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+      "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "attribution": "United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.",
+      "retrievedAt": "2026-07-24",
+      "detail": "z14 644×644px from 12 tiles, 7.769 m/px, 0.25 m vertical quantum, surface dtm-approx",
+      "sha256": "2cdfb9c45ebaa801323542198644531ab6f98570b28644e67e86968fc8a9ddc2"
+    }
+  ]
+}

@@ -138,7 +138,8 @@ export interface StoredRunDetailEvidence {
 export interface StoredRunDetailReplayCoverage {
   startSec: number
   endSec: number
-  truncated: boolean         // true when early frames were dropped by the bounded window
+  /** True when replay recording stopped at the 25-min / MAX_REPLAY_FRAMES cap. */
+  truncated: boolean
 }
 
 export interface StoredRunDetailV2 {

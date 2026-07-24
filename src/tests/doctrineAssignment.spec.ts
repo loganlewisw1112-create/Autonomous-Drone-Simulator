@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { INCIDENT_SCENARIOS } from '@/scenarios/catalog'
+import { INCIDENT_MISSION_COUNT, INCIDENT_SCENARIOS } from '@/scenarios/catalog'
 import { PLATFORM_CATALOG, type PlatformId } from '@/sim/drone/platformCatalog'
 import { mixedFleet, explicitFleet, droneIdAt } from '@/scenarios/platformAssignments'
 
@@ -8,7 +8,7 @@ const VALID_IDS = new Set(Object.keys(PLATFORM_CATALOG))
 function platformsOf(scenarioId: string): Record<string, PlatformId> {
   const scenario = INCIDENT_SCENARIOS.find((s) => s.id === scenarioId)
   if (!scenario) throw new Error(`unknown scenario ${scenarioId}`)
-  if (!scenario.dronePlatforms) throw new Error(`${scenarioId} has no dronePlatforms`)
+  if (!scenario.dronePlatforms) throw new Error(`${scenario.id} has no dronePlatforms`)
   return scenario.dronePlatforms
 }
 
@@ -37,8 +37,8 @@ describe('platformAssignments helpers', () => {
 })
 
 describe('scenario platform doctrine', () => {
-  it('covers all 21 catalog scenarios', () => {
-    expect(INCIDENT_SCENARIOS).toHaveLength(21)
+  it('covers all incident catalog scenarios', () => {
+    expect(INCIDENT_SCENARIOS).toHaveLength(INCIDENT_MISSION_COUNT)
   })
 
   it('every scenario assigns a platform to exactly uav-01..uav-NN', () => {
@@ -65,42 +65,24 @@ describe('scenario platform doctrine', () => {
     }
   })
 
-  // ── Doctrine-specific expectations ────────────────────────────────────────
-  it('urban scenarios field Skydio X10 primaries', () => {
-    const urban = [
-      'demo_suspect_search', 'demo_vehicle_pursuit', 'extreme_lapd_hollywood_bowl',
-      'extreme_multiagency_sf_pursuit', 'extreme_nypd_times_sq_mci',
-      'extreme_lapd_skid_row_welfare', 'extreme_atf_oakland_stash',
-    ]
-    for (const id of urban) {
-      expect(Object.values(platformsOf(id)), id).toContain('skydio_x10')
-    }
+  it('urban/welfare scenarios field Skydio X10-family primaries', () => {
+    expect(Object.values(platformsOf('train_welfare_grid')), 'train_welfare_grid').toContain('skydio_x10')
+    expect(Object.values(platformsOf('train_night_relay_sar')), 'train_night_relay_sar').toContain('skydio_x10d')
+    expect(Object.values(platformsOf('train_urban_usar')), 'train_urban_usar').toContain('skydio_x10d')
   })
 
-  it('the HRT compound puts BRINC Lemur 2s on interior entry', () => {
-    const fleet = platformsOf('extreme_fbi_hrt_compound')
-    expect(fleet['uav-01']).toBe('brinc_lemur_2')
-    expect(fleet['uav-02']).toBe('brinc_lemur_2')
-    expect(Object.values(fleet)).toContain('skydio_x10')
+  it('maritime SAR fields weatherproof X10D search ships', () => {
+    expect(Object.values(platformsOf('train_uscg_maritime_sar'))).toContain('skydio_x10d')
   })
 
   it('fire scenarios field thermal-capable Teal 2s', () => {
-    for (const id of ['demo_wildfire', 'extreme_cal_fire_dixie']) {
+    for (const id of ['demo_wildfire', 'train_wildfire_flank']) {
       expect(Object.values(platformsOf(id)), id).toContain('teal_2')
     }
   })
 
-  it('border scenarios fly a uniform weatherproof X10D line', () => {
-    for (const id of ['extreme_cbp_eagle_pass', 'extreme_cbp_rio_grande_longrange']) {
-      expect(new Set(Object.values(platformsOf(id))), id).toEqual(new Set(['skydio_x10d']))
-    }
-  })
-
-  it('Rio Grande keeps its tuned battery profile alongside platform assignments', () => {
-    const scenario = INCIDENT_SCENARIOS.find((s) => s.id === 'extreme_cbp_rio_grande_longrange')!
-    expect(scenario.dronePlatforms).toBeDefined()
-    // The explicit fleet battery profile must survive — rechargeStations gives it
-    // precedence over the platform endurance multiplier.
-    expect(scenario.batteryProfile?.enduranceMultiplier).toBe(1.6)
+  it('historical flood scenario carries TFR authorization profile', () => {
+    const harvey = INCIDENT_SCENARIOS.find((s) => s.id === 'hist_harvey_houston_2017')!
+    expect(harvey.authorizationProfile?.tfrExercise).toBeTruthy()
   })
 })

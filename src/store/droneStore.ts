@@ -14,11 +14,14 @@ import {
 import { buildMissionSituation, planFleetRetask } from '@/sim/mission/tacticalAdvisor'
 import type { TerrainRouteWarning } from '@/sim/mission/routeAudit'
 import { assessSiteReposition, type SiteRepositionResult } from '@/sim/mission/siteReposition'
+import { buildLaunchBayPlan } from '@/sim/mission/launchDoctrine'
+import { replanLaunchSlots } from '@/sim/mission/launchPlanGeometry'
 import { clearAllSavedWaypointPlans, clearSavedDroneWaypointRoute, saveDroneWaypointRoute, saveFleetWaypointRoutes } from '@/sim/mission/waypointPersistence'
 import { hashEvent } from '@/utils/chainOfCustody'
 import { getActiveOperator } from '@/store/authStore'
 import { getDefaultWeatherState, isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import type {
+  AuthorizationStepId,
   DroneState,
   EventType,
   FullMissionFrame,
@@ -49,14 +52,22 @@ import type {
   MissionLifecycleState,
   MissionState,
 } from '@/types'
+import {
+  AUTHORIZATION_STEP_ORDER,
+  evaluateAuthorizationTraining,
+  isAuthorizationStepId,
+  resolveRequiredAuthorizationSteps,
+} from '@/sim/mission/authorizationTraining'
 import type { FleetRetaskPlan, TacticalAction } from '@/sim/mission/tacticalAdvisor'
 
 const MAX_TELEMETRY_POINTS = 240
 const MAX_POSITION_SAMPLES = 500
-// Rolling replay buffer: SNAPSHOT_INTERVAL is 40 ticks → one frame per 2 sim-seconds, so 300
-// frames cover the LAST ≈10 minutes of mission time. Longer missions drop their earliest
-// frames; ReplayPanel surfaces a truncation note when that happens.
-const MAX_FRAMES = 300
+// Replay recording: SNAPSHOT_INTERVAL is 40 ticks → one frame per 2 sim-seconds.
+// 750 frames = 25 minutes from mission start. At the cap, recording STOPS (no drop-oldest).
+export const REPLAY_SNAPSHOT_INTERVAL_TICKS = 40
+export const REPLAY_SECONDS_PER_FRAME = 2
+export const MAX_REPLAY_DURATION_SEC = 25 * 60
+export const MAX_REPLAY_FRAMES = MAX_REPLAY_DURATION_SEC / REPLAY_SECONDS_PER_FRAME // 750
 export const FLEET_RETASK_COOLDOWN_MS = 5_000
 export const FLEET_RETASK_UNDO_WINDOW_MS = 8_000
 const MAX_FLEET_RETASK_HISTORY = 20
@@ -249,6 +260,8 @@ interface DroneStore {
 
   // Live replay frame buffer (written by sim loop, used to build replaySession)
   replayFrames: FullMissionFrame[]
+  /** True once the 25-min recording cap is hit — further frames are not appended. */
+  replayRecordingStopped: boolean
 
   // Weather
   weatherState: WeatherVariantState
@@ -256,6 +269,12 @@ interface DroneStore {
 
   // Launch bay planning
   launchPlan: LaunchBayPlan | null
+
+  /**
+   * Completed operational-authorization training steps for the current scenario load.
+   * Cleared on reset / scenario swap. Launch is blocked until required steps are done.
+   */
+  authorizationCompletedSteps: AuthorizationStepId[]
 
   // Runtime-only station positions. ScenarioConfig remains immutable so a
   // replay/reset can always recover the authored launch and recovery geometry.
@@ -331,6 +350,12 @@ interface DroneStore {
   setRouteEditMode: (editing: boolean) => void
   setShowPreflight: (show: boolean) => void
   setShowLaunchBay: (show: boolean) => void
+  /** Toggle a single authorization training step; emits evidence when newly completed. */
+  toggleAuthorizationStep: (stepId: AuthorizationStepId) => void
+  /** Mark all currently required authorization steps complete (quick demo / classroom auto-path). */
+  completeAuthorizationTraining: (mode?: string) => void
+  /** True when every required auth step for the active scenario+variant is complete. */
+  isAuthorizationTrainingReady: () => boolean
   setIsReplayMode: (replay: boolean) => void
   resetMission: () => void
   setMapReady: (ready: boolean) => void
@@ -523,12 +548,14 @@ export const useDroneStore = create<DroneStore>()(
         replaySession: null,
         replayIndex: 0,
         replayFrames: [],
+        replayRecordingStopped: false,
         weatherState: getDefaultWeatherState(1337),
         scenarioVariant: DEFAULT_VARIANT,
         launchPlan: null,
         siteOverrides: {},
         siteRelocations: {},
         launchCommandedSec: null,
+        authorizationCompletedSteps: [],
         mapReady: false,
         ui: {
           selectedDroneId: null,
@@ -603,10 +630,15 @@ export const useDroneStore = create<DroneStore>()(
 
         addReplayFrame: (frame) =>
           set((s) => {
-            const next = s.replayFrames.length >= MAX_FRAMES
-              ? [...s.replayFrames.slice(1), frame]
-              : [...s.replayFrames, frame]
-            return { replayFrames: next }
+            // Stop-at-cap: keep the first 25 minutes; do not drop oldest / roll.
+            if (s.replayFrames.length >= MAX_REPLAY_FRAMES) {
+              return s.replayRecordingStopped ? {} : { replayRecordingStopped: true }
+            }
+            const next = [...s.replayFrames, frame]
+            return {
+              replayFrames: next,
+              replayRecordingStopped: next.length >= MAX_REPLAY_FRAMES,
+            }
           }),
 
         setReplayIndex: (index) =>
@@ -776,11 +808,16 @@ export const useDroneStore = create<DroneStore>()(
         applyParkedLaunchPlan: (plan, placements) => {
           let applied = false
           set((state) => {
+            const authReady = evaluateAuthorizationTraining(
+              state.scenario,
+              state.scenarioVariant,
+              state.authorizationCompletedSteps,
+            ).ready
             const parked = (state.lifecycle === 'idle' || state.lifecycle === 'preflight')
               && !state.ui.isRunning
               && state.drones.length > 0
               && state.drones.every((drone) => drone.missionState === 'idle' && drone.altitudeFt === 0 && placements[drone.id])
-            if (!parked || !plan.readyToLaunch) return {}
+            if (!parked || !plan.readyToLaunch || !authReady) return {}
             applied = true
             return {
               launchPlan: plan,
@@ -865,10 +902,49 @@ export const useDroneStore = create<DroneStore>()(
             }
             const hash = hashEvent(state.lastHash, partial)
             const event: MissionEvent = { ...partial, hash }
+            const nextSiteOverrides = { ...state.siteOverrides, ...assessed.overridePatch }
+
+            // Pre-launch: free move — immediately fan parked drones onto staggered bays
+            // around the new CB so all three shells launch from the override, not the
+            // authored site. Mid-mission keeps drones in place (relocation cost only).
+            const parked = (state.lifecycle === 'idle' || state.lifecycle === 'preflight')
+              && !state.ui.isRunning
+              && state.drones.length > 0
+              && state.drones.every((drone) => drone.missionState === 'idle' && drone.altitudeFt === 0)
+            let nextLaunchPlan = state.launchPlan
+            let nextDrones = state.drones
+            if (parked) {
+              const assignments = state.launchPlan?.assignments ?? state.scenario.defaultLaunchAssignments
+              if (assignments && Object.keys(assignments).length > 0) {
+                nextLaunchPlan = buildLaunchBayPlan(
+                  state.scenario,
+                  state.weatherState,
+                  { ...assignments },
+                  nextSiteOverrides,
+                )
+              }
+              const placements = replanLaunchSlots(
+                state.scenario,
+                nextLaunchPlan,
+                state.droneWaypoints,
+                nextSiteOverrides,
+              )
+              nextDrones = state.drones.map((drone) => {
+                const slot = placements[drone.id]
+                if (!slot) return drone
+                return {
+                  ...drone,
+                  position: { ...slot.bay },
+                  scheduledLaunchSec: slot.scheduledLaunchSec,
+                }
+              })
+            }
 
             return {
-              siteOverrides: { ...state.siteOverrides, ...assessed.overridePatch },
+              siteOverrides: nextSiteOverrides,
               siteRelocations,
+              launchPlan: nextLaunchPlan,
+              drones: nextDrones,
               events: [...state.events, event],
               lastHash: hash,
               latestFleetRetaskPlan: null,
@@ -958,10 +1034,12 @@ export const useDroneStore = create<DroneStore>()(
             replaySession: null,
             replayIndex: 0,
             replayFrames: [],
+            replayRecordingStopped: false,
             launchPlan: null,
             siteOverrides: {},
             siteRelocations: {},
             lifecycle: 'idle',
+            authorizationCompletedSteps: [],
             ui: {
               ...s.ui,
               selectedDroneId: null,
@@ -1514,7 +1592,15 @@ export const useDroneStore = create<DroneStore>()(
         // sim time) and move parked drones into the 'preflight' hold. Each drone
         // then lifts off when elapsedSec − launchCommandedSec ≥ scheduledLaunchSec
         // (evaluated in MissionManager), producing the staggered takeoff.
-        beginLaunchSequence: () =>
+        beginLaunchSequence: () => {
+          const state = get()
+          if (!evaluateAuthorizationTraining(
+            state.scenario,
+            state.scenarioVariant,
+            state.authorizationCompletedSteps,
+          ).ready) {
+            return
+          }
           set((s) => ({
             launchCommandedSec: s.elapsedSec,
             lifecycle: 'running',
@@ -1523,7 +1609,8 @@ export const useDroneStore = create<DroneStore>()(
                 ? { ...d, missionState: 'preflight', launchTimeSec: undefined }
                 : d,
             ),
-          })),
+          }))
+        },
 
         setSimSpeed: (speed) =>
           set((s) => ({ ui: { ...s.ui, simSpeed: speed } })),
@@ -1553,6 +1640,84 @@ export const useDroneStore = create<DroneStore>()(
         setShowLaunchBay: (show) =>
           set((s) => ({ ui: { ...s.ui, showLaunchBay: show } })),
 
+        toggleAuthorizationStep: (stepId) => {
+          if (!isAuthorizationStepId(stepId)) return
+          const state = get()
+          const required = new Set(resolveRequiredAuthorizationSteps(state.scenario, state.scenarioVariant))
+          if (!required.has(stepId)) return
+
+          const already = state.authorizationCompletedSteps.includes(stepId)
+          const next = already
+            ? state.authorizationCompletedSteps.filter((id) => id !== stepId)
+            : AUTHORIZATION_STEP_ORDER.filter(
+              (id) => id === stepId || state.authorizationCompletedSteps.includes(id),
+            )
+          set({ authorizationCompletedSteps: next })
+
+          if (!already) {
+            get().emitEvent({
+              eventType: 'authorization_step_complete',
+              droneId: 'system',
+              payload: {
+                stepId,
+                scenarioId: state.scenario?.id,
+                simulationOnly: true,
+              },
+            })
+            const progress = evaluateAuthorizationTraining(
+              get().scenario,
+              get().scenarioVariant,
+              get().authorizationCompletedSteps,
+            )
+            if (progress.ready) {
+              get().emitEvent({
+                eventType: 'authorization_complete',
+                droneId: 'system',
+                payload: {
+                  scenarioId: state.scenario?.id,
+                  authorizationStepsCompleted: progress.completedStepIds,
+                  simulationOnly: true,
+                },
+              })
+            }
+          }
+        },
+
+        completeAuthorizationTraining: (mode = 'auto') => {
+          const state = get()
+          const required = resolveRequiredAuthorizationSteps(state.scenario, state.scenarioVariant)
+          const next = AUTHORIZATION_STEP_ORDER.filter((id) => required.includes(id))
+          set({ authorizationCompletedSteps: next })
+          for (const stepId of next) {
+            if (!state.authorizationCompletedSteps.includes(stepId)) {
+              get().emitEvent({
+                eventType: 'authorization_step_complete',
+                droneId: 'system',
+                payload: { stepId, scenarioId: state.scenario?.id, mode, simulationOnly: true },
+              })
+            }
+          }
+          get().emitEvent({
+            eventType: 'authorization_complete',
+            droneId: 'system',
+            payload: {
+              scenarioId: state.scenario?.id,
+              authorizationStepsCompleted: next,
+              mode,
+              simulationOnly: true,
+            },
+          })
+        },
+
+        isAuthorizationTrainingReady: () => {
+          const state = get()
+          return evaluateAuthorizationTraining(
+            state.scenario,
+            state.scenarioVariant,
+            state.authorizationCompletedSteps,
+          ).ready
+        },
+
         setIsReplayMode: (replay) =>
           set((s) => ({ ui: { ...s.ui, isReplayMode: replay } })),
 
@@ -1571,7 +1736,9 @@ export const useDroneStore = create<DroneStore>()(
             fleetRetaskCache: null, fleetRetaskHistory: [],
             fleetRetaskUndo: null,
             positionHistory: {}, replaySession: null, replayIndex: 0, replayFrames: [],
+            replayRecordingStopped: false,
             launchPlan: null, siteOverrides: {}, siteRelocations: {}, launchCommandedSec: null, lifecycle: 'idle',
+            authorizationCompletedSteps: [],
             metrics: {
               totalFlightDistanceM: 0, waypointsReached: 0, conflictsDetected: 0,
               thermalContacts: 0, geofenceBreaches: 0, rtbTriggers: 0,

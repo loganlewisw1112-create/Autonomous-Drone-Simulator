@@ -103,12 +103,60 @@ describe('MissionManager state machine', () => {
     expect(nextState).toBe('thermal_hold')
   })
 
-  it('thermal_hold hovers in place with throttle 0 until operator resumes', () => {
+  it('thermal_hold holds until timeout, then auto-resumes the prior flight plan', () => {
     const drone = createDroneState('uav-01', 'UAV-01', '#00d4ff', BASE_POS, 120)
     const holding = { ...drone, missionState: 'thermal_hold' as const, inspectReturnState: 'navigate' as const, thermalHoldStartSec: 0 }
-    const { nextState, cmd } = getNextCommand(holding, { ...makeMM(), elapsedSec: 999 })
-    expect(nextState).toBe('thermal_hold')
+
+    const stillHolding = getNextCommand(holding, { ...makeMM(), elapsedSec: 29 })
+    expect(stillHolding.nextState).toBe('thermal_hold')
+    expect(stillHolding.cmd.throttle).toBe(0)
+
+    const resumed = getNextCommand(holding, { ...makeMM(), elapsedSec: 30 })
+    expect(resumed.nextState).toBe('navigate')
+    expect(resumed.cmd.throttle).toBe(0.8)
+  })
+
+  it('reaching the final waypoint returns to base (NOT indefinite loiter) by default', () => {
+    const finalWp = WPS[WPS.length - 1]
+    const drone = createDroneState('uav-01', 'UAV-01', '#00d4ff', finalWp.position, 120)
+    const { nextState, nextWaypointIndex } = getNextCommand(
+      { ...drone, missionState: 'navigate', currentWaypointIndex: WPS.length - 1 },
+      makeMM(),
+    )
+    expect(nextState).toBe('return_to_base')
+    expect(nextWaypointIndex).toBe(0)
+  })
+
+  it('loiterOnRouteComplete keeps route_complete_loiter at the final waypoint', () => {
+    const finalWp = WPS[WPS.length - 1]
+    const drone = createDroneState('uav-01', 'UAV-01', '#00d4ff', finalWp.position, 120)
+    const { nextState, cmd } = getNextCommand(
+      { ...drone, missionState: 'navigate', currentWaypointIndex: WPS.length - 1 },
+      { ...makeMM(), loiterOnRouteComplete: true },
+    )
+    expect(nextState).toBe('route_complete_loiter')
     expect(cmd.throttle).toBe(0)
+    expect(cmd.targetAltitudeFt).toBe(120)
+  })
+
+  it('caps excessive waypoint dwells so hover cannot stall beyond MAX_WAYPOINT_DWELL_SEC', () => {
+    const longDwell: Waypoint[] = [
+      { id: 'wp1', position: { lat: 37.7700, lng: -122.4870 }, altitudeFt: 120, dwellTimeSec: 90 },
+      { id: 'wp2', position: { lat: 37.7710, lng: -122.4855 }, altitudeFt: 120 },
+    ]
+    const drone = createDroneState('uav-01', 'UAV-01', '#00d4ff', longDwell[0].position, 120)
+    const hovering = {
+      ...drone,
+      missionState: 'hover' as const,
+      currentWaypointIndex: 0,
+      hoverStartSec: 0,
+    }
+    const stillHovering = getNextCommand(hovering, { ...makeMM(longDwell), elapsedSec: 29 })
+    expect(stillHovering.nextState).toBe('hover')
+
+    const advanced = getNextCommand(hovering, { ...makeMM(longDwell), elapsedSec: 30 })
+    expect(advanced.nextState).toBe('navigate')
+    expect(advanced.nextWaypointIndex).toBe(1)
   })
 
   it('recovered transitions to landed instead of staying terminal', () => {
@@ -130,18 +178,6 @@ describe('MissionManager state machine', () => {
       expect(nextState).toBe(state)
       expect(cmd.throttle).toBe(0)
     }
-  })
-
-  it('reaching the final waypoint transitions to route_complete_loiter (NOT return_to_base)', () => {
-    const finalWp = WPS[WPS.length - 1]
-    const drone = createDroneState('uav-01', 'UAV-01', '#00d4ff', finalWp.position, 120)
-    const { nextState, cmd } = getNextCommand(
-      { ...drone, missionState: 'navigate', currentWaypointIndex: WPS.length - 1 },
-      makeMM(),
-    )
-    expect(nextState).toBe('route_complete_loiter')
-    expect(cmd.throttle).toBe(0)
-    expect(cmd.targetAltitudeFt).toBe(120)
   })
 
   it('route_complete_loiter self-loops at assigned altitude with throttle 0', () => {

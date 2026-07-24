@@ -12,7 +12,7 @@ import { bearingDeg, haversineDistanceM } from '@/utils/geometry'
 import { BAY_SPACING_M } from '@/sim/mission/LaunchCoordinator'
 import { getNextCommand } from '@/sim/mission/MissionManager'
 
-const scenario = ALL_SCENARIOS.find((s) => s.id === 'extreme_fema_fort_myers') ?? ALL_SCENARIOS[0]
+const scenario = ALL_SCENARIOS.find((s) => s.id === 'hist_harvey_houston_2017') ?? ALL_SCENARIOS[0]
 
 describe('coordinated staggered launch', () => {
   beforeEach(() => {
@@ -48,6 +48,7 @@ describe('coordinated staggered launch', () => {
   })
 
   it('drones lift off at different sim-times, not all on the same tick', () => {
+    useDroneStore.getState().completeAuthorizationTraining('test')
     useDroneStore.getState().beginLaunchSequence()
     useDroneStore.getState().setRunning(true)
 

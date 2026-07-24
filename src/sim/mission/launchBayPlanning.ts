@@ -4,7 +4,7 @@ import {
 } from '@/sim/mission/launchDoctrine'
 import { droneIdForIndex } from '@/sim/mission/routeAudit'
 import { getDefaultWeatherState } from '@/sim/weather/weatherEngine'
-import type { LaunchBayPlan, LaunchBayStatus, ScenarioConfig, WeatherVariantState } from '@/types'
+import type { LatLng, LaunchBayPlan, LaunchBayStatus, ScenarioConfig, WeatherVariantState } from '@/types'
 
 export function buildDroneIds(scenario: ScenarioConfig): string[] {
   return Array.from({ length: scenario.droneCount }, (_, index) => droneIdForIndex(index))
@@ -14,8 +14,9 @@ export function buildLaunchBayPlan(
   scenario: ScenarioConfig,
   weatherState: WeatherVariantState,
   assignments: Record<string, string>,
+  siteOverrides: Readonly<Record<string, LatLng>> = {},
 ): LaunchBayPlan {
-  return buildDoctrineLaunchBayPlan(scenario, weatherState, assignments)
+  return buildDoctrineLaunchBayPlan(scenario, weatherState, assignments, siteOverrides)
 }
 
 export function computeBayStatuses(
@@ -23,8 +24,9 @@ export function computeBayStatuses(
   weatherState: WeatherVariantState,
   assignments: Record<string, string>,
   _droneIds: string[],
+  siteOverrides: Readonly<Record<string, LatLng>> = {},
 ): LaunchBayStatus[] {
-  return buildLaunchBayPlan(scenario, weatherState, assignments).bayStatuses
+  return buildLaunchBayPlan(scenario, weatherState, assignments, siteOverrides).bayStatuses
 }
 
 export function computeBlockers(
@@ -55,13 +57,15 @@ export function computeBlockers(
 export function buildAutoAssignments(
   scenario: ScenarioConfig,
   weatherState: WeatherVariantState = getDefaultWeatherState(scenario.seed),
+  siteOverrides: Readonly<Record<string, LatLng>> = {},
 ): Record<string, string> {
-  return buildAutoLaunchDoctrinePlan(scenario, weatherState).assignments
+  return buildAutoLaunchDoctrinePlan(scenario, weatherState, siteOverrides).assignments
 }
 
 export function buildAutoLaunchBayPlan(
   scenario: ScenarioConfig,
   weatherState: WeatherVariantState,
+  siteOverrides: Readonly<Record<string, LatLng>> = {},
 ): LaunchBayPlan {
-  return buildAutoLaunchDoctrinePlan(scenario, weatherState)
+  return buildAutoLaunchDoctrinePlan(scenario, weatherState, siteOverrides)
 }

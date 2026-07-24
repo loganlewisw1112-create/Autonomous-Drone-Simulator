@@ -350,6 +350,8 @@ export type EventType =
   | 'conflict_resolved'
   | 'thermal_detection'
   | 'preflight_complete'
+  | 'authorization_step_complete'
+  | 'authorization_complete'
   | 'operator_command'
   | 'recharge_start'
   | 'sortie_launch'
@@ -673,6 +675,49 @@ export interface ScenarioVariantConfig {
   terrainDifficulty: 0 | 1 | 2
 }
 
+/** Explicit mission taxonomy — prefer authored value over catalog regex inference (Phase 5). */
+export type MissionClass =
+  | 'training_basic'
+  | 'search_rescue'
+  | 'maritime_sar'
+  | 'perimeter_security'
+  | 'wildfire_recon'
+  | 'hazmat_recon'
+  | 'disaster_response'
+  | 'flood_response'
+  | 'structural_collapse'
+  | 'landslide_monitoring'
+  | 'volcanic_response'
+  | 'tornado_damage'
+  | 'welfare_response'
+  | 'infrastructure_inspection'
+  | 'nist_skills'
+
+/** Measurable figures from public after-action literature for historical debrief (Phase 5b). */
+export interface BacktestAnchor {
+  id: string
+  label: string
+  unit: string
+  documentedValue: number
+  description: string
+}
+
+/** Public, sourced historical grounding for disaster backtest scenarios. SIMULATION ONLY. */
+export interface HistoricalCase {
+  eventName: string
+  eventDate: string
+  location: string
+  /** Response window modeled (T+N convention), not necessarily peak hazard time. */
+  responseWindow: string
+  humanCostSummary: string
+  situation: string
+  capabilityGap: string
+  documentedContribution?: string
+  sources: Array<{ label: string; url: string }>
+  instructorNotes?: string
+  discussionPrompts?: string[]
+}
+
 // ─── Scenario ──────────────────────────────────────────────────────────────────
 export interface ScenarioConfig {
   id: string
@@ -708,6 +753,26 @@ export interface ScenarioConfig {
   operationalFeatures?: OperationalFeature[]
   missionObjectives?: MissionObjective[]
   weatherProfile?: ScenarioWeatherProfile
+  /**
+   * When true, aircraft loiter at the final waypoint after the route completes.
+   * Default (omitted/false): return-to-base → recharge/next sortie or land.
+   */
+  loiterOnRouteComplete?: boolean
+  /**
+   * Explicit operational-authorization training profile (Phase 4).
+   * Prefer this over regex inference in `buildAuthorization` / authorization training.
+   */
+  authorizationProfile?: ScenarioAuthorizationProfile
+  /** Authored mission class — overrides keyword inference in catalog derivation. */
+  missionClass?: MissionClass
+  /** Commanding / participating agencies — overrides regex scan when set. */
+  agencies?: string[]
+  /** WP-4 terrain fixture id when a scenario carries committed DEM data. */
+  terrainFixtureId?: string
+  /** Historical disaster backtest metadata (Phase 5 / 5b). */
+  historicalCase?: HistoricalCase
+  /** Measurable after-action anchors scored in debrief surfaces. */
+  backtestAnchors?: BacktestAnchor[]
   /**
    * WP-8 RF clutter class (§18.4). Omitted ⇒ derived from `weatherProfile.locationTag`, which is
    * defensible for most scenarios; set explicitly where that tag is too coarse — Times Square and
@@ -856,6 +921,65 @@ export type ComplianceFlagKind =
   | 'bvlos'
   | 'night_ops'
   | 'operations_over_people'
+
+/** Interactive preflight authorization training steps (simulation-only). */
+export type AuthorizationStepId =
+  | 'remote_id'
+  | 'airspace_request'
+  | 'ceiling_check'
+  | 'tfr_conflict_ack'
+  | 'hot_zone_ack'
+  | 'bvlos_waiver'
+  | 'night_ops'
+  | 'ops_over_people'
+
+/** Harvey-class / disaster TFR deconfliction exercise hook (Phase 5 authors full scenarios). */
+export interface AuthorizationTfrExercise {
+  id: string
+  label: string
+  summary: string
+  /** When true, `tfr_conflict_ack` is a required training step. */
+  requireAcknowledgment: boolean
+}
+
+/**
+ * Scenario-authored authorization profile. Prefer explicit fields over regex-only
+ * inference in compliance / training engines.
+ */
+export interface ScenarioAuthorizationProfile {
+  kind: AirspaceAuthorizationKind
+  /** Always-required interactive training steps for this scenario. */
+  requiredSteps: AuthorizationStepId[]
+  /** Extra steps when `scenarioVariant.timeOfDay === 'night'`. Defaults to `night_ops`. */
+  nightSteps?: AuthorizationStepId[]
+  /** When true, BVLOS waiver review is required. */
+  bvlosExpected?: boolean
+  /** When true, operations-over-people review is required. */
+  opsOverPeopleExpected?: boolean
+  /** Optional TFR / manned-traffic deconfliction training hook. */
+  tfrExercise?: AuthorizationTfrExercise
+  label?: string
+  reference?: string
+}
+
+export interface AuthorizationStepStatus {
+  id: AuthorizationStepId
+  label: string
+  detail: string
+  completed: boolean
+  required: boolean
+}
+
+export interface AuthorizationTrainingProgress {
+  profileKind: AirspaceAuthorizationKind
+  requiredStepIds: AuthorizationStepId[]
+  completedStepIds: AuthorizationStepId[]
+  missedStepIds: AuthorizationStepId[]
+  ready: boolean
+  steps: AuthorizationStepStatus[]
+  tfrExercise?: AuthorizationTfrExercise
+  disclaimer: string
+}
 
 export interface ComplianceFlag {
   kind: ComplianceFlagKind

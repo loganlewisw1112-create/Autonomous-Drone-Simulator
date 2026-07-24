@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useDroneStore } from '@/store/droneStore'
+import { useDroneStore, MAX_REPLAY_FRAMES, MAX_REPLAY_DURATION_SEC } from '@/store/droneStore'
 import { weatherSummaryLabel } from '@/sim/weather/weatherEngine'
 import { buildAfterActionPackage, serializeAfterActionPackage } from '@/sim/demo/missionReport'
 
@@ -98,10 +98,9 @@ export function ReplayPanel() {
   const currentFrame = frames[replayIndex]
   const lastFrame = frames[total - 1]
   const pct = total > 1 ? ((replayIndex / (total - 1)) * 100).toFixed(1) : '0'
-  // Rolling buffer keeps only the last MAX_FRAMES snapshots; if frame 0 isn't tick 0, the
-  // earliest mission minutes were dropped and the operator should know.
-  const truncated = frames.length > 0 && frames[0].tick > 0
-  const coveredDur = truncated ? formatDur((lastFrame?.elapsedSec ?? 0) - frames[0].elapsedSec) : null
+  // Recording stops at 25 min (MAX_REPLAY_FRAMES × 2 s). Cap note when the buffer filled.
+  const recordingCapped =
+    frames.length >= MAX_REPLAY_FRAMES || (lastFrame?.elapsedSec ?? 0) >= MAX_REPLAY_DURATION_SEC - 1
 
   if (!ui.isReplayMode) {
     return (
@@ -117,9 +116,9 @@ export function ReplayPanel() {
           {total} frames · {formatDur(lastFrame?.elapsedSec ?? 0)} mission ·{' '}
           {replaySession?.scenarioId ?? ''}
         </span>
-        {truncated && (
-          <span style={{ color: 'var(--accent-yellow)' }} title="The rolling replay buffer keeps the most recent frames; the earliest mission minutes were dropped.">
-            ⚠ last {coveredDur} only
+        {recordingCapped && (
+          <span style={{ color: 'var(--accent-yellow)' }} title="Replay recording stops at 25 minutes of mission time. Later minutes are not stored.">
+            ⚠ recording stopped at 25 min MAX
           </span>
         )}
         <button className="btn primary" onClick={handleEnterReplay} style={{ padding: '3px 10px', fontSize: 9 }}>
@@ -174,11 +173,11 @@ export function ReplayPanel() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         {/* Mode label */}
         <span style={{ color: 'var(--accent-blue)', letterSpacing: 1, minWidth: 80 }}>
-          ◈ REPLAY{truncated ? ' ⚠' : ''}
+          ◈ REPLAY{recordingCapped ? ' ⚠' : ''}
         </span>
-        {truncated && (
-          <span style={{ color: 'var(--accent-yellow)', fontSize: 9 }} title="Rolling buffer — earliest mission frames were dropped.">
-            last {coveredDur}
+        {recordingCapped && (
+          <span style={{ color: 'var(--accent-yellow)', fontSize: 9 }} title="Replay recording stops at 25 minutes of mission time.">
+            25 min MAX
           </span>
         )}
 

@@ -1,0 +1,129 @@
+{
+  "scenarioId": "hist_camp_fire_paradise_2018",
+  "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
+  "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
+  "license": "US Geological Survey — US federal government work, public domain",
+  "note": "Independent read of 3DEP at native resolution; used to bound the fixture error, not to build it.",
+  "points": [
+    {
+      "lat": 39.741034,
+      "lng": -121.645371,
+      "elevationM": 437.29,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.741034,
+      "lng": -121.633685,
+      "elevationM": 439.71,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.741034,
+      "lng": -121.622,
+      "elevationM": 461.06,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.741034,
+      "lng": -121.610315,
+      "elevationM": 478.3,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.741034,
+      "lng": -121.598629,
+      "elevationM": 501.71,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.750017,
+      "lng": -121.645371,
+      "elevationM": 334.16,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.750017,
+      "lng": -121.633685,
+      "elevationM": 496.41,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.750017,
+      "lng": -121.622,
+      "elevationM": 506.28,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.750017,
+      "lng": -121.610315,
+      "elevationM": 525.51,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.750017,
+      "lng": -121.598629,
+      "elevationM": 534.03,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.759,
+      "lng": -121.645371,
+      "elevationM": 459.74,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.759,
+      "lng": -121.633685,
+      "elevationM": 509.78,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.759,
+      "lng": -121.622,
+      "elevationM": 536.29,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.759,
+      "lng": -121.610315,
+      "elevationM": 547.98,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.759,
+      "lng": -121.598629,
+      "elevationM": 563.45,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.767983,
+      "lng": -121.645371,
+      "elevationM": null,
+      "resolutionM": null
+    },
+    {
+      "lat": 39.767983,
+      "lng": -121.633685,
+      "elevationM": null,
+      "resolutionM": null
+    },
+    {
+      "lat": 39.767983,
+      "lng": -121.622,
+      "elevationM": 545.54,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.767983,
+      "lng": -121.610315,
+      "elevationM": 586.98,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.767983,
+      "lng": -121.598629,
+      "elevationM": 600.63,
+      "resolutionM": 1
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { INCIDENT_SCENARIOS } from '@/scenarios/catalog'
+import { INCIDENT_MISSION_COUNT, INCIDENT_SCENARIOS } from '@/scenarios/catalog'
 import {
   buildMissionProgress,
   resolveMissionObjectives,
@@ -78,7 +78,7 @@ function operatorEvent(objectiveId: string): MissionEvent {
 
 describe('mission objectives', () => {
   it('derives a normalized objective set for all 21 catalog scenarios', () => {
-    expect(INCIDENT_SCENARIOS).toHaveLength(21)
+    expect(INCIDENT_SCENARIOS).toHaveLength(INCIDENT_MISSION_COUNT)
     for (const item of INCIDENT_SCENARIOS) {
       const objectives = resolveMissionObjectives(item)
       expect(objectives.length).toBeGreaterThan(0)

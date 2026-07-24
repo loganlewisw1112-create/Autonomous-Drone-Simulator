@@ -12,7 +12,46 @@ import type { TerrainRaster } from '@/sim/terrain/terrainRaster'
 import type { ScenarioConfig, Waypoint } from '@/types'
 
 const portScenario = ALL_SCENARIOS.find((s) => s.id === 'demo_perimeter') ?? ALL_SCENARIOS[0]
-const rioGrande = ALL_SCENARIOS.find((s) => s.id === 'extreme_cbp_rio_grande_longrange') ?? ALL_SCENARIOS[0]
+/** Minimal staged-recharge scenario (Phase 5 culled the published Rio Grande catalog entry). */
+const forwardRechargeScenario: ScenarioConfig = {
+  ...portScenario,
+  id: 'test_forward_recharge',
+  droneCount: 3,
+  geofences: [],
+  heatSources: [],
+  operationalFeatures: undefined,
+  perDroneWaypoints: {
+    'uav-01': [
+      { id: 'fr-01-a', position: { lat: 37.7960, lng: -122.2860 }, altitudeFt: 100 },
+      { id: 'fr-01-b', position: { lat: 37.7970, lng: -122.2840 }, altitudeFt: 100 },
+    ],
+    'uav-03': [
+      { id: 'fr-03-a', position: { lat: 37.7965, lng: -122.2855 }, altitudeFt: 120 },
+      { id: 'fr-03-b', position: { lat: 37.7975, lng: -122.2835 }, altitudeFt: 120 },
+      { id: 'fr-03-c', position: { lat: 37.7980, lng: -122.2820 }, altitudeFt: 120 },
+    ],
+  },
+  rechargeStations: [
+    {
+      id: 'rs-falcon',
+      label: 'Falcon Lake Recharge',
+      position: { lat: 37.7955, lng: -122.2870 },
+      road: 'US-83',
+      agency: 'CBP',
+    },
+    {
+      id: 'rs-rgc',
+      label: 'Rio Grande City / US-83 Recharge',
+      position: { lat: 37.7990, lng: -122.2800 },
+      road: 'US-83',
+      agency: 'CBP',
+    },
+  ],
+  perDroneRechargeStationIds: {
+    'uav-01': ['rs-falcon', 'rs-rgc'],
+    'uav-03': ['rs-falcon', 'rs-rgc'],
+  },
+}
 const livePosition = { lat: 37, lng: -122 }
 const liveTarget = { lat: 37, lng: -121.99 }
 const liveOriginScenario: ScenarioConfig = {
@@ -116,9 +155,9 @@ describe('operator retasking and route suggestions', () => {
     expect(first[0]?.route.length).toBeGreaterThan(0)
   })
 
-  it('suggests the next forward Rio Grande recharge route by sortie progress', () => {
+  it('suggests the next forward recharge route by sortie progress', () => {
     const suggestions = buildRouteSuggestions({
-      scenario: rioGrande,
+      scenario: forwardRechargeScenario,
       droneId: 'uav-03',
       elapsedSec: 180,
       thermalDetections: [],
@@ -132,9 +171,9 @@ describe('operator retasking and route suggestions', () => {
     expect(suggestions[0]?.route[0]?.label).toContain('Rio Grande City / US-83 Recharge')
   })
 
-  it('suggests a visible Rio Grande recharge route for the default selected drone', () => {
+  it('suggests a visible forward recharge route for the default selected drone', () => {
     const suggestions = buildRouteSuggestions({
-      scenario: rioGrande,
+      scenario: forwardRechargeScenario,
       droneId: 'uav-01',
       elapsedSec: 0,
       thermalDetections: [],

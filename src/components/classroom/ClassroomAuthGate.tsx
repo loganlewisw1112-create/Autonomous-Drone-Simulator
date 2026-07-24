@@ -140,7 +140,7 @@ export function ClassroomAuthForm({
         <div style={{ fontSize: 18, fontWeight: 700 }}>{title}</div>
         <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
           {mode === 'signup' && activeRole === 'instructor'
-            ? 'Create username and password first. You will insert the supervised access code once on the Start a training class page.'
+            ? 'Create username and password first. On Start a training class you will type the school access code once (first code on a fresh machine becomes the unlock automatically).'
             : mode === 'signup'
               ? 'Anyone can create a student account on this device. Progress stays encrypted locally.'
               : 'Sign in with your classroom username and password.'}

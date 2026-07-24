@@ -4,7 +4,9 @@ import {
   effectiveFocalLengthMm, JOHNSON_PIXELS, thermalContrastThresholdC,
   thermalTransmission, effectiveDetectionRangeM,
 } from '@/sim/sensors/thermalRange'
-import { PLATFORM_CATALOG, LEGACY_PLATFORM } from '@/sim/drone/platformCatalog'
+import {
+  PLATFORM_CATALOG, LEGACY_PLATFORM, FREEFLY_MODULAR_THERMAL_BOSON_PLUS,
+} from '@/sim/drone/platformCatalog'
 
 describe('Johnson thermal range geometry', () => {
   it('reproduces the §18.1 worked anchor: 12 µm, 13 mm, 100 m, 0.5 m → 5.4 px', () => {
@@ -21,7 +23,16 @@ describe('Johnson thermal range geometry', () => {
   })
 
   it('orders detection > recognition > identification range', () => {
-    const r = platformTaskRanges({ sensor: 'test', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: 13, hfovDeg: null, netdMk: 30 }, 0.5)
+    const r = platformTaskRanges({
+      sensor: 'test',
+      resolutionPx: [640, 512],
+      pixelPitchUm: 12,
+      focalLengthMm: 13,
+      hfovDeg: null,
+      netdMk: 30,
+      radiometric: true,
+      radiometricAccuracyC: 5,
+    }, 0.5)
     expect(r).not.toBeNull()
     expect(r!.detectionM).toBeGreaterThan(r!.recognitionM)
     expect(r!.recognitionM).toBeGreaterThan(r!.identificationM)
@@ -57,11 +68,12 @@ describe('Johnson thermal range geometry', () => {
   })
 })
 
-describe('live thermal range gates (WP-5)', () => {
+describe('live thermal range gates (WP-5 / Phase 7)', () => {
   it('scales the 2 C contrast threshold from published NETD', () => {
+    // NETD ≤ 50 mK keeps the 2 °C floor; worse NETD scales up (60 mK → 2.4 °C).
     expect(thermalContrastThresholdC(PLATFORM_CATALOG.skydio_x10.thermal)).toBe(2)
+    expect(thermalContrastThresholdC(PLATFORM_CATALOG.teal_2.thermal)).toBe(2)
     expect(thermalContrastThresholdC(PLATFORM_CATALOG.parrot_anafi_usa.thermal)).toBe(2.4)
-    expect(thermalContrastThresholdC(PLATFORM_CATALOG.teal_2.thermal)).toBeNull()
     expect(thermalContrastThresholdC(null)).toBeNull()
   })
 
@@ -85,24 +97,58 @@ describe('live thermal range gates (WP-5)', () => {
     expect(effectiveDetectionRangeM(sensor, 0.5, 1)).toBeCloseTo(clearRange, 10)
     expect(effectiveDetectionRangeM(sensor, 0.5, 0.6)).toBeCloseTo(clearRange * 0.6, 10)
 
-    // Teal has optics but no published NETD; BRINC has neither published optics nor NETD.
-    expect(effectiveDetectionRangeM(PLATFORM_CATALOG.teal_2.thermal, 0.5)).toBeNull()
+    // Teal Hadron 640R now has optics + NETD; BRINC still has neither published optics nor NETD.
+    expect(effectiveDetectionRangeM(PLATFORM_CATALOG.teal_2.thermal, 0.5)).not.toBeNull()
     expect(effectiveDetectionRangeM(PLATFORM_CATALOG.brinc_lemur_2.thermal, 0.5)).toBeNull()
     expect(effectiveDetectionRangeM(null, 0.5)).toBeNull()
   })
 })
 
-describe('platform thermal sensor specs (WP-1)', () => {
-  it('carries sourced integrated payloads with 12 µm FLIR pitch', () => {
-    expect(PLATFORM_CATALOG.skydio_x10.thermal).toMatchObject({ sensor: 'FLIR Boson+', resolutionPx: [640, 512], pixelPitchUm: 12, netdMk: 30 })
+describe('platform thermal sensor specs (Phase 7 radiometric)', () => {
+  it('carries sourced radiometric payloads with 12 µm FLIR pitch', () => {
+    expect(PLATFORM_CATALOG.skydio_x10.thermal).toMatchObject({
+      sensor: 'FLIR Boson+',
+      resolutionPx: [640, 512],
+      pixelPitchUm: 12,
+      netdMk: 30,
+      radiometric: true,
+      radiometricAccuracyC: 5,
+    })
     expect(PLATFORM_CATALOG.skydio_x10d.thermal).toMatchObject({ resolutionPx: [640, 512], netdMk: 30 })
-    expect(PLATFORM_CATALOG.parrot_anafi_usa.thermal).toMatchObject({ sensor: 'FLIR Boson', resolutionPx: [320, 256] })
-    expect(PLATFORM_CATALOG.teal_2.thermal).toMatchObject({ resolutionPx: [640, 512] })
-    expect(PLATFORM_CATALOG.brinc_lemur_2.thermal).toMatchObject({ sensor: 'FLIR Lepton', resolutionPx: [160, 120] })
+    expect(PLATFORM_CATALOG.parrot_anafi_usa.thermal).toMatchObject({
+      sensor: 'FLIR Boson',
+      resolutionPx: [320, 256],
+      radiometric: true,
+      radiometricAccuracyC: 5,
+    })
+    expect(PLATFORM_CATALOG.teal_2.thermal).toMatchObject({
+      sensor: 'FLIR Hadron 640R',
+      resolutionPx: [640, 512],
+      pixelPitchUm: 12,
+      focalLengthMm: 13.6,
+      hfovDeg: 32,
+      netdMk: 40,
+      radiometric: true,
+      radiometricAccuracyC: 5,
+    })
+    expect(PLATFORM_CATALOG.brinc_lemur_2.thermal).toMatchObject({
+      sensor: 'FLIR Lepton',
+      resolutionPx: [160, 120],
+      radiometric: false,
+      radiometricAccuracyC: null,
+    })
   })
 
-  it('leaves modular-payload airframes as null, never a guessed sensor', () => {
+  it('leaves modular-payload airframes as null, with an optional Boson+ profile documented', () => {
     expect(PLATFORM_CATALOG.freefly_astro_max.thermal).toBeNull()
+    expect(FREEFLY_MODULAR_THERMAL_BOSON_PLUS).toMatchObject({
+      sensor: 'FLIR Boson+ (modular)',
+      resolutionPx: [640, 512],
+      netdMk: 30,
+      radiometric: true,
+      radiometricAccuracyC: 5,
+    })
+    expect(platformTaskRanges(FREEFLY_MODULAR_THERMAL_BOSON_PLUS, 0.5)).not.toBeNull()
   })
 
   it('sources optics from the manufacturer by either published route, or leaves them null', () => {
@@ -116,10 +162,16 @@ describe('platform thermal sensor specs (WP-1)', () => {
     expect(PLATFORM_CATALOG.brinc_lemur_2.thermal!.hfovDeg).toBeNull()
   })
 
-  it('reproduces the published FOV from the sourced focal length', () => {
+  it('cross-checks Johnson R_d against published Hadron / Boson+ optics', () => {
     // Teal publishes 32° HFOV for the Hadron 640R at EFL 13.6 mm; the geometry must agree.
     expect(focalLengthFromHfov(32, 640, 12)).toBeCloseTo(13.6, 0)
-    // And the Parrot derivation is a real number, not a fallback.
+    // Person detection (2 px) at 0.5 m critical dimension:
+    // R = S·f / (N·p) = 0.5 · 0.0136 / (2 · 12e-6) = 283.33 m
+    const teal = platformTaskRanges(PLATFORM_CATALOG.teal_2.thermal, 0.5)!
+    expect(teal.detectionM).toBeCloseTo(283.33, 1)
+    const boson = platformTaskRanges(PLATFORM_CATALOG.skydio_x10.thermal, 0.5)!
+    expect(boson.detectionM).toBeCloseTo(283.33, 1)
+    // Parrot derivation is a real number, not a fallback.
     const anafi = effectiveFocalLengthMm(PLATFORM_CATALOG.parrot_anafi_usa.thermal)
     expect(anafi).toBeCloseTo(4.12, 1)
   })

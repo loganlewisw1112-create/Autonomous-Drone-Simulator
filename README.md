@@ -12,7 +12,7 @@ A local-first React + TypeScript simulator for the multi-drone public-safety mis
 | **Windows** | **[Launch Windows](https://autonomous-drone-simulator.vercel.app/)** — Windows PC only |
 | **Classroom (UI demo)** | **[Classroom home](https://autonomous-drone-simulator-classroom.vercel.app/)** — accounts + instructor/student UI |
 
-> **Live multi-student class?** The Vercel classroom link is a **client showcase**. A real class on your Wi‑Fi needs one instructor machine running `npm run classroom` — step-by-step below.
+> **Live multi-student class?** The Vercel classroom link is a **client showcase**. A real class on your Wi‑Fi needs one **Windows instructor PC** running the **desktop classroom app** (`npm run classroom:desktop`) or the terminal relay (`npm run classroom`) — step-by-step below.
 
 ---
 
@@ -34,7 +34,7 @@ Accounts stay in **that browser’s storage** — nothing is uploaded; Mobile / 
 
 ## Run a classroom session (instructor + students)
 
-**Who this is for:** a teacher, club lead, or anyone hosting a class. Students only need a browser on the same Wi‑Fi.
+**Who this is for:** a teacher, club lead, or anyone hosting a class. Students need a **Windows** laptop or desktop browser on the same Wi‑Fi.
 
 **You need:** Node.js **20+**, this repo, and one computer that stays on (the instructor machine).
 
@@ -46,17 +46,44 @@ cd Autonomous-Drone-Simulator
 npm install
 ```
 
-### Step 2 — Instructor unlock material (maintainers only)
+### Step 2 — Instructor unlock (type a code once)
 
-Instructor signup needs a one-time supervised access code. The expected SHA‑256 digest is **not** in git.
+Instructor signup needs a one-time access code. **You never create folders or hex digests by hand.**
 
-1. Create folder `local-secrets/` (already gitignored).  
-2. Put your 64‑character hex digest in `local-secrets/instructor-access-hash.txt` (non-comment line).  
-3. Keep the plaintext code only in `local-secrets/instructor-access-code.txt` on that machine — **never commit it**.
+1. Start the classroom (Step 3), open **Start a training class**, and create/sign in as Instructor.  
+2. On first setup for that machine, type the access code you want for your school → **Finish account setup**.  
+3. The app saves a hash automatically (browser storage, and `local-secrets/` on the LAN relay when available). That code becomes the school unlock for later instructor accounts.  
+4. If a school code is already set, new instructors must enter **that same code** — the app will not silently overwrite it.
 
-If you are a student: skip this. Your teacher gives you the unlock code when you create an instructor account (or they create it for you).
+Optional: a plaintext recovery copy may appear under gitignored `local-secrets/instructor-access-code.txt` on the instructor PC. You do not need to create or edit that file.
 
-### Step 3 — Start the classroom server
+**Reset (intentional admin only):** clear this site’s browser storage for the classroom origin, and either delete `local-secrets/instructor-access-hash.txt` (and the optional code file) on the instructor machine or `DELETE /api/instructor-access` against the LAN relay. Then type a new first code.
+
+If you are a student: skip this. Your teacher gives you the unlock code only if you are creating an instructor account.
+
+Hosted classroom on Vercel can still use a dashboard env digest when present; operators still only **type a code** in the UI.
+
+### Step 3 — Start the classroom server (Windows instructor PC)
+
+**Preferred — desktop app (auto-starts / auto-stops the relay):**
+
+```bash
+npm run classroom:desktop
+```
+
+PowerShell helper: `pwsh scripts/windows/Start-ClassroomDesktop.ps1`  
+Relaunch without rebuild: `npm run classroom:desktop:launch`
+
+A splash asks **Start the Classroom Server?**
+
+| Choice | What happens |
+|---|---|
+| **Yes** | Starts `server/classroom.mjs` in the background (if not already up), opens the classroom UI, keeps the relay alive until you quit the app |
+| **No** | Connects if a relay is already running; otherwise shows short setup and lets you open the UI without a live server |
+
+Closing the desktop app stops a relay **this app started**. Browser / GitHub / Vercel demos **cannot** spawn Node — their Yes button only probes for a running server.
+
+**Alternative — terminal relay:**
 
 ```bash
 npm run classroom
@@ -69,7 +96,7 @@ Classroom relay on http://localhost:8080
 Classroom relay on http://192.168.x.x:8080
 ```
 
-Leave this terminal open. Closing it ends the class for everyone.
+Leave that terminal open if you used the alternative path. Closing it ends the class for everyone.
 
 ### Step 4 — Instructor (same machine or another device on the Wi‑Fi)
 
@@ -80,12 +107,14 @@ Leave this terminal open. Closing it ends the class for everyone.
 5. Choose scenario / seed → **Create class**.  
 6. Note the **6‑character class code** and show students the join URL (same host, join flow).
 
-### Step 5 — Students (phones, laptops, tablets on the same Wi‑Fi)
+### Step 5 — Students (Windows laptops/desktops on the same Wi‑Fi)
 
-1. Open the instructor’s LAN address (for example `http://192.168.x.x:8080` — use the IP from Step 3, not `localhost` on their phone).  
+Classroom is **Windows-only**. Phones and tablets are blocked with a clear error screen.
+
+1. Open the instructor’s LAN address on a **Windows PC** (for example `http://192.168.x.x:8080` — use the IP from Step 3, not `localhost` on another machine).  
 2. Create or sign in as a **Student** account (open signup).  
 3. Enter the **6‑character class code** and join.  
-4. Fly the mission on their device; the instructor wall watches the class.
+4. Fly the mission on their Windows device; the instructor wall watches the class.
 
 ### Step 6 — End class
 
@@ -95,10 +124,11 @@ Instructor ends the class from the console. Per‑student progress is archived i
 
 | Do | Don’t |
 |---|---|
-| Keep `npm run classroom` running during class | Expect a live multi‑student class on Vercel alone |
-| Put students on the **same Wi‑Fi** as the instructor PC | Ask students to open `localhost` on their phones |
-| Give instructors the unlock code **offline** | Put unlock codes in README, git, or chat logs you publish |
+| Prefer `npm run classroom:desktop` on the instructor Windows PC (or keep `npm run classroom` running) | Expect a live multi‑student class on Vercel alone |
+| Put students on **Windows PCs** on the **same Wi‑Fi** as the instructor | Ask students to join from phones/tablets or open `localhost` on another machine |
+| Give instructors the unlock code **offline** (or let the first typed code set it) | Put unlock codes in README, git, or chat logs you publish |
 | Use Student accounts for learners | Use Instructor unlock for every student |
+| Type only an access code in the UI for instructor setup | Ask anyone to create `local-secrets/` or paste hex digests by hand |
 
 Hosted UI tour (no live relay): [Classroom home](https://autonomous-drone-simulator-classroom.vercel.app/) · [Start a class](https://autonomous-drone-simulator-classroom.vercel.app/?coordinator=1) · [Join](https://autonomous-drone-simulator-classroom.vercel.app/?join=)
 
@@ -166,7 +196,7 @@ When the mission stops, replay controls and report export become available. The 
 |---|---|
 | **A** | React 18 + TypeScript + Vite app scaffold; local-first browser target |
 | **B** | Deterministic simulation kernel (seeded loop, same seed → same outcome) |
-| **C** | Scenario catalog + mission briefs (grows to **21** published scenarios) |
+| **C** | Scenario catalog + mission briefs (**25** incident missions + **6** NIST skills drills) |
 | **D** | MapLibre tactical map: drones, routes, geofences, sites, overlays |
 | **E** | Fleet panel, telemetry, OPS HUB, mission controls |
 | **F** | Preflight checklist + launch-bay planning / auto-assign |
@@ -187,9 +217,9 @@ When the mission stops, replay controls and report export become available. The 
 | **U** | Tactical command assessment Phases 0–9 (advisor → command channel → divert/resume) |
 | **V** | Classroom **instructor / student** accounts wrapping live ClassSetup / Join / console |
 | **W** | Durable classrooms + encrypted session archives + history UI + sync envelope seam |
-| **X** | Supervised instructor unlock via gitignored `local-secrets/` (never in tracked docs) |
+| **X** | Supervised instructor unlock: first typed code auto-saves hash (gitignored `local-secrets/` / device storage; never manual hex for instructors) |
 | **Y** | Unlock field on **Start a training class**; Create class / Access saved class(es) |
-| **Z** | **Current:** Mobile + Windows + Classroom showcase live; full LAN class via `npm run classroom`; unlock + archives on instructor device |
+| **Z** | **Current:** Mobile + Windows + Classroom showcase live; LAN class via desktop app (`npm run classroom:desktop`) or `npm run classroom`; unlock + archives on instructor device |
 
 ---
 
@@ -197,8 +227,8 @@ When the mission stops, replay controls and report export become available. The 
 
 ### Mission operations
 
-- Runs 21 scenario catalog entries from `src/scenarios/catalog.ts`.
-- Supports waypoint, SAR parallel-track, perimeter, inspection, pursuit, wildfire, hazmat, welfare, and long-range relay mission patterns.
+- Runs **25 incident missions** plus **6 NIST skills drills** from `src/scenarios/catalog.ts` (see Scenario catalog).
+- Supports waypoint, SAR parallel-track, perimeter, inspection, wildfire, hazmat, welfare, flood/USAR, historical disaster, and NIST lane patterns.
 - Generates mission briefs, command intent, success criteria, operational constraints, dispatch timelines, and per-drone route briefs.
 - Models multi-drone fleets from 3 to 8 aircraft with per-drone roles, altitude bands, route patterns, launch sites, recovery plans, and sortie plans.
 
@@ -248,36 +278,15 @@ When the mission stops, replay controls and report export become available. The 
 
 ## Scenario catalog
 
-The published simulator currently includes 21 source-backed scenarios.
+The published catalog has **25 incident missions** plus **6 NIST skills drills** (outside the 25). Ids and grouping live in `src/scenarios/scenarioManifest.ts`.
 
-<details>
-<summary>Show all scenarios</summary>
+| Group | Count | Examples |
+|---|---:|---|
+| Training / refreshed incidents | 15 | `demo_basic`, `demo_sar_coastal`, `demo_wildfire`, `train_uscg_maritime_sar`, `train_mountain_sar`, `train_flood_corridor`, … |
+| Historical disasters | 10 | Oso SR 530, Camp Fire Paradise, Helene Asheville, Surfside CTS, Harvey Houston, Katrina Lower Ninth, … |
+| NIST skills (outside the 25) | 6 | open, obstructed, confined, night acuity, maritime, urban mask (`missionClass: nist_skills`) |
 
-| # | Scenario | ID | Drones / sorties | Summary |
-|---|---|---|---:|---|
-| 1 | Demo - Basic Waypoint | `demo_basic` | 3 / 1 | Baseline movement and telemetry check. Three drones fly a square route with one no-fly geofence, thermal person/vehicle cues, and a short comms-loss window. |
-| 2 | SAR - Parallel Track Grid | `demo_sar` | 3 / 1 | Golden Gate Park SAR pattern. Three drones execute parallel-track search over a defined area with thermal missing-person cues and an SFO approach restricted corridor. |
-| 3 | SFPD - Suspect Grid Search | `demo_suspect_search` | 3 / 1 | Financial District armed-robbery search. Drones run an east-west lawnmower grid across Battery, Front, and Davis corridors with thermal suspect/getaway cues and Salesforce Tower RF degradation. |
-| 4 | OPD - Vehicle Pursuit (Oakland) | `demo_vehicle_pursuit` | 3 / 1 | Oakland Broadway stolen-vehicle pursuit. One drone shadows overhead, one relays mid-corridor, and one pre-positions at the I-880/Oak Street intercept while comms degrade under an overpass. |
-| 5 | SAR - Coastal / Ocean Beach | `demo_sar_coastal` | 3 / 1 | Night coastal SAR for hypothermic swimmers. Nearshore, beach-face, and dune-strip drones use thermal-first search with weak heat signatures and marine-layer comms degradation. |
-| 6 | Port Security - Perimeter Patrol | `demo_perimeter` | 3 / 1 | Port of Oakland suspicious-vessel response. Overlapping drone sectors cover dock, gates, berth, and full-terminal overwatch with vessel/person/vehicle thermal contacts and crane RF interference. |
-| 7 | CAL FIRE - Wildfire Recon (East Bay) | `demo_wildfire` | 3 / 1 | Grizzly Peak wildfire recon. Three-flank routes map spotfires and structure threat while avoiding the active fire-column no-fly zone and smoke-driven RF degradation. |
-| 8 | LAPD SIS - Hollywood Bowl Response | `extreme_lapd_hollywood_bowl` | 5 / 2 | Five-drone venue response across shell, hillside seating, VIP/press entrance, Highland Ave, and Cahuenga Pass sectors, with recharge and relaunch for secondary search. |
-| 9 | CBP Eagle Pass - Rio Grande Relay | `extreme_cbp_eagle_pass` | 5 / 3 | Overnight Rio Grande relay patrol. Five drones cover ford, cane-break, bridge, oxbow, and high-alt relay sectors across multiple sorties with border geofences and repeated comms windows. |
-| 10 | FBI HRT - Compound Siege (ISR/Entry/Extract) | `extreme_fbi_hrt_compound` | 4 / 1 | Fortified-compound support mission. Four drones cover outer ISR, dynamic entry support, structure/garage observation, extraction corridor, and command relay. |
-| 11 | USCG District 1 - Atlantic Mariner SAR | `extreme_uscg_cape_cod_sar` | 5 / 2 | Cape Cod offshore SAR for an overdue vessel. Five drones search SAROPS probability sectors, drift vectors, and relay/contact zones for hypothermic survivors. |
-| 12 | USSS - Presidential Visit SF Advance Sweep | `extreme_usss_presidential_sf` | 5 / 1 | Presidential site-advance sweep around Moscone, motorcade route, Union Square/Westin, Powell BART, and Nob Hill hotel exterior. |
-| 13 | FEMA USAR - Hurricane Ian, Fort Myers Beach | `extreme_fema_fort_myers` | 5 / 2 | Post-hurricane USAR grid over Estero Island. Drones search collapsed structures and debris fields for survivor thermal signatures before an inbound weather window closes. |
-| 14 | ATF Group IX - Oakland Stash Surveillance | `extreme_atf_oakland_stash` | 4 / 2 | East Oakland surveillance support. Two-sortie operation covers pre-distribution and distribution windows with four drones assigned to overwatch, route, stash, and command-link roles. |
-| 15 | DHS CIKR - Port of LA Chemical Response | `extreme_dhs_port_la_chemical` | 5 / 1 | Port of LA hazmat response. Five drones characterize source, track plume, sweep container yard, hold Seaside Ave perimeter, and maintain ICP comms relay. |
-| 16 | LAPD SkyWatch - Skid Row Welfare Grid | `extreme_lapd_skid_row_welfare` | 5 / 2 | Heat-advisory welfare check grid with LAPD, LA County DMH, and LAHSA. Drones look for hyperthermia or motionless contacts without identity logging. |
-| 17 | NYPD Aviation - Times Square MCI | `extreme_nypd_times_sq_mci` | 5 / 2 | Times Square mass-casualty response. Drones cover incident zone, crowd-flow corridors, Port Authority blocks, TKTS overwatch, and comms relay. |
-| 18 | CAL FIRE / USFS - Dixie Fire, Northern Flank | `extreme_cal_fire_dixie` | 5 / 3 | Persistent wildfire recon over an 8-km northern flank segment, including Hwy 70 fire edge, spotfires, Greenville structures, canyon crews, and ATGS/ICP relay. |
-| 19 | CBP Big Bend - Desert Humanitarian SAR | `extreme_cbp_big_bend_desert_sar` | 4 / 2 | Presidio Station humanitarian SAR in extreme desert heat. Drones search for hyperthermic distress signatures and cue CBP EMT teams at forward points. |
-| 20 | Multi-Agency - SF -> Albany Hills Suspect Pursuit | `extreme_multiagency_sf_pursuit` | 8 / 2 | SFPD/OPD/CHP/BART PD pursuit from SF through the East Bay. Eight drones cover shadows, overwatch, forward intercepts, perimeter sealing, and C2 relay with explicit SF, Jack London Square, East Bay, and Oakland Airport staging. |
-| 21 | CBP Laredo - Rio Grande 25-Mile Relay Patrol | `extreme_cbp_rio_grande_longrange` | 5 / 6 | Long-range corridor patrol from Falcon Lake toward Mission, TX. Drones advance through staged mobile recharge vehicles on US-83 instead of returning to origin, with long-range battery kits and forward recovery discipline. |
-
-</details>
+Priority AOs ship terrain DEM fixtures (and Surfside buildings). Interactive authorization training, exact thermal contacts, 25‑minute replay stop, and radiometric payload HUD apply across the operator builds — see Known limitations and [`docs/CLASSROOM_GUIDE.html`](docs/CLASSROOM_GUIDE.html).
 
 ---
 
@@ -330,7 +339,7 @@ per-project environment variable in each project's Vercel dashboard:
 | Windows | `VITE_APP_TARGET=windows` |
 | Classroom | `VITE_CLASSROOM_ENABLED=true` (`VITE_APP_TARGET` left unset). Production also sets the instructor unlock digest in the Vercel dashboard (never in git). |
 
-Classroom is **client-only** on Vercel — the WebSocket relay (`server/classroom.mjs`) is started locally with `npm run classroom` for a real multi-device class.
+Classroom is **client-only** on Vercel — the WebSocket relay (`server/classroom.mjs`) is started on a Windows instructor PC with `npm run classroom:desktop` (preferred) or `npm run classroom`.
 
 The mobile target **never falls back to the desktop grid**: `useDeviceMode`
 (`src/hooks/useDeviceMode.ts`) always renders the mobile shell for
@@ -387,13 +396,15 @@ tests). The claims below are checkable directly, not just asserted:
 ## Known limitations
 
 - This is a browser simulator only. It does not connect to real drones, Remote ID hardware, FAA services, LAANC, UTM providers, cameras, dispatch systems, or cloud APIs.
-- Regulatory and UTM surfaces are deterministic simulation layers for demo credibility, not operational authorization tools.
+- Regulatory and UTM surfaces are deterministic simulation layers for **operational authorization training** (interactive preflight steps, launch gating, classroom scoring) — not operational authorization tools and not real FAA/LAANC network calls.
 - Map tiles load from OpenFreeMap by default. The fallback map keeps tactical UI state local, but it is not a geographic base-map replacement.
-- The thermal sensor model is intentionally simplified: detection range is short (forcing
-  close-approach search behavior) rather than modeling a real radiometric payload's actual
-  range, and reported contact positions carry seeded localization error rather than being
-  exact. See the model-assumptions comment in `src/sim/sensors/ThermalSim.ts`.
-- Replay keeps a rolling window of the most recent ~10 minutes of mission frames; longer
-  missions drop their earliest frames (the UI flags this when it happens).
-- Hosted classroom cannot run the WebSocket relay on Vercel serverless — use `npm run classroom` for live multi-student sessions.
+- The thermal sensor model uses published radiometric payload optics (e.g. FLIR
+  Hadron 640R / Boson+ class: Johnson detection range from focal length + pixel pitch,
+  NETD contrast gating, atmospheric transmission, and terrain/building LOS when a DEM
+  fixture is present). Contact positions are exact heat-source coordinates. Full IR
+  image simulation and absolute temperature maps are out of scope — radiometric accuracy
+  (±5 °C class) is operator metadata only.
+- Replay recording stops at ~25 minutes of mission time (750 frames × 2 s); it does not drop
+  oldest frames in a rolling window. The UI notes when the cap is reached.
+- Hosted classroom cannot run the WebSocket relay on Vercel serverless — use `npm run classroom:desktop` (Electron shell owns start/stop) or `npm run classroom` for live multi-student sessions. Web Yes only probes for a running server.
 - Generated build output, runtime logs, local environment files, `local-secrets/`, and agent handoff artifacts are intentionally excluded from the published repository.

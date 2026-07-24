@@ -6,7 +6,7 @@ import {
 import {
   accountStorageAvailable, deleteAccount, getAccountByUsername, listAccounts, putAccount,
 } from '@/account/accountDb'
-import { configuredInstructorAccessHash, verifyInstructorAccessCode } from '@/account/instructorAccess'
+import { unlockWithInstructorAccessCode } from '@/account/instructorAccessRemote'
 import type { AccountPrefs, AccountRecord, AccountRole } from '@/account/types'
 
 // Local-only auth. The derived AES key lives in memory for the session; with
@@ -143,12 +143,9 @@ export const useAuthStore = create<AuthState>()(
         let instructorUnlockPending: boolean | undefined
         if (role === 'instructor') {
           if (options?.accessCode?.trim()) {
-            if (!configuredInstructorAccessHash()) {
-              set({ authError: 'Instructor unlock is not configured on this build (missing access hash)' })
-              return false
-            }
-            if (!verifyInstructorAccessCode(options.accessCode)) {
-              set({ authError: 'Invalid instructor access code' })
+            const unlocked = await unlockWithInstructorAccessCode(options.accessCode)
+            if (!unlocked.ok) {
+              set({ authError: unlocked.error })
               return false
             }
             instructorUnlockedAt = Date.now()
@@ -196,12 +193,9 @@ export const useAuthStore = create<AuthState>()(
           set({ authError: null })
           return true
         }
-        if (!configuredInstructorAccessHash()) {
-          set({ authError: 'Instructor unlock is not configured on this build (missing access hash)' })
-          return false
-        }
-        if (!verifyInstructorAccessCode(accessCode)) {
-          set({ authError: 'Invalid instructor access code' })
+        const unlocked = await unlockWithInstructorAccessCode(accessCode)
+        if (!unlocked.ok) {
+          set({ authError: unlocked.error })
           return false
         }
         const record = await getAccountByUsername(activeAccount.username)

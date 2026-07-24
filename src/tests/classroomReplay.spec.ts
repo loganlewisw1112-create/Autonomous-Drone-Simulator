@@ -45,6 +45,9 @@ function assessment(total = 82): MissionAssessment {
     progressPercent: 75,
     objectives: [],
     lifeSafety: { status: 'pass', severity: 'none', cap: 100, findings: [] },
+    authorization: {
+      requiredCount: 2, completedCount: 2, missedStepIds: [], complete: true, scoreContribution: 10,
+    },
     tier1: 52,
     tier2: 30,
     uncappedTotal: total,

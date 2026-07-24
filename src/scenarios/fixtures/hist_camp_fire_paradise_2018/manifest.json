@@ -1,0 +1,40 @@
+{
+  "scenarioId": "hist_camp_fire_paradise_2018",
+  "area": {
+    "aoBbox": [
+      -121.65121369912755,
+      39.736542220625225,
+      -121.59278630087245,
+      39.781457779374776
+    ]
+  },
+  "generatedAt": "2026-07-24",
+  "sources": [
+    {
+      "fixture": "terrain-refpoints.json",
+      "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
+      "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
+      "license": "US Geological Survey — US federal government work, public domain",
+      "retrievedAt": "2026-07-24",
+      "sha256": "11a23fe261058f9844892cdf758f4a61166368dc3add7e65f0450c7c64001ea8"
+    },
+    {
+      "fixture": "terrain.json",
+      "source": "derived header (this pipeline)",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+      "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "retrievedAt": "2026-07-24",
+      "sha256": "3edd3c30d5d10d9272fa11e5b8658a83185ab383a3e94232da9f41c05631487e"
+    },
+    {
+      "fixture": "terrain.png",
+      "source": "AWS Open Data — Terrain Tiles (Tilezen/Mapzen joerd), Terrarium RGB encoding",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+      "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "attribution": "United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.",
+      "retrievedAt": "2026-07-24",
+      "detail": "z14 682×682px from 16 tiles, 7.345 m/px, 0.25 m vertical quantum, surface dtm-approx",
+      "sha256": "fad56d25436d6aa841d83b0ea2fa37f74748ac2b8169cd551e93196d0c9bb753"
+    }
+  ]
+}

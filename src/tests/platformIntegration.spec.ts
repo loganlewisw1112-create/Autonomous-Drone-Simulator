@@ -28,6 +28,7 @@ function peakSpeeds(scenario: ScenarioConfig, ticks: number): Record<string, num
     launchPlan: null,
   })
   initFleet()
+  useDroneStore.getState().completeAuthorizationTraining('test')
   useDroneStore.getState().beginLaunchSequence()
   useDroneStore.getState().setRunning(true)
   startSimLoop()
@@ -50,11 +51,11 @@ describe('per-platform physics reach the production loop', () => {
   afterEach(() => { stopSimLoop(); vi.useRealTimers() })
 
   it('stamps the scenario platform onto each drone at fleet init', () => {
-    const scenario = byId('extreme_fbi_hrt_compound')
+    const scenario = byId('train_hazmat_plume')
     useDroneStore.setState({ scenario, weatherState: getDefaultWeatherState(scenario.seed), launchPlan: null })
     initFleet()
     const drones = useDroneStore.getState().drones
-    expect(drones.find((d) => d.id === 'uav-01')?.platformId).toBe('brinc_lemur_2')
+    expect(drones.find((d) => d.id === 'uav-01')?.platformId).toBe('parrot_anafi_usa')
     expect(drones.find((d) => d.id === 'uav-03')?.platformId).toBe('skydio_x10')
   })
 

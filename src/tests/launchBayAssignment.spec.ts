@@ -14,7 +14,7 @@ import { getDefaultWeatherState } from '@/sim/weather/weatherEngine'
 import { haversineDistanceM } from '@/utils/geometry'
 import type { LaunchBayPlan } from '@/types'
 
-const scenario = ALL_SCENARIOS.find((s) => s.id === 'extreme_multiagency_sf_pursuit') ?? ALL_SCENARIOS[0]
+const scenario = ALL_SCENARIOS.find((s) => s.id === 'train_uscg_maritime_sar') ?? ALL_SCENARIOS[0]
 const siteIds = Object.keys(scenario.launchSites ?? {})
 const defaultAssignments = scenario.defaultLaunchAssignments ?? {}
 
@@ -87,6 +87,7 @@ describe('launch bay assignment wiring', () => {
     expect(plan.readyToLaunch, plan.blockers.join(' · ')).toBe(true)
     const placements = buildLaunchSlotsForPlan(scenario, plan, state.droneWaypoints)
 
+    useDroneStore.getState().completeAuthorizationTraining('test')
     expect(useDroneStore.getState().applyParkedLaunchPlan(plan, placements)).toBe(true)
     const applied = useDroneStore.getState()
     expect(applied.launchPlan).toEqual(plan)
@@ -105,5 +106,33 @@ describe('launch bay assignment wiring', () => {
 
     expect(useDroneStore.getState().applyParkedLaunchPlan(plan, placements)).toBe(false)
     expect(useDroneStore.getState().drones).toEqual(before)
+  })
+
+  it('applyParkedLaunchPlan parks against a site override fan', () => {
+    initFleet()
+    useDroneStore.getState().setLifecycle('preflight')
+    const sharedSiteId = Object.values(defaultAssignments)[0]
+    const authored = scenario.launchSites![sharedSiteId].position
+    const moved = {
+      lat: authored.lat + 0.002,
+      lng: authored.lng + 0.001,
+    }
+    const assignedToSite = Object.entries(defaultAssignments)
+      .filter(([, site]) => site === sharedSiteId)
+      .map(([droneId]) => droneId)
+    expect(assignedToSite.length).toBeGreaterThanOrEqual(1)
+
+    useDroneStore.setState({ siteOverrides: { [sharedSiteId]: moved } })
+    const state = useDroneStore.getState()
+    const plan = buildAutoLaunchBayPlan(scenario, state.weatherState, state.siteOverrides)
+    expect(plan.readyToLaunch, plan.blockers.join(' · ')).toBe(true)
+    const placements = buildLaunchSlotsForPlan(scenario, plan, state.droneWaypoints, state.siteOverrides)
+
+    useDroneStore.getState().completeAuthorizationTraining('test')
+    expect(useDroneStore.getState().applyParkedLaunchPlan(plan, placements)).toBe(true)
+    for (const droneId of assignedToSite) {
+      const drone = useDroneStore.getState().drones.find((candidate) => candidate.id === droneId)!
+      expect(haversineDistanceM(drone.position, moved)).toBeLessThan(BAY_SPACING_M * assignedToSite.length + 1)
+    }
   })
 })

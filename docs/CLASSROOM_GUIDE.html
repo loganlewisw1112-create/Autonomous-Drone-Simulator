@@ -57,7 +57,6 @@
   .page{padding:2.5rem 1.25rem 4rem;}
   .wrap{max-width:1020px;margin:0 auto;}
 
-  /* ---------- header ---------- */
   .eyebrow{
     font-family:var(--font-mono);
     font-size:0.72rem;
@@ -93,7 +92,6 @@
   }
   .meta-row b{color:var(--ink);font-weight:600;}
 
-  /* ---------- layout + TOC ---------- */
   .layout{display:block;}
   nav.toc{
     background:var(--surface);
@@ -149,7 +147,6 @@
     }
   }
 
-  /* ---------- sections ---------- */
   section{margin-bottom:3rem;scroll-margin-top:1.5rem;}
   section:last-of-type{margin-bottom:0;}
   h2{
@@ -189,7 +186,6 @@
   }
   strong{font-weight:700;}
 
-  /* ---------- command blocks ---------- */
   pre.cmd{
     font-family:var(--font-mono);
     font-size:0.82rem;
@@ -207,7 +203,6 @@
   }
   pre.cmd .c{color:var(--ink-dim);}
 
-  /* ---------- cards / callouts ---------- */
   .card{
     background:var(--surface);
     border:1px solid var(--line);
@@ -229,6 +224,8 @@
   .flag .card-title{color:var(--crit);}
   .note{border-left:3px solid var(--accent-2);}
   .note .card-title{color:var(--accent-2);}
+  .ok{border-left:3px solid var(--accent);}
+  .ok .card-title{color:var(--accent);}
   .callout{
     font-size:0.95rem;
     color:var(--ink-dim);
@@ -239,7 +236,6 @@
     max-width:70ch;
   }
 
-  /* ---------- tables ---------- */
   .scroll{
     overflow-x:auto;
     max-width:100%;
@@ -251,7 +247,7 @@
   table{
     border-collapse:collapse;
     width:100%;
-    min-width:32rem;
+    min-width:28rem;
     font-size:0.86rem;
     font-family:var(--font-mono);
   }
@@ -272,19 +268,6 @@
   tr:last-child td{border-bottom:none;}
   td.nowrap{white-space:nowrap;}
 
-  .pill{
-    font-family:var(--font-mono);
-    font-size:0.66rem;
-    letter-spacing:0.06em;
-    padding:0.12rem 0.45rem;
-    border-radius:2px;
-    border:1px solid;
-    white-space:nowrap;
-  }
-  .pill.crit{color:var(--crit);border-color:var(--crit);}
-  .pill.warn{color:var(--warn);border-color:var(--warn);}
-
-  /* ---------- steps ---------- */
   ol.steps{
     list-style:none;
     counter-reset:step;
@@ -334,15 +317,14 @@
     <p class="eyebrow">Autonomous Drone Mission Simulator</p>
     <h1>Classroom Guide</h1>
     <p class="subhead">
-      The classroom build lets one instructor watch a room full of students fly the same
-      mission at the same time, live, on a local network. This guide covers two things: how
-      instructor access is actually controlled, and how to run a class from a cold laptop.
-      Everything in it was checked against the code in this repository.
+      Windows-only SAR training for one instructor and a room of students on the same Wi‑Fi.
+      Simulation only — no real aircraft. Prefer the desktop classroom app so the server starts
+      and stops with Yes / Quit.
     </p>
     <div class="meta-row">
-      <span>Repo: <b>04-autonomous-drone-mission-simulator</b></span>
-      <span>Applies to: <b>classroom build</b></span>
-      <span>Last updated: <b>2026-07-21</b></span>
+      <span>Audience: <b>Windows instructors</b></span>
+      <span>Students: <b>Windows PCs only</b></span>
+      <span>Last updated: <b>2026-07-24</b></span>
     </div>
 
     <div class="layout">
@@ -350,533 +332,274 @@
       <nav class="toc">
         <span class="toc-label">Contents</span>
         <ol>
-          <li><a href="#access">How access is controlled</a></li>
-          <li><a href="#crypto">What the encryption guarantees</a></li>
-          <li><a href="#licensing">If you want real licensing</a></li>
-          <li><a href="#setup">One-time setup</a></li>
-          <li><a href="#start">Starting a class</a></li>
-          <li><a href="#join">Students joining</a></li>
-          <li><a href="#running">Running the class</a></li>
-          <li><a href="#focus">Watching one student</a></li>
-          <li><a href="#after">After the class</a></li>
-          <li><a href="#limits">Limits</a></li>
+          <li><a href="#path">Instructor path (live class)</a></li>
+          <li><a href="#needs">What you need</a></li>
+          <li><a href="#unlock">Instructor unlock</a></li>
+          <li><a href="#desktop">Desktop app Yes / No</a></li>
+          <li><a href="#web">Web demo only</a></li>
+          <li><a href="#missions">Missions &amp; operator notes</a></li>
+          <li><a href="#running">During / after class</a></li>
           <li><a href="#trouble">Troubleshooting</a></li>
-          <li><a href="#deploy">Deployment</a></li>
-          <li><a href="#edges">Known rough edges</a></li>
+          <li><a href="#limits">Limits &amp; rough edges</a></li>
+          <li><a href="#safety">Safety</a></li>
         </ol>
       </nav>
 
       <main>
 
-        <!-- 1 -->
-        <section id="access">
-          <h2><span class="num">Section 1</span>How instructor access is controlled</h2>
-
+        <section id="path">
+          <h2><span class="num">Section 1</span>Instructor path — live class on your LAN</h2>
           <p>
-            Two things have to be true before anyone reaches the instructor console. Both are
-            checked in <code>src/main.tsx</code>, in <code>resolveRoot()</code>.
+            Follow these steps on one Windows instructor PC. Students use other Windows laptops
+            or desktops on the same Wi‑Fi — not phones.
           </p>
-
-          <div class="scroll">
-            <table>
-              <thead>
-                <tr><th>Gate</th><th>What it is</th><th>Where</th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="nowrap">Build flag</td>
-                  <td>The bundle must be compiled with <code>VITE_CLASSROOM_ENABLED=true</code>. Without it the whole classroom module is tree-shaken out of the build.</td>
-                  <td class="nowrap"><code>src/main.tsx</code><br><code>vite.config.ts</code></td>
-                </tr>
-                <tr>
-                  <td class="nowrap">URL parameter</td>
-                  <td>The address must carry <code>?coordinator=1</code> (instructor) or <code>?join=&lt;CODE&gt;</code> (student). Neither is present on a normal load.</td>
-                  <td class="nowrap"><code>src/main.tsx</code></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <p>
-            The build flag is not a runtime toggle. It decides what code exists in the shipped
-            files. Verified by building both ways:
-          </p>
-
-          <div class="scroll">
-            <table>
-              <thead>
-                <tr><th>Build</th><th>Classroom chunk</th><th>Any WebSocket code</th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="nowrap"><code>vite build</code></td>
-                  <td>none emitted</td>
-                  <td>none anywhere in the output</td>
-                </tr>
-                <tr>
-                  <td class="nowrap"><code>vite build --mode classroom</code></td>
-                  <td><code>ClassroomEntry-*.js</code>, 50.63 kB (18.87 kB gzipped)</td>
-                  <td>only inside that one chunk</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <p>
-            So the mobile and Windows builds cannot be talked into classroom mode. There is no
-            URL, no flag, and no console command that turns it on, because the code is not in
-            the file. A unit test keeps it that way
-            (<code>src/tests/classroomBundleGuard.spec.ts</code>).
-          </p>
-
-          <div class="card flag">
-            <span class="card-title">Say this accurately</span>
-            <p>
-              <strong>Instructor and student accounts are required.</strong> Open
-              <code>?coordinator=1</code> or <code>?join=</code>, then sign in.
-              Creating a <em>new</em> instructor account needs a one-time supervised unlock
-              code on the <strong>Start a training class</strong> page after signup; after
-              that unlock, they sign in with username and password only and can create a
-              new class or access saved classes. Anyone can create a student account.
-              Solo Mobile/Windows operator profiles are separate.
-            </p>
-            <p>
-              Live LAN sessions still use end-to-end encryption to the instructor’s tab key.
-              When a class ends, per-student progress is re-encrypted into that instructor’s
-              IndexedDB classroom archive — only they can open it with their password.
-              A local sync envelope export leaves a clean seam for cloud sync later.
-            </p>
-            <p>
-              The commercial gate for instructor capability is supervised account setup plus
-              who you hand a classroom-enabled build to.
-            </p>
-          </div>
-
-          <p>
-            Students sign in with their own classroom accounts, then join with the 6-character
-            class code. The class code is a room name, not a secret. Nobody, including the
-            relay server, can read what a student does without the instructor's key.
-          </p>
-        </section>
-
-        <!-- 2 -->
-        <section id="crypto">
-          <h2><span class="num">Section 2</span>What the encryption guarantees</h2>
-
-          <p>
-            This part is strong and can be stated confidently.
-          </p>
-
-          <ul>
-            <li>
-              <strong>End-to-end encryption.</strong> x25519 key agreement, HKDF-SHA-256 to
-              derive the session key, AES-256-GCM per message with a fresh IV
-              (<code>src/classroom/sessionCrypto.ts</code>).
-            </li>
-            <li>
-              <strong>The relay only sees ciphertext.</strong> It routes on the plaintext
-              envelope — message type, class code, student id — and forwards the sealed payload
-              untouched. It never parses or opens it. It cannot read a single student metric
-              (<code>server/classroom.mjs</code>).
-            </li>
-            <li>
-              <strong>The instructor's private key never leaves their browser.</strong> It is
-              generated in the tab, held in memory, and never sent anywhere. Nobody can recover
-              it for you, and there is no vendor-side copy. If that tab is lost, that class's
-              data is unrecoverable. This is inherent to real end-to-end encryption, not a
-              defect, and the class-creation screen says so on screen.
-            </li>
-            <li>
-              <strong>Re-binding a live class costs a token.</strong> When a class is created the
-              relay mints a 256-bit instructor token and gives it only to the creating socket.
-              Any later attempt to point that class at a different key must present the token,
-              compared in constant time. Someone on the network who overhears the six characters
-              read aloud cannot seize the room.
-            </li>
-            <li>
-              <strong>Live frames are never stored.</strong> Only the end-of-run submission is
-              written to disk, and it is written as ciphertext, under
-              <code>classroom-runs/&lt;classId&gt;/</code> on the instructor's own machine.
-            </li>
-            <li>
-              <strong>Replayed frames are rejected.</strong> Every sealed message carries a
-              counter inside the ciphertext, under the authentication tag. The instructor keeps a
-              high-water mark per student and drops anything that repeats or rewinds.
-            </li>
-          </ul>
-
-          <p class="callout">
-            The honest summary: the crypto is the real boundary, and it holds. The access gate in
-            front of it is distribution, not identity.
-          </p>
-        </section>
-
-        <!-- 3 -->
-        <section id="licensing">
-          <h2><span class="num">Section 3</span>If you want real per-instructor licensing</h2>
-          <div class="card">
-            <p>
-              This does not exist today. Nothing in the code identifies, counts, or expires an
-              instructor.
-            </p>
-            <p>
-              The option that fits this product is an offline signed activation key: an Ed25519
-              signature over the instructor's name and an expiry date, verified in the browser
-              against a public key embedded in the build, using the
-              <code>@noble/curves</code> dependency the project already ships. It needs no
-              server and no network call, so the offline and LAN-only posture survives intact.
-            </p>
-            <p>
-              Be clear about what it buys. A client-side check is honest friction — it stops
-              casual sharing and makes expiry real — not unbreakable DRM. Anyone willing to
-              patch a JavaScript bundle can remove it.
-            </p>
-          </div>
-        </section>
-
-        <!-- 4 -->
-        <section id="setup">
-          <h2><span class="num">Section 4</span>One-time setup</h2>
-
-          <p>
-            On the instructor's laptop only. Students install nothing — they use a browser.
-            You need Node 20 or newer.
-          </p>
-
-          <pre class="cmd">npm install</pre>
-
-          <p>Two commands run the classroom:</p>
-
-          <div class="scroll">
-            <table>
-              <thead>
-                <tr><th>Command</th><th>What it does</th><th>When to use it</th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="nowrap"><code>npm run classroom</code></td>
-                  <td>Builds the classroom bundle, then starts the relay server.</td>
-                  <td>First run of the day, and after any code change.</td>
-                </tr>
-                <tr>
-                  <td class="nowrap"><code>npm run classroom:relay</code></td>
-                  <td>Starts the relay against the bundle that is already built.</td>
-                  <td>Restarting the server between classes. Much faster.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <p>
-            The relay serves the built app and relays messages on the same port, so students
-            only ever need one address.
-          </p>
-
-          <div class="card note">
-            <span class="card-title">Port</span>
-            <p>
-              Default is 8080. Override with an environment variable or a first argument; the
-              argument wins.
-            </p>
-            <pre class="cmd">node server/classroom.mjs 9000   <span class="c"># port as an argument</span>
-PORT=9000 npm run classroom:relay</pre>
-          </div>
-        </section>
-
-        <!-- 5 -->
-        <section id="start">
-          <h2><span class="num">Section 5</span>Starting a class</h2>
 
           <ol class="steps">
             <li>
-              <p>Run <code>npm run classroom</code>. On boot the relay prints its address once for
-              <code>localhost</code> and once for every non-internal IPv4 address on the machine:</p>
-              <pre class="cmd">Classroom relay on http://localhost:8080
-Classroom relay on http://192.168.1.24:8080</pre>
-              <p>The one that is not <code>localhost</code> is the address students need. If more
-              than one is printed, it is the one on the same network as the students' wifi.</p>
+              <p><strong>Install once</strong> — Node.js 20+, then:</p>
+              <pre class="cmd">git clone https://github.com/loganlewisw1112-create/Autonomous-Drone-Simulator.git
+cd Autonomous-Drone-Simulator
+npm install</pre>
             </li>
             <li>
-              <p>Open the instructor console in a browser on that laptop:</p>
-              <pre class="cmd">http://192.168.1.24:8080/?coordinator=1</pre>
+              <p><strong>Launch the desktop classroom app</strong> (preferred):</p>
+              <pre class="cmd">npm run classroom:desktop</pre>
+              <p>Or PowerShell: <code>pwsh scripts/windows/Start-ClassroomDesktop.ps1</code></p>
             </li>
             <li>
-              <p>Pick a scenario from the list. All 21 catalog scenarios are available.</p>
+              <p>At the splash, choose <strong>Yes</strong> to start the Classroom Server.
+              Electron starts the LAN relay and opens the classroom UI. Leave the app open.</p>
             </li>
             <li>
-              <p>Check the seed. It defaults to the scenario's own seed. <strong>Reroll</strong>
-              gives a random one. Whatever is showing when you create the class is what every
-              student flies, so all of them get byte-identical conditions — same weather, same
-              comms dropouts, same thermal contacts, same battery pressure. That is what makes
-              comparing their runs fair.</p>
+              <p>On Classroom home, create or sign in as an <strong>Instructor</strong> account.</p>
             </li>
             <li>
-              <p>Press <strong>Create class</strong>. The console appears with a 6-character code
-              in the header, in large type. Read it aloud.</p>
-              <p>Codes use digits and consonants only — vowels are removed so a code can never
-              accidentally spell a word.</p>
+              <p>Open <strong>Start a training class</strong>. New instructors: type the school
+              <strong>access code</strong> once → Finish account setup. (First code on a fresh
+              machine becomes the school unlock automatically.)</p>
+            </li>
+            <li>
+              <p>Choose scenario and seed → <strong>Create class</strong>. Note the
+              <strong>6-character class code</strong>.</p>
+            </li>
+            <li>
+              <p>Show students the LAN address from the relay (or desktop status), for example
+              <code>http://192.168.x.x:8080</code> — not <code>localhost</code> on their machines.</p>
+            </li>
+            <li>
+              <p>Students open that address on a <strong>Windows PC</strong>, create/sign in as
+              <strong>Student</strong>, enter the class code, and join.</p>
+            </li>
+            <li>
+              <p>Watch the instructor wall; end the class from the console when finished.
+              Progress archives into the instructor’s encrypted on-device history.</p>
+            </li>
+            <li>
+              <p><strong>Quit the desktop app</strong> when done — that stops a relay this app
+              started.</p>
             </li>
           </ol>
 
-          <div class="card flag">
-            <span class="card-title">Do not refresh this tab</span>
+          <div class="card note">
+            <span class="card-title">Terminal alternative</span>
             <p>
-              The instructor's private key exists only in that tab's memory and is never written
-              to storage. Refreshing or closing it ends the class for everyone and the key is
-              gone. Leave it open for the whole session.
+              <code>npm run classroom</code> builds and starts the relay in a terminal instead of
+              Electron. Leave that window open for the whole class. Prefer the desktop app when
+              you want Yes/No and quit-to-stop.
             </p>
           </div>
         </section>
 
-        <!-- 6 -->
-        <section id="join">
-          <h2><span class="num">Section 6</span>Students joining</h2>
+        <section id="needs">
+          <h2><span class="num">Section 2</span>What you need</h2>
+
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr><th>Role</th><th>Machine</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="nowrap">Instructor</td>
+                  <td>Windows laptop or desktop</td>
+                  <td>Node 20+, this repo, same Wi‑Fi as students. Stays on for the session.</td>
+                </tr>
+                <tr>
+                  <td class="nowrap">Students</td>
+                  <td>Windows laptop or desktop</td>
+                  <td>Modern browser only — no phone/tablet join. Same Wi‑Fi (not guest isolation).</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
           <p>
-            Students must be on the same wifi as the instructor's laptop. They open:
-          </p>
-
-          <pre class="cmd">http://192.168.1.24:8080/?join=&lt;CODE&gt;</pre>
-
-          <p>
-            The code arrives prefilled. They type their name and press <strong>Join class</strong>.
-            If they mistyped the code they can correct it on that screen.
-          </p>
-
-          <p>
-            As soon as they join, the assigned mission loads and starts. Students do not pick a
-            scenario, run preflight, or plan launch bays — they land straight into the mission
-            the instructor published, already flying, with a small banner at the top of the
-            screen showing the class code. Their tile starts reporting immediately.
+            Practical expectations: instructor PC with a working Wi‑Fi/Ethernet adapter and enough
+            RAM for Electron + the relay (typical classroom laptops are fine). First
+            <code>npm install</code> downloads Electron and needs network. No signed installer yet —
+            run from the repo with the npm scripts above.
           </p>
 
           <div class="card flag">
-            <span class="card-title">Rough edge — you must give out the full address</span>
+            <span class="card-title">Windows only</span>
             <p>
-              The console does not display a join URL or a QR code. It shows the code only, so
-              the instructor has to tell students the address as well — write it on the board
-              before class starts.
-            </p>
-            <p>
-              The plain base address does not work as a fallback. Opening
-              <code>http://192.168.1.24:8080/</code> with no parameter loads the ordinary
-              simulator, not the join screen. The <code>?join=</code> part is what reaches the
-              join screen at all.
+              Classroom entry is gated to Windows. Phones and tablets see
+              <strong>WINDOWS CLASSROOM ONLY</strong> and cannot join a live class. Solo practice
+              outside class can use the Mobile sim build.
             </p>
           </div>
         </section>
 
-        <!-- 7 -->
+        <section id="unlock">
+          <h2><span class="num">Section 3</span>Instructor unlock — type a code only</h2>
+
+          <p>
+            Creating a new instructor account needs a one-time access code on
+            <strong>Start a training class</strong>.
+          </p>
+
+          <ul>
+            <li><strong>You only type a code</strong> in the UI. Never create folders or paste hex digests by hand.</li>
+            <li>On a <strong>fresh machine</strong>, the first code typed becomes the school unlock (saved in browser storage and, when the LAN relay is up, under gitignored <code>local-secrets/</code> automatically).</li>
+            <li>If a school code is already set, later instructors must enter <strong>that same code</strong> — the app will not silently overwrite it.</li>
+            <li>Optional plaintext recovery may appear as <code>local-secrets/instructor-access-code.txt</code> on the instructor PC. You do not need to create or edit that file.</li>
+          </ul>
+
+          <div class="card note">
+            <span class="card-title">Reset (admin only)</span>
+            <p>
+              Clear this site’s browser storage for the classroom origin, and either delete
+              <code>local-secrets/instructor-access-hash.txt</code> (and the optional code file)
+              or call <code>DELETE /api/instructor-access</code> on the relay. Then type a new
+              first code.
+            </p>
+          </div>
+
+          <p>
+            Hand the unlock code to instructors offline. Do not put it in README, git, or public chat.
+            Students never need the unlock code — only instructors do.
+          </p>
+        </section>
+
+        <section id="desktop">
+          <h2><span class="num">Section 4</span>Desktop app — Yes / No / Quit</h2>
+
+          <p>
+            Preferred launch: <code>npm run classroom:desktop</code> (or the PowerShell helper).
+            After build, Electron owns the relay.
+          </p>
+
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr><th>Choice</th><th>What happens</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="nowrap"><strong>Yes</strong></td>
+                  <td>Starts <code>server/classroom.mjs</code> if it is not already up, opens the classroom UI, keeps the relay alive until you quit.</td>
+                </tr>
+                <tr>
+                  <td class="nowrap"><strong>No</strong></td>
+                  <td>Connects if a relay is already running; otherwise shows short setup and lets you open the UI without a live server.</td>
+                </tr>
+                <tr>
+                  <td class="nowrap"><strong>Quit app</strong></td>
+                  <td>Stops a relay <em>this app started</em> (Windows process tree). Does not kill a relay you started separately in a terminal.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <pre class="cmd">npm run classroom:desktop          <span class="c"># build + open Electron</span>
+npm run classroom:desktop:launch   <span class="c"># Electron only (dist/ already built)</span>
+npm run classroom                  <span class="c"># terminal: build + relay (leave open)</span>
+npm run classroom:relay            <span class="c"># restart relay without rebuild</span></pre>
+        </section>
+
+        <section id="web">
+          <h2><span class="num">Section 5</span>Web / Vercel / GitHub demo only</h2>
+
+          <p>
+            The hosted classroom link is a <strong>client showcase</strong>. Browsers and Vercel
+            cannot spawn Node, so they cannot start the LAN relay.
+          </p>
+
+          <ul>
+            <li>On web, the Yes button <strong>only probes</strong> for an already-running server — it does not start one.</li>
+            <li>No = short setup copy, then continue into UI without a live multi-student class.</li>
+            <li>Hosted unlock may still use a dashboard env digest when present; operators still only <strong>type a code</strong> in the UI.</li>
+          </ul>
+
+          <div class="card flag">
+            <span class="card-title">Honest limit</span>
+            <p>
+              A real multi-student class needs one Windows instructor PC running
+              <code>npm run classroom:desktop</code> (or <code>npm run classroom</code>) on the same
+              Wi‑Fi as the students. Vercel alone is not enough.
+            </p>
+          </div>
+
+          <p>
+            Showcase URLs:
+            <a href="https://autonomous-drone-simulator-classroom.vercel.app/">Classroom home</a> ·
+            <a href="https://autonomous-drone-simulator-classroom.vercel.app/?coordinator=1">Start a class</a> ·
+            <a href="https://autonomous-drone-simulator-classroom.vercel.app/?join=">Join</a>
+          </p>
+        </section>
+
+        <section id="missions">
+          <h2><span class="num">Section 6</span>Missions &amp; operator notes</h2>
+
+          <p>
+            Catalog: <strong>25 incident missions</strong> (10 historical + 15 training/refreshed)
+            plus <strong>6 NIST skills drills</strong> outside those 25. Same seed → same mission
+            for fair comparison.
+          </p>
+
+          <h3>Brief operator-relevant notes</h3>
+          <ul>
+            <li><strong>Auth training</strong> — Preflight AUTH steps (RID / LAANC-style / ceiling / TFR as authored). Launch stays gated until required steps are done. Simulation only — no real FAA network.</li>
+            <li><strong>Exact thermal contacts</strong> — Reported contact coordinates match heat-source truth (detection still gated by range, NETD, atmosphere, LOS).</li>
+            <li><strong>Replay</strong> — Recording stops at ~25 minutes; it does not drop oldest frames in a rolling window.</li>
+            <li><strong>Mobile command base</strong> — Moving the CB before launch replans parked drone bays around the new position (all builds).</li>
+            <li><strong>Terrain</strong> — Priority AOs ship DEM fixtures; desktop/Windows/classroom can show MapLibre terrain. Mobile keeps a flat map.</li>
+            <li><strong>Radiometric thermal</strong> — Payload specs (Boson+ / Hadron 640R class) drive Johnson R<sub>d</sub> and sensor HUD; ±5&nbsp;°C accuracy is metadata only, not a full IR image sim.</li>
+          </ul>
+
+          <p class="callout">
+            Live class traffic is end-to-end encrypted to the instructor’s browser key. The relay
+            routes ciphertext only. Refreshing the instructor tab ends that class — leave it open.
+          </p>
+        </section>
+
         <section id="running">
-          <h2><span class="num">Section 7</span>Running the class</h2>
+          <h2><span class="num">Section 7</span>During / after class</h2>
 
           <p>
-            The console is a wall of tiles, one per student, updating once a second. Each tile is
-            a small live map of that student's mission, not a video — the browser is drawing
-            their drone positions onto a shared picture of the scenario, so twenty tiles cost
-            almost nothing.
+            The instructor wall shows one live tile per student (map dots, time, battery, alerts).
+            Click a tile to focus one student for a denser stream. Critical tiles sort to the front.
           </p>
-
-          <h3>What each tile shows</h3>
-          <ul>
-            <li>The scenario backdrop, drawn once and shared by every tile: geofences in red,
-              search areas in cyan, planned routes in grey, launch and recovery sites as small
-              grey squares.</li>
-            <li>One dot per drone with a heading triangle. Green means flying, amber means
-              returning to base or recharging, red means emergency, stranded, or awaiting
-              recovery, grey means landed, idle, or recovered.</li>
-            <li>Below the map: the student's name, elapsed mission time as <code>T+mm:ss</code>,
-              the number of drones still active, and the lowest battery in their fleet — which
-              turns red under 20%.</li>
-            <li>A coloured border when something needs attention.</li>
-          </ul>
 
           <p>
-            There is no status word on the tile. Status is carried by the border colour and the
-            drone colours.
+            When a run ends, encrypted results appear in the results pane (including Auth% /
+            AuthMissed when authorization steps apply). <strong>Export CSV</strong> downloads the
+            table. Ending the class archives per-student progress into the instructor’s on-device
+            encrypted classroom history.
           </p>
 
-          <h3>Alerts</h3>
-          <p>
-            Nobody can watch twenty tiles at once, so the wall sorts itself. Any tile with an
-            alert moves to the top-left — critical first, then warning, then everyone else — and
-            the student's name appears as a coloured pill in the strip above the grid. Clicking
-            either the tile or the pill jumps straight to that student.
-          </p>
-
-          <div class="scroll">
-            <table>
-              <thead>
-                <tr><th>Severity</th><th>Border</th><th>Raised by</th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="nowrap"><span class="pill crit">CRIT</span></td>
-                  <td class="nowrap">red</td>
-                  <td>geofence breach · comms lost (signal at or below &minus;90&nbsp;dBm) · battery critical (under 10%) · emergency · airspace conflict · recovery needed (stranded, recovery requested, or recovery en route)</td>
-                </tr>
-                <tr>
-                  <td class="nowrap"><span class="pill warn">WARN</span></td>
-                  <td class="nowrap">amber</td>
-                  <td>comms degraded (signal at or below &minus;80&nbsp;dBm) · battery low (under 20%) · returning to base · stalled · idle · new thermal contact</td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="card flag">
+            <span class="card-title">Join address</span>
+            <p>
+              Write the LAN base URL on the board before class. Students can open the home page
+              and use Join, or go straight to <code>?join=&lt;CODE&gt;</code>. Do not tell them to
+              open <code>localhost</code> on another machine.
+            </p>
           </div>
-
-          <p>
-            A tile with any critical bit set is red, even if it also has warnings. The three
-            warning bits for stalled, idle, and new thermal contact are defined in the code but
-            are not raised by the current build — see <a href="#edges">known rough edges</a>.
-          </p>
-
-          <p>
-            Above 16 students the wall automatically switches to smaller tiles. There is no
-            layout control to set.
-          </p>
-
-          <h3>Header</h3>
-          <p>
-            The header carries the class code, the scenario name, the number of students joined,
-            a toggle between the results pane and the focus pane, and <strong>End class</strong>.
-            An amber <code>N rejected</code> badge appears if any message failed to decrypt or
-            repeated a sequence number; the usual cause is a student who joined a different class
-            code.
-          </p>
         </section>
 
-        <!-- 8 -->
-        <section id="focus">
-          <h2><span class="num">Section 8</span>Watching one student</h2>
-
-          <p>
-            Click a tile. That student's browser starts a second, more detailed stream at roughly
-            three times a second, and the right-hand pane fills with:
-          </p>
-          <ul>
-            <li>a larger live map of their mission;</li>
-            <li>mission time, wind in knots, visibility in miles, and their thermal contact count;</li>
-            <li>a per-drone table: drone, mission state, altitude, battery, signal.</li>
-          </ul>
-
-          <p>
-            One student at a time. Clicking another tile switches the detailed stream to them and
-            stops the previous one. This is a deliberate design limit, not a setting: the extra
-            traffic never scales with class size.
-          </p>
-
-          <p>
-            Everyone else keeps streaming their once-a-second tile the whole time, including
-            students whose simulation is paused. A paused student still reports, which is usually
-            exactly when you want to know.
-          </p>
-        </section>
-
-        <!-- 9 -->
-        <section id="after">
-          <h2><span class="num">Section 9</span>After the class</h2>
-
-          <p>
-            When a student's mission ends, their run is encrypted and sent automatically. No
-            action from the student. Submissions appear in the results pane as they arrive.
-          </p>
-
-          <p>The comparison table holds one row per student:</p>
-
-          <div class="scroll">
-            <table>
-              <thead>
-                <tr><th>Column</th><th>Meaning</th></tr>
-              </thead>
-              <tbody>
-                <tr><td class="nowrap">Student</td><td>the name they typed at join</td></tr>
-                <tr><td class="nowrap">Outcome</td><td>complete, ended, or a dash</td></tr>
-                <tr><td class="nowrap">Dur(s)</td><td>mission duration in seconds</td></tr>
-                <tr><td class="nowrap">WP</td><td>waypoints reached</td></tr>
-                <tr><td class="nowrap">Conflicts</td><td>airspace conflicts detected</td></tr>
-                <tr><td class="nowrap">Geofence</td><td>geofence breaches</td></tr>
-                <tr><td class="nowrap">RTB</td><td>return-to-base triggers</td></tr>
-                <tr><td class="nowrap">Thermal</td><td>thermal contacts</td></tr>
-                <tr><td class="nowrap">Recovery</td><td>recovery dispatches</td></tr>
-                <tr><td class="nowrap">MinBatt%</td><td>lowest battery any of their drones reached</td></tr>
-                <tr><td class="nowrap">Verified</td><td>whether that run's evidence hash chain verified</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <p>
-            <strong>Export CSV</strong> downloads the table as
-            <code>class-&lt;CODE&gt;-results.csv</code>. Nothing is scored or graded — these are
-            the numbers the simulator already records.
-          </p>
-
-          <p>
-            The relay also writes an encrypted copy of each submission to
-            <code>classroom-runs/&lt;classId&gt;/</code> on the instructor's machine, as a
-            backup against a crashed browser tab. Those files are ciphertext and the app has no
-            way to import them back today.
-          </p>
-
-          <p>
-            If a student flies a second time in the same class, their newer run replaces the
-            older one in the table.
-          </p>
-        </section>
-
-        <!-- 10 -->
-        <section id="limits">
-          <h2><span class="num">Section 10</span>Limits</h2>
-
-          <p>
-            These come from <code>src/classroom/limits.json</code>, which the browser and the
-            server both read, so there is one set of numbers rather than two that can drift.
-          </p>
-
-          <div class="scroll">
-            <table>
-              <thead>
-                <tr><th>Limit</th><th>Value</th><th>What happens at the limit</th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="nowrap">Students per class</td>
-                  <td class="nowrap">40</td>
-                  <td>The next student is refused with "That class is full."</td>
-                </tr>
-                <tr>
-                  <td class="nowrap">Classes per relay</td>
-                  <td class="nowrap">8</td>
-                  <td>Creating a ninth is refused with "This relay is already hosting its maximum number of classes."</td>
-                </tr>
-                <tr>
-                  <td class="nowrap">Message size</td>
-                  <td class="nowrap">256 KB</td>
-                  <td>Anything larger is dropped by the relay without comment.</td>
-                </tr>
-                <tr>
-                  <td class="nowrap">Heartbeat timeout</td>
-                  <td class="nowrap">30 s</td>
-                  <td>The relay pings every 15 seconds and disconnects anything silent for the full 30.</td>
-                </tr>
-                <tr>
-                  <td class="nowrap">Class code</td>
-                  <td class="nowrap">6 characters</td>
-                  <td>Digits and consonants only, from a fixed 31-character alphabet.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <p>
-            Two more, set on the browser side: tiles update once a second, the focused student
-            about three times a second, and a student whose connection is backed up past 64 KB
-            skips a frame rather than queueing a stale one.
-          </p>
-        </section>
-
-        <!-- 11 -->
         <section id="trouble">
-          <h2><span class="num">Section 11</span>Troubleshooting</h2>
+          <h2><span class="num">Section 8</span>Troubleshooting</h2>
 
           <div class="scroll">
             <table>
@@ -885,75 +608,59 @@ Classroom relay on http://192.168.1.24:8080</pre>
               </thead>
               <tbody>
                 <tr>
-                  <td>Students cannot reach the address at all.</td>
+                  <td>Server not up / Yes finds nothing (web)</td>
                   <td>
-                    Almost always the firewall on the instructor's laptop. Windows prompts to
-                    allow Node through on private networks the first time — if that prompt was
-                    dismissed, allow it in the firewall settings. Then check: everyone on the
-                    same wifi, not a guest network; students using the printed LAN address, not
-                    <code>localhost</code>; some guest and campus networks isolate clients from
-                    each other and will block this no matter what the laptop allows.
+                    Web Yes only probes. Start the desktop app with Yes, or run
+                    <code>npm run classroom</code> on the instructor PC, then retry.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Students cannot reach the address</td>
+                  <td>
+                    Firewall (allow Node/Electron on private networks), same Wi‑Fi (not guest
+                    isolation), students using the printed LAN IP — not <code>localhost</code>.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Wrong OS / phone blocked</td>
+                  <td>
+                    Classroom is Windows-only. Use a Windows laptop/desktop, or solo Mobile for
+                    practice outside class.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Access code rejected / want a new school code</td>
+                  <td>
+                    Enter the existing school code, or do an intentional admin reset (clear site
+                    storage + delete <code>local-secrets/instructor-access-*.txt</code> or
+                    <code>DELETE /api/instructor-access</code>), then type a new first code.
                   </td>
                 </tr>
                 <tr>
                   <td>"No class with that code is running."</td>
                   <td>
-                    Wrong code, or the class was ended. Codes have no vowels — a reported "O" is
-                    a zero, and there is no I, A, E, or U. Read the header code again.
+                    Wrong code or class ended. Codes have no vowels — a reported "O" is zero.
                   </td>
                 </tr>
                 <tr>
-                  <td>"That class is full."</td>
-                  <td>40 students are already in. Start a second class on the same relay.</td>
-                </tr>
-                <tr>
-                  <td>"This relay is already hosting its maximum number of classes."</td>
+                  <td>Instructor refreshed or closed the console tab</td>
                   <td>
-                    Eight classes are live on that server. End one, or restart the relay with
-                    <code>npm run classroom:relay</code> — that clears all class state, which
-                    also ends every class it was hosting.
+                    That class’s key lived only in the tab. Create a new class and read out the
+                    new code. Prefer quitting via the desktop app when ending for the day.
                   </td>
                 </tr>
                 <tr>
-                  <td>"That code is already running on this relay."</td>
-                  <td>A code collision with a live class. Press Reroll and create again.</td>
-                </tr>
-                <tr>
-                  <td>The instructor refreshed or closed the console tab.</td>
+                  <td>Ordinary simulator instead of classroom UI</td>
                   <td>
-                    The class is over. The key lived only in that tab and cannot be recovered.
-                    Students see "Class ended". Create a new class and read out the new code.
+                    Rebuild with classroom mode: <code>npm run classroom:desktop</code> or
+                    <code>npm run classroom</code> (not a plain <code>npm run build</code>).
                   </td>
                 </tr>
                 <tr>
-                  <td>The instructor's wifi dropped for a few seconds.</td>
+                  <td>Class full / relay max classes</td>
                   <td>
-                    If the tab stayed open, it retries for about 20 seconds and comes back under
-                    the same code with the same key. Students will have been told the class
-                    closed, so have them reload and join again with that same code.
-                  </td>
-                </tr>
-                <tr>
-                  <td>An amber <code>N rejected</code> badge in the header.</td>
-                  <td>
-                    Messages arrived that would not decrypt, or repeated a sequence number.
-                    Normally a student who joined a different class code. Hover the badge for the
-                    breakdown.
-                  </td>
-                </tr>
-                <tr>
-                  <td><code>?coordinator=1</code> loads the ordinary simulator instead of the console.</td>
-                  <td>
-                    The relay is serving a bundle built without the classroom flag — usually
-                    because a plain <code>npm run build</code> ran after the classroom build. Run
-                    <code>npm run classroom</code> to rebuild and restart.
-                  </td>
-                </tr>
-                <tr>
-                  <td>A student's tile is blank or frozen.</td>
-                  <td>
-                    Their browser has stopped sending. Have them reload the join URL and rejoin.
-                    They keep their name; their earlier run is not lost unless it never finished.
+                    Cap is 40 students per class, 8 classes per relay. End a class or start another
+                    on the same relay.
                   </td>
                 </tr>
               </tbody>
@@ -961,102 +668,52 @@ Classroom relay on http://192.168.1.24:8080</pre>
           </div>
         </section>
 
-        <!-- 12 -->
-        <section id="deploy">
-          <h2><span class="num">Section 12</span>Deployment</h2>
-
-          <p>
-            Three builds come off this one codebase, distinguished only by environment variables
-            set per Vercel project:
-          </p>
+        <section id="limits">
+          <h2><span class="num">Section 9</span>Limits &amp; rough edges</h2>
 
           <div class="scroll">
             <table>
               <thead>
-                <tr><th>Build</th><th>Environment</th></tr>
+                <tr><th>Limit</th><th>Value</th></tr>
               </thead>
               <tbody>
-                <tr><td class="nowrap">Mobile</td><td><code>VITE_APP_TARGET=mobile</code></td></tr>
-                <tr><td class="nowrap">Windows</td><td><code>VITE_APP_TARGET=windows</code></td></tr>
-                <tr><td class="nowrap">Classroom</td><td><code>VITE_CLASSROOM_ENABLED=true</code>, with <code>VITE_APP_TARGET</code> left unset so phone students get the mobile shell and the instructor gets the desktop console automatically</td></tr>
+                <tr><td>Students per class</td><td>40</td></tr>
+                <tr><td>Classes per relay</td><td>8</td></tr>
+                <tr><td>Class code</td><td>6 characters (digits + consonants)</td></tr>
+                <tr><td>Heartbeat timeout</td><td>30 s</td></tr>
               </tbody>
             </table>
           </div>
 
-          <div class="card flag">
-            <span class="card-title">Vercel cannot host the relay</span>
-            <p>
-              The classroom client can be hosted on Vercel. The relay cannot. It is a long-lived
-              WebSocket server that holds every class's state in memory for the duration of the
-              class, and Vercel is serverless — there is no process to hold that state.
-            </p>
-            <p>
-              So the hosted copy exists to show the interface. Real classes run on the local
-              network from <code>npm run classroom</code>. This is settled.
-            </p>
-          </div>
-
-          <p>
-            Running on the LAN is also why the classroom works over plain HTTP with no
-            certificates: the encryption is implemented without the browser API that would demand
-            a secure context. Nothing has to leave the building.
-          </p>
+          <ul>
+            <li>No signed desktop installer yet — run from the cloned repo.</li>
+            <li>Hosted demos cannot spawn the relay (by design).</li>
+            <li>Console may not show a join QR — supply the LAN URL verbally or on a board.</li>
+            <li>Instructor private key is tab memory only — no resume after refresh.</li>
+          </ul>
         </section>
 
-        <!-- 13 -->
-        <section id="edges">
-          <h2><span class="num">Section 13</span>Known rough edges</h2>
-
-          <p>Things that will be noticed in a first class, stated plainly.</p>
-
-          <ul>
-            <li>
-              <strong>No join URL or QR code on screen.</strong> The console shows the code only.
-              The instructor has to supply the address separately.
-            </li>
-            <li>
-              <strong>The instructor tab cannot be refreshed.</strong> The key is not persisted,
-              so a reload ends the class. There is no resume.
-            </li>
-            <li>
-              <strong>The "Graded (lock seed)" checkbox does nothing yet.</strong> The seed shown
-              at creation is sent to every student either way. The checkbox does not change what
-              is published.
-            </li>
-            <li>
-              <strong>Only scenario and seed are selectable.</strong> The class always runs at
-              daytime, summer, with the weather, comms, thermal, battery, and terrain dials at
-              zero. The deeper variant settings exist in the simulator but are not exposed on the
-              class setup screen.
-            </li>
-            <li>
-              <strong>Three alert types never fire.</strong> Stalled, idle, and new thermal
-              contact are defined and unit-tested, but the live publisher does not currently
-              raise them. Everything else in the alert table works.
-            </li>
-            <li>
-              <strong>No mission authoring from the console.</strong> The class configuration
-              format supports a custom-authored mission, but the setup screen offers the catalog
-              only.
-            </li>
-            <li>
-              <strong>Encrypted run backups cannot be re-imported.</strong> The relay writes them;
-              nothing reads them back.
-            </li>
-            <li>
-              <strong>No instructor notes or rubric scoring.</strong> The results table reports
-              simulator metrics only.
-            </li>
-          </ul>
+        <section id="safety">
+          <h2><span class="num">Section 10</span>Safety</h2>
+          <div class="card ok">
+            <span class="card-title">Simulation only</span>
+            <p>
+              This product is a <strong>safety-oriented search-and-rescue / public-safety training
+              simulator</strong>. It does not connect to real drones, cameras, dispatch systems,
+              Remote ID hardware, or FAA/LAANC networks. Label demos as simulation. Keep use
+              cases inspection, logistics, SAR, operations, and review — never weapon targeting
+              or harmful deployment.
+            </p>
+          </div>
         </section>
 
         <footer>
           Autonomous Drone Mission Simulator — classroom build.<br>
-          Every command, path, limit, and URL pattern in this guide was checked against the
-          source in this repository. Access model: <code>src/main.tsx</code>,
-          <code>src/components/classroom/</code>, <code>src/classroom/</code>,
-          <code>server/classroom.mjs</code>. Limits: <code>src/classroom/limits.json</code>.<br>
-          Last updated 2026-07-21.
+          Preferred path: <code>npm run classroom:desktop</code> → Yes → type access code → create class → Windows students on LAN.<br>
+          Sources: <code>desktop/classroom/</code>, <code>server/classroom.mjs</code>,
+          <code>src/components/classroom/</code>, <code>src/classroom/limits.json</code>,
+          <code>src/scenarios/scenarioManifest.ts</code>.<br>
+          Last updated 2026-07-24 (Redesign Phase 9).
         </footer>
 
       </main>

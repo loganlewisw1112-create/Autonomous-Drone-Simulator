@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest'
+import { mkdirSync } from 'node:fs'
 import { rm, rmdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { MAX_STUDENTS, MAX_CLASSES, MAX_MESSAGE_BYTES, HEARTBEAT_TIMEOUT_MS, CLASS_ID_ALPHABET, CLASS_ID_LENGTH } from '@/classroom/protocol'
+
+// Isolate instructor unlock file I/O from any real local-secrets/ on the machine.
+// Must be set before the dynamic import of classroom.mjs below.
+const testSecretsDir = path.join(tmpdir(), `drone-instructor-secrets-${process.pid}`)
+mkdirSync(testSecretsDir, { recursive: true })
+process.env.CLASSROOM_SECRETS_DIR = testSecretsDir
 
 // server/classroom.mjs is the only file in the project that handles untrusted input,
 // and it is outside `src` — so it gets neither lint nor typecheck. Build plan §10 asks
@@ -74,6 +83,9 @@ interface Relay {
   onClose(sock: FakeSocket): void
   isValidClassId(value: unknown): boolean
   resetRelayState(): void
+  handleHealthHttp(req: unknown, res: unknown): Promise<boolean>
+  handleInstructorAccessHttp(req: unknown, res: unknown): Promise<boolean>
+  loadInstructorAccessHashFromDisk(): string | null
 }
 
 let relay: Relay
@@ -93,6 +105,7 @@ afterAll(async () => {
     .catch(() => { /* Windows can hold the handle a moment longer; harmless */ })
   // rmdir only succeeds on an empty directory, so a real class's backups are never touched.
   await rmdir(runsDir).catch(() => { /* not empty, or never created */ })
+  await rm(testSecretsDir, { recursive: true, force: true }).catch(() => { /* temp dir */ })
 })
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -539,5 +552,116 @@ describe('classroom relay resource limits', () => {
     const fresh = new FakeSocket()
     create(fresh, 'CLS999')
     expect(fresh.ofType('class.ok')).toHaveLength(1)
+  })
+})
+
+// ── instructor unlock file APIs (Option A first-typed-code) ───────────────────
+
+function mockHttpRes() {
+  let status = 0
+  let body = ''
+  return {
+    get status() { return status },
+    get parsed() { return body ? JSON.parse(body) as Record<string, unknown> : null },
+    writeHead(code: number) { status = code },
+    end(data?: string) { body = data ?? '' },
+  }
+}
+
+function mockHttpReq(method: string, url: string, payload?: Record<string, unknown>) {
+  const raw = payload ? Buffer.from(JSON.stringify(payload), 'utf8') : Buffer.alloc(0)
+  return {
+    method,
+    url,
+    async *[Symbol.asyncIterator]() {
+      if (raw.length) yield raw
+    },
+  }
+}
+
+describe('classroom health HTTP API', () => {
+  it('returns classroom-relay health for GET /api/health', async () => {
+    const res = mockHttpRes()
+    expect(await relay.handleHealthHttp(mockHttpReq('GET', '/api/health'), res)).toBe(true)
+    expect(res.status).toBe(200)
+    expect(res.parsed).toEqual({ ok: true, service: 'classroom-relay' })
+  })
+
+  it('ignores non-health paths', async () => {
+    const res = mockHttpRes()
+    expect(await relay.handleHealthHttp(mockHttpReq('GET', '/api/instructor-access'), res)).toBe(false)
+    expect(res.status).toBe(0)
+  })
+})
+
+describe('classroom instructor access HTTP API', () => {
+  beforeEach(async () => {
+    // Reset secrets between cases without touching a developer's real local-secrets/.
+    const res = mockHttpRes()
+    await relay.handleInstructorAccessHttp(mockHttpReq('DELETE', '/api/instructor-access'), res)
+  })
+
+  it('reports configured=false until provision, then true', async () => {
+    const get1 = mockHttpRes()
+    expect(await relay.handleInstructorAccessHttp(mockHttpReq('GET', '/api/instructor-access'), get1)).toBe(true)
+    expect(get1.status).toBe(200)
+    expect(get1.parsed).toEqual({ configured: false })
+
+    const hash = 'a'.repeat(64)
+    const provision = mockHttpRes()
+    await relay.handleInstructorAccessHttp(
+      mockHttpReq('POST', '/api/instructor-access/provision', { hash, code: 'school-demo' }),
+      provision,
+    )
+    expect(provision.status).toBe(201)
+    expect(relay.loadInstructorAccessHashFromDisk()).toBe(hash)
+
+    const get2 = mockHttpRes()
+    await relay.handleInstructorAccessHttp(mockHttpReq('GET', '/api/instructor-access'), get2)
+    expect(get2.parsed).toEqual({ configured: true })
+  })
+
+  it('refuses a second provision without overwrite (409)', async () => {
+    const hash = 'b'.repeat(64)
+    const first = mockHttpRes()
+    await relay.handleInstructorAccessHttp(
+      mockHttpReq('POST', '/api/instructor-access/provision', { hash }),
+      first,
+    )
+    expect(first.status).toBe(201)
+
+    const second = mockHttpRes()
+    await relay.handleInstructorAccessHttp(
+      mockHttpReq('POST', '/api/instructor-access/provision', { hash: 'c'.repeat(64) }),
+      second,
+    )
+    expect(second.status).toBe(409)
+    expect(relay.loadInstructorAccessHashFromDisk()).toBe(hash)
+  })
+
+  it('verifies a plaintext code against the disk digest without returning the hash', async () => {
+    const { createHash } = await import('node:crypto')
+    const code = 'Verify-Me-Please'
+    const hash = createHash('sha256').update(code, 'utf8').digest('hex')
+    await relay.handleInstructorAccessHttp(
+      mockHttpReq('POST', '/api/instructor-access/provision', { hash }),
+      mockHttpRes(),
+    )
+
+    const ok = mockHttpRes()
+    await relay.handleInstructorAccessHttp(
+      mockHttpReq('POST', '/api/instructor-access/verify', { code }),
+      ok,
+    )
+    expect(ok.status).toBe(200)
+    expect(ok.parsed).toEqual({ ok: true })
+    expect(JSON.stringify(ok.parsed)).not.toContain(hash)
+
+    const bad = mockHttpRes()
+    await relay.handleInstructorAccessHttp(
+      mockHttpReq('POST', '/api/instructor-access/verify', { code: 'nope' }),
+      bad,
+    )
+    expect(bad.parsed).toEqual({ ok: false })
   })
 })

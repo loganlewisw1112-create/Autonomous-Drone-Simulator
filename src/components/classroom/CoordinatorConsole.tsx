@@ -20,6 +20,7 @@ import { captureBasemap } from '@/components/classroom/basemapSnapshot'
 import { ClassResults } from '@/components/classroom/ClassResults'
 import type { ClassConfig, RosterEntry, StudentId } from '@/classroom/protocol'
 import type { DroneState, LatLng, ScenarioConfig } from '@/types'
+import { isMobileLaunchSite } from '@/sim/mission/siteResolver'
 import './classroom.css'
 
 const SEVERITY_RANK: Record<AlertSeverity, number> = { crit: 0, warn: 1, none: 2 }
@@ -70,7 +71,10 @@ function scenarioGeometry(sc: ScenarioConfig): BackdropGeometry {
 function scenarioSites(sc: ScenarioConfig | null): SiteOption[] {
   if (!sc) return []
   const sites = new Map<string, SiteOption>()
+  // Match TacticalMap: only mobile / repositionable stations appear in the
+  // instructor reposition rail (fixed helipads stay out of the inject path).
   for (const [recordId, site] of Object.entries({ ...sc.recoverySites, ...sc.launchSites })) {
+    if (!isMobileLaunchSite(site)) continue
     const id = site.id?.trim() || recordId
     sites.set(id, { id, label: site.label || id, position: site.position })
   }

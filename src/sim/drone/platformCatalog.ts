@@ -22,17 +22,30 @@ export type PlatformId =
 // use a 12 µm detector pitch (published), so pitch is known even where focal length
 // (rarely published — manufacturers cite FOV instead) is not.
 //
-// Sourced 2026-07-21, per airframe:
-//   Skydio X10 / X10D  FLIR Boson+ 640x512, 12 um, EFL 13.6 mm, <30 mK  (skydio.com/x10/technical-specs)
-//   Teal 2             FLIR Hadron 640R IR optics EFL 13.6 mm / 32 deg HFOV, Boson 640x512 @ 12 um (FLIR Hadron 640 datasheet)
-//   Parrot Anafi USA   FLIR Boson 320x256, <=60 mK, 50 deg HFOV — focal length not published (parrot.com)
-//   BRINC Lemur 2      FLIR Lepton 160x120 — BRINC does not state which lens variant, and Lepton
-//                      ships in 50/57/95/160 deg options, so BOTH focal length and HFOV stay null.
-//   Freefly Astro Max  modular payload, no single integrated sensor -> thermal is null entirely.
+// Radiometric metadata (`radiometric`, `radiometricAccuracyC`) is confidence/labeling
+// only — the sim does NOT produce absolute temperature maps or a full IR image chain.
+// Johnson detection + NETD/contrast is the fidelity ceiling (Phase 7 / WP-5).
+//
+// Sourced 2026-07-24, per airframe (Phase 7 radiometric upgrade):
+//   Skydio X10 / X10D  FLIR Boson+ 640×512, 12 µm, EFL 13.6 mm, ≤30 mK
+//                      (skydio.com/x10/technical-specs). Radiometric band ±5 °C class
+//                      as operator metadata when the Boson+ radiometric option is fitted.
+//   Teal 2             FLIR Hadron 640R — 640×512, 12 µm, EFL 13.6 mm / 32° HFOV,
+//                      NETD <40 mK, radiometric temperature accuracy ±5 °C (0–100 °C)
+//                      (Teledyne FLIR Hadron 640 Series datasheet).
+//   Parrot Anafi USA   FLIR Boson 320×256, ≤60 mK, 50° HFOV — focal length not published
+//                      (parrot.com). Radiometric ±5 °C class metadata when fitted.
+//   BRINC Lemur 2      FLIR Lepton 160×120 — BRINC does not state which lens variant, and
+//                      Lepton ships in 50/57/95/160° options, so BOTH focal length and
+//                      HFOV stay null. Non-radiometric microbolometer class.
+//   Freefly Astro Max  modular payload bay — no single integrated sensor. Catalog
+//                      `thermal` stays null. Optional classroom profile
+//                      `FREEFLY_MODULAR_THERMAL_BOSON_PLUS` documents a Boson+ 640 class
+//                      payload operators may hang; not auto-assigned (POD stays fail-closed).
 //
 // Cross-check of the geometry (sensors/thermalRange.ts) against two independent manufacturers:
-// 640 x 12 um = 7.68 mm sensor width at f=13.6 mm gives HFOV 31.5 deg (Teal publishes 32) and
-// DFOV 39.8 deg (Skydio publishes 41). The model reproduces both published figures.
+// 640 × 12 µm = 7.68 mm sensor width at f=13.6 mm gives HFOV 31.5° (Teal publishes 32°) and
+// DFOV 39.8° (Skydio publishes 41°). The model reproduces both published figures.
 export interface ThermalSensorSpec {
   sensor: string
   resolutionPx: [number, number]
@@ -42,6 +55,16 @@ export interface ThermalSensorSpec {
    *  `platformTaskRanges` derives f from it when `focalLengthMm` is null. Null when unpublished. */
   hfovDeg: number | null
   netdMk: number | null
+  /**
+   * True when the payload is a radiometric (temperature-measuring) core.
+   * Used for operator labeling only — not an absolute-temp simulation claim.
+   */
+  radiometric: boolean
+  /**
+   * Published radiometric temperature-measurement accuracy band (°C), e.g. ±5.
+   * Confidence/metadata for the operator HUD; null when non-radiometric or unpublished.
+   */
+  radiometricAccuracyC: number | null
 }
 
 export interface DronePlatformSpec {
@@ -68,6 +91,22 @@ export interface DronePlatformSpec {
 // Regulatory reference: 57 mph (FAA Part 107 max groundspeed) ≈ 25.4 m/s.
 export const LEGACY_FAA_SPEED_LIMIT_MS = 25.4
 
+/**
+ * Optional Freefly Astro Max modular payload (Boson+ 640 class) for classroom docs /
+ * experiments. Not wired onto `PLATFORM_CATALOG.freefly_astro_max.thermal` — the airframe
+ * is payload-agnostic and live POD must not invent an integrated sensor.
+ */
+export const FREEFLY_MODULAR_THERMAL_BOSON_PLUS: ThermalSensorSpec = {
+  sensor: 'FLIR Boson+ (modular)',
+  resolutionPx: [640, 512],
+  pixelPitchUm: 12,
+  focalLengthMm: 13.6,
+  hfovDeg: 32,
+  netdMk: 30,
+  radiometric: true,
+  radiometricAccuracyC: 5,
+}
+
 export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
   skydio_x10: {
     id: 'skydio_x10',
@@ -85,7 +124,16 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 12.8,
     enduranceMin: 40,
     enduranceMultiplier: 1.3333,
-    thermal: { sensor: 'FLIR Boson+', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: 13.6, hfovDeg: null, netdMk: 30 },
+    thermal: {
+      sensor: 'FLIR Boson+',
+      resolutionPx: [640, 512],
+      pixelPitchUm: 12,
+      focalLengthMm: 13.6,
+      hfovDeg: null,
+      netdMk: 30,
+      radiometric: true,
+      radiometricAccuracyC: 5,
+    },
   },
   skydio_x10d: {
     id: 'skydio_x10d',
@@ -103,7 +151,16 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 12.8,
     enduranceMin: 40,
     enduranceMultiplier: 1.3333,
-    thermal: { sensor: 'FLIR Boson+', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: 13.6, hfovDeg: null, netdMk: 30 },
+    thermal: {
+      sensor: 'FLIR Boson+',
+      resolutionPx: [640, 512],
+      pixelPitchUm: 12,
+      focalLengthMm: 13.6,
+      hfovDeg: null,
+      netdMk: 30,
+      radiometric: true,
+      radiometricAccuracyC: 5,
+    },
   },
   parrot_anafi_usa: {
     id: 'parrot_anafi_usa',
@@ -122,7 +179,16 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     enduranceMin: 32,
     enduranceMultiplier: 1.0667,
     // Parrot ANAFI USA: FLIR Boson 320×256, <60 mK (9 Hz microbolometer).
-    thermal: { sensor: 'FLIR Boson', resolutionPx: [320, 256], pixelPitchUm: 12, focalLengthMm: null, hfovDeg: 50, netdMk: 60 },
+    thermal: {
+      sensor: 'FLIR Boson',
+      resolutionPx: [320, 256],
+      pixelPitchUm: 12,
+      focalLengthMm: null,
+      hfovDeg: 50,
+      netdMk: 60,
+      radiometric: true,
+      radiometricAccuracyC: 5,
+    },
   },
   teal_2: {
     id: 'teal_2',
@@ -140,8 +206,17 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 11.2,
     enduranceMin: 30,
     enduranceMultiplier: 1.0,
-    // Teal 2: FLIR Hadron 640R — 640×512 radiometric thermal core (NETD not published → null).
-    thermal: { sensor: 'FLIR Hadron 640R', resolutionPx: [640, 512], pixelPitchUm: 12, focalLengthMm: 13.6, hfovDeg: 32, netdMk: null },
+    // Teal 2: FLIR Hadron 640R — radiometric 640×512, NETD <40 mK, ±5 °C accuracy band.
+    thermal: {
+      sensor: 'FLIR Hadron 640R',
+      resolutionPx: [640, 512],
+      pixelPitchUm: 12,
+      focalLengthMm: 13.6,
+      hfovDeg: 32,
+      netdMk: 40,
+      radiometric: true,
+      radiometricAccuracyC: 5,
+    },
   },
   freefly_astro_max: {
     id: 'freefly_astro_max',
@@ -159,8 +234,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 10,
     enduranceMin: 39,
     enduranceMultiplier: 1.3,
-    // Freefly Astro Max ships thermal as a modular payload (single/dual thermal, Wiris Pro),
-    // so there is no single integrated sensor to spec.
+    // Modular payload bay — see FREEFLY_MODULAR_THERMAL_BOSON_PLUS for an optional profile.
     thermal: null,
   },
   brinc_lemur_2: {
@@ -179,8 +253,17 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 8,
     enduranceMin: 20,
     enduranceMultiplier: 0.6667,
-    // BRINC Lemur 2: FLIR Lepton micro-thermal, 160×120 (7 Hz).
-    thermal: { sensor: 'FLIR Lepton', resolutionPx: [160, 120], pixelPitchUm: 12, focalLengthMm: null, hfovDeg: null, netdMk: null },
+    // BRINC Lemur 2: FLIR Lepton micro-thermal, 160×120 (7 Hz). Optics unpublished.
+    thermal: {
+      sensor: 'FLIR Lepton',
+      resolutionPx: [160, 120],
+      pixelPitchUm: 12,
+      focalLengthMm: null,
+      hfovDeg: null,
+      netdMk: null,
+      radiometric: false,
+      radiometricAccuracyC: null,
+    },
   },
 }
 
@@ -190,7 +273,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
 export const LEGACY_PLATFORM: DronePlatformSpec = {
   id: 'legacy',
   displayName: 'Standard UAS',
-    shortName: 'STD',
+  shortName: 'STD',
   vendor: '—',
   role: 'Generic airframe',
   massKg: 2,

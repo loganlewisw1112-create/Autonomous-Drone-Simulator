@@ -1,0 +1,40 @@
+{
+  "scenarioId": "train_wildfire_flank",
+  "area": {
+    "aoBbox": [
+      -121.03781964072057,
+      39.98474222062522,
+      -120.97918035927943,
+      40.02965777937477
+    ]
+  },
+  "generatedAt": "2026-07-24",
+  "sources": [
+    {
+      "fixture": "terrain-refpoints.json",
+      "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
+      "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
+      "license": "US Geological Survey — US federal government work, public domain",
+      "retrievedAt": "2026-07-24",
+      "sha256": "9def81b7c1c35847fcc06aa6f2db8784ad39e2501f606bb6c56959cf3de5fd2a"
+    },
+    {
+      "fixture": "terrain.json",
+      "source": "derived header (this pipeline)",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+      "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "retrievedAt": "2026-07-24",
+      "sha256": "e7b2127f5a1156cf68a068646898a8b8e30da6b19473c6781635a09f1ff7efb3"
+    },
+    {
+      "fixture": "terrain.png",
+      "source": "AWS Open Data — Terrain Tiles (Tilezen/Mapzen joerd), Terrarium RGB encoding",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+      "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "attribution": "United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.",
+      "retrievedAt": "2026-07-24",
+      "detail": "z14 684×685px from 16 tiles, 7.318 m/px, 0.25 m vertical quantum, surface dtm-approx",
+      "sha256": "6f20d89240b9a15a391a9f9d579b26adf14c2250611682ba5255753906fd0338"
+    }
+  ]
+}

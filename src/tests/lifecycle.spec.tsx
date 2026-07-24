@@ -55,7 +55,7 @@ function Harness() {
       <button onClick={c.handleResume}>resume</button>
       <button onClick={c.handleEndMission}>end</button>
       <button onClick={c.handleDemoReset}>reset</button>
-      <button onClick={() => c.handleScenarioChange('demo_suspect_search')}>browse</button>
+      <button onClick={() => c.handleScenarioChange('demo_sar')}>browse</button>
     </div>
   )
 }

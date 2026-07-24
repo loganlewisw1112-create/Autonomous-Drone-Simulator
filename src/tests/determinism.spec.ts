@@ -11,6 +11,7 @@ import { createDroneState, stepDrone } from '@/sim/drone/DroneEntity'
 import { getNextCommand } from '@/sim/mission/MissionManager'
 import { generatePerDroneWaypoints } from '@/sim/mission/SARPlanner'
 import { checkThermalDetections } from '@/sim/sensors/ThermalSim'
+import { PLATFORM_CATALOG } from '@/sim/drone/platformCatalog'
 import { getAssignedAltitude } from '@/sim/safety/DeconflictEngine'
 import { createTerrainOcclusionService, occlusionEpoch } from '@/sim/terrain/OcclusionService'
 import type { TerrainOcclusionService } from '@/sim/terrain/OcclusionService'
@@ -22,6 +23,10 @@ import type { DroneState, Waypoint } from '@/types'
 const SEED = 7331
 const BASE = { lat: 37.7694, lng: -122.4862 }
 const BASE_WP: Waypoint = { id: 'base', position: BASE, altitudeFt: 0, label: 'Base' }
+const THERMAL_ENV = {
+  platform: PLATFORM_CATALOG.skydio_x10,
+  weather: { activeHazards: [] as import('@/types').WeatherHazard[], visibilityMi: 10, tempF: 68 },
+}
 const SEARCH_AREA = [
   { lat: 37.7700, lng: -122.4880 },
   { lat: 37.7720, lng: -122.4880 },
@@ -72,10 +77,10 @@ function runHeadlessSim(ticks: number): DroneState[] {
       )
     })
 
-    // Thermal checks (same as SimulationLoop)
+    // Thermal checks (same as SimulationLoop — Johnson path with environment)
     if (tick % 50 === 0) {
       for (const d of updatedDrones) {
-        checkThermalDetections(d, HEAT_SOURCES, tick, SEED)
+        checkThermalDetections(d, HEAT_SOURCES, tick, SEED, THERMAL_ENV)
       }
     }
 
@@ -136,16 +141,16 @@ describe('Determinism verification', () => {
   it('thermal detections are deterministic with same tick and seed', () => {
     const drone = createDroneState('uav-01', 'UAV-01', '#fff', { lat: 37.7712, lng: -122.4862 }, 100)
     const activeState = { ...drone, missionState: 'navigate' as const }
-    const det1 = checkThermalDetections(activeState, HEAT_SOURCES, 100, SEED)
-    const det2 = checkThermalDetections(activeState, HEAT_SOURCES, 100, SEED)
+    const det1 = checkThermalDetections(activeState, HEAT_SOURCES, 100, SEED, THERMAL_ENV)
+    const det2 = checkThermalDetections(activeState, HEAT_SOURCES, 100, SEED, THERMAL_ENV)
     expect(det1).toEqual(det2)
   })
 
   it('thermal detections differ with different tick (different PRNG state)', () => {
     const drone = createDroneState('uav-01', 'UAV-01', '#fff', { lat: 37.7712, lng: -122.4862 }, 100)
     const activeState = { ...drone, missionState: 'navigate' as const }
-    const det1 = checkThermalDetections(activeState, HEAT_SOURCES, 100, SEED)
-    const det2 = checkThermalDetections(activeState, HEAT_SOURCES, 200, SEED)
+    const det1 = checkThermalDetections(activeState, HEAT_SOURCES, 100, SEED, THERMAL_ENV)
+    const det2 = checkThermalDetections(activeState, HEAT_SOURCES, 200, SEED, THERMAL_ENV)
     // Confidence values should differ since tick changes the RNG state
     if (det1.length > 0 && det2.length > 0) {
       expect(det1[0].confidence).not.toBe(det2[0].confidence)

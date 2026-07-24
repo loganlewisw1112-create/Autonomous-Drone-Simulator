@@ -97,6 +97,7 @@ function loadPlanner(scenario = doctrineScenario()) {
     lifecycle: 'preflight',
     ui: { ...useDroneStore.getState().ui, isRunning: false, showLaunchBay: true },
   })
+  useDroneStore.getState().completeAuthorizationTraining('test')
 }
 
 beforeEach(() => loadPlanner())

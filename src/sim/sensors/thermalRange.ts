@@ -1,6 +1,6 @@
 import type { ThermalSensorSpec } from '@/sim/drone/platformCatalog'
 
-// Johnson-criteria thermal detection geometry (REALISM_ROADMAP WP-5 / §18.1).
+// Johnson-criteria thermal detection geometry (REALISM_ROADMAP WP-5 / Phase 7).
 //
 // Pure optics: how many detector pixels a target of critical dimension S subtends at
 // range R, given the sensor's focal length f and pixel pitch p (all in consistent units):
@@ -8,10 +8,8 @@ import type { ThermalSensorSpec } from '@/sim/drone/platformCatalog'
 //   pixels_across = S · f / (R · p)
 //
 // Detection / recognition / identification each need a threshold pixel count across the
-// target. This module is the geometry only — the LOS gate (WP-4) and the atmospheric
-// transmission and thermal-contrast (NETD) gates are applied by the detection pipeline
-// that consumes these ranges. It changes no live sim behaviour on its own; it is the
-// sourced physics WP-5 wires in once terrain occlusion (WP-4) lands.
+// target. Atmospheric transmission and NETD contrast gates are applied by ThermalSim /
+// effectiveDetectionRangeM. Catalog radiometricAccuracyC is operator metadata only.
 
 export const JOHNSON_PIXELS = {
   detection: 2,

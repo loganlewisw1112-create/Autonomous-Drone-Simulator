@@ -42,6 +42,7 @@ function flyLane(scenarioId: string): { score: LaneScore; laneEvents: number; ch
     launchPlan: null,
   })
   initFleet()
+  useDroneStore.getState().completeAuthorizationTraining('test')
   useDroneStore.getState().beginLaunchSequence()
   useDroneStore.getState().setRunning(true)
   startSimLoop()
