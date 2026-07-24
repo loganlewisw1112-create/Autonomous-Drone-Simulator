@@ -47,7 +47,7 @@ export function ClassroomHome() {
 
         {activeAccount.role === 'instructor' ? (
           <a className="cls-btn" href="?coordinator=1" style={{ textAlign: 'center', textDecoration: 'none' }}>
-            Continue to instructor classrooms
+            Continue to Start a training class
           </a>
         ) : (
           <a className="cls-btn" href="?join=" style={{ textAlign: 'center', textDecoration: 'none' }}>
