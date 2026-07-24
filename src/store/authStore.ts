@@ -79,8 +79,11 @@ function toActive(account: AccountRecord): ActiveAccount {
     username: account.username,
     displayName: account.displayName,
     role: account.role,
+    // Legacy instructors (pre deferred-unlock) have no pending flag and already
+    // passed the old signup gate — treat them as unlocked. New instructors set
+    // instructorUnlockPending until the Start a training class code succeeds.
     instructorUnlocked: account.role === 'instructor'
-      ? typeof account.instructorUnlockedAt === 'number'
+      ? (typeof account.instructorUnlockedAt === 'number' || account.instructorUnlockPending !== true)
       : undefined,
   }
 }
@@ -137,16 +140,21 @@ export const useAuthStore = create<AuthState>()(
 
         const role = options?.role
         let instructorUnlockedAt: number | undefined
-        if (role === 'instructor' && options?.accessCode?.trim()) {
-          if (!configuredInstructorAccessHash()) {
-            set({ authError: 'Instructor unlock is not configured on this build (missing access hash)' })
-            return false
+        let instructorUnlockPending: boolean | undefined
+        if (role === 'instructor') {
+          if (options?.accessCode?.trim()) {
+            if (!configuredInstructorAccessHash()) {
+              set({ authError: 'Instructor unlock is not configured on this build (missing access hash)' })
+              return false
+            }
+            if (!verifyInstructorAccessCode(options.accessCode)) {
+              set({ authError: 'Invalid instructor access code' })
+              return false
+            }
+            instructorUnlockedAt = Date.now()
+          } else {
+            instructorUnlockPending = true
           }
-          if (!verifyInstructorAccessCode(options.accessCode)) {
-            set({ authError: 'Invalid instructor access code' })
-            return false
-          }
-          instructorUnlockedAt = Date.now()
         }
 
         const existing = await getAccountByUsername(name)
@@ -165,6 +173,7 @@ export const useAuthStore = create<AuthState>()(
           checkBlob: makeCheckBlob(key),
           ...(role ? { role } : {}),
           ...(instructorUnlockedAt !== undefined ? { instructorUnlockedAt } : {}),
+          ...(instructorUnlockPending ? { instructorUnlockPending: true } : {}),
         }
         const ok = await putAccount(record)
         if (!ok) { set({ authError: 'Could not save the profile to device storage' }); return false }
@@ -201,6 +210,7 @@ export const useAuthStore = create<AuthState>()(
           return false
         }
         record.instructorUnlockedAt = Date.now()
+        delete record.instructorUnlockPending
         const ok = await putAccount(record)
         if (!ok) { set({ authError: 'Could not save unlock status to device storage' }); return false }
         set({
