@@ -7,8 +7,16 @@ import { bytesToHex } from '@noble/hashes/utils'
 
 const enc = new TextEncoder()
 
+/** Strip spaces/newlines/zero-width chars from pasted unlock material. */
+function normalizeUnlockInput(code: string): string {
+  return code
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, '')
+    .trim()
+}
+
 export function hashInstructorAccessCode(code: string): string {
-  return bytesToHex(sha256(enc.encode(code.trim())))
+  return bytesToHex(sha256(enc.encode(normalizeUnlockInput(code))))
 }
 
 /** Constant-time hex compare (equal length required). */
@@ -19,22 +27,34 @@ export function timingSafeEqualHex(a: string, b: string): boolean {
   return diff === 0
 }
 
-export function configuredInstructorAccessHash(
-  envHash: string | undefined = import.meta.env.VITE_INSTRUCTOR_ACCESS_HASH,
-): string | null {
-  if (typeof envHash !== 'string') return null
-  const trimmed = envHash.trim().toLowerCase()
+/**
+ * Build-time digest. Prefer the explicit Vite `define` symbol (reliable across
+ * chunks) and fall back to import.meta.env for older / test stubs.
+ */
+function buildTimeInstructorAccessHash(): string | undefined {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const defined = (globalThis as any).__INSTRUCTOR_ACCESS_HASH__ as unknown
+    if (typeof defined === 'string' && defined.trim()) return defined
+  } catch { /* ignore */ }
+  const fromEnv = import.meta.env.VITE_INSTRUCTOR_ACCESS_HASH
+  return typeof fromEnv === 'string' ? fromEnv : undefined
+}
+
+export function configuredInstructorAccessHash(envHash?: string): string | null {
+  const raw = arguments.length === 0 ? buildTimeInstructorAccessHash() : envHash
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim().toLowerCase()
   if (!/^[0-9a-f]{64}$/.test(trimmed)) return null
   return trimmed
 }
 
-export function verifyInstructorAccessCode(
-  code: string,
-  envHash: string | undefined = import.meta.env.VITE_INSTRUCTOR_ACCESS_HASH,
-): boolean {
-  const expected = configuredInstructorAccessHash(envHash)
+export function verifyInstructorAccessCode(code: string, envHash?: string): boolean {
+  const expected = arguments.length >= 2
+    ? configuredInstructorAccessHash(envHash)
+    : configuredInstructorAccessHash()
   if (!expected) return false
-  const trimmed = code.trim()
+  const trimmed = normalizeUnlockInput(code)
   if (!trimmed) return false
   // Accept the agency plaintext code (hashed client-side) OR the 64-char hex hash
   // pasted directly during supervised instructor setup.
