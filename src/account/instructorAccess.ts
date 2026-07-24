@@ -41,20 +41,18 @@ function buildTimeInstructorAccessHash(): string | undefined {
   return typeof fromEnv === 'string' ? fromEnv : undefined
 }
 
-export function configuredInstructorAccessHash(
-  envHash: string | undefined = buildTimeInstructorAccessHash(),
-): string | null {
-  if (typeof envHash !== 'string') return null
-  const trimmed = envHash.trim().toLowerCase()
+export function configuredInstructorAccessHash(envHash?: string): string | null {
+  const raw = arguments.length === 0 ? buildTimeInstructorAccessHash() : envHash
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim().toLowerCase()
   if (!/^[0-9a-f]{64}$/.test(trimmed)) return null
   return trimmed
 }
 
-export function verifyInstructorAccessCode(
-  code: string,
-  envHash: string | undefined = buildTimeInstructorAccessHash(),
-): boolean {
-  const expected = configuredInstructorAccessHash(envHash)
+export function verifyInstructorAccessCode(code: string, envHash?: string): boolean {
+  const expected = arguments.length >= 2
+    ? configuredInstructorAccessHash(envHash)
+    : configuredInstructorAccessHash()
   if (!expected) return false
   const trimmed = normalizeUnlockInput(code)
   if (!trimmed) return false
