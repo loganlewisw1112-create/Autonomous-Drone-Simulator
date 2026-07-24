@@ -7,7 +7,7 @@ import { applyGeofenceFlags, applyCommsModel, applySurfaceClearanceSafety } from
 import { buildSafeDroneRoutes } from '@/sim/mission/routeAudit'
 import { validateOperatorRoute } from '@/sim/mission/operatorRoutes'
 import { restoreSavedWaypointRoutes } from '@/sim/mission/waypointPersistence'
-import { buildLaunchSlotsForPlan } from '@/sim/mission/launchPlanGeometry'
+import { replanLaunchSlots, seededLaunchPlanFromScenario } from '@/sim/mission/launchPlanGeometry'
 import { resolveLaunchSite } from '@/sim/mission/siteResolver'
 import { recoverySiteIdForDrone } from '@/sim/mission/siteAssignments'
 import {
@@ -20,7 +20,8 @@ import {
 import { checkThermalDetections } from '@/sim/sensors/ThermalSim'
 import { evaluateGnss } from '@/sim/nav/gnss'
 import { occlusionEpoch, type TerrainOcclusionService } from '@/sim/terrain/OcclusionService'
-import { occlusionServiceFor } from '@/scenarios/terrainFixtures'
+import { occlusionServiceFor, resolveTerrainFixtureId } from '@/scenarios/terrainFixtures'
+import { ensureSurfaceClearanceAglFt } from '@/sim/terrain/altitude'
 import { constellationAt, constellationFor, type ConstellationFixture } from '@/scenarios/constellationFixtures'
 import { laneForScenario } from '@/scenarios/nistLanes'
 import {
@@ -150,6 +151,7 @@ export function tick() {
         baseAvailable: selectedRechargeStation !== null
           || recoveryRelocation === undefined
           || elapsedSec >= recoveryRelocation.availableAtSec,
+        loiterOnRouteComplete: scenario.loiterOnRouteComplete === true,
       }
 
       const { cmd: rawCmd, nextState, nextWaypointIndex, hoverStartSec, rechargeStartSec, sortieResumeWpIdx } = getNextCommand(drone, mm)
@@ -157,10 +159,19 @@ export function tick() {
       // Skip physics for grounded/recovery states — drone is not airborne, battery shouldn't drain
       const isGrounded = ['idle', 'preflight', 'landed', 'remote_landed', 'stranded', 'recovery_requested', 'recovery_enroute', 'recovered', 'unrecoverable_sim'].includes(nextState)
 
-      // Apply weather speed cap via throttle reduction
+      // Apply weather speed cap via throttle reduction. When a DEM is sourced, raise the
+      // commanded AGL just enough to keep surface clearance over ridges/structures — altitudes
+      // stay AGL-canonical; MSL climbs/descends with the terrain.
+      const terrainTargetAlt = !isGrounded && rawCmd.targetAltitudeFt !== undefined
+        ? ensureSurfaceClearanceAglFt(missionOcclusion, drone.position, rawCmd.targetAltitudeFt)
+        : rawCmd.targetAltitudeFt
       const cmd = isGrounded
         ? rawCmd
-        : { ...rawCmd, throttle: ((rawCmd.throttle ?? 1) * weatherState.speedCapMultiplier) }
+        : {
+            ...rawCmd,
+            throttle: ((rawCmd.throttle ?? 1) * weatherState.speedCapMultiplier),
+            targetAltitudeFt: terrainTargetAlt,
+          }
 
       const prevState = drone.missionState
       const prevWpIdx = drone.currentWaypointIndex
@@ -951,8 +962,13 @@ export function stopSimLoop() {
 }
 
 export function initFleet() {
-  const { scenario, launchPlan, weatherState, scenarioVariant } = useDroneStore.getState()
-  missionOcclusion = scenario ? occlusionServiceFor(scenario.id) : undefined
+  const { scenario, launchPlan, weatherState, scenarioVariant, siteOverrides } = useDroneStore.getState()
+  missionOcclusion = scenario
+    ? (() => {
+        const fixtureId = resolveTerrainFixtureId(scenario)
+        return fixtureId ? occlusionServiceFor(fixtureId) : undefined
+      })()
+    : undefined
   missionConstellation = constellationFor(scenario?.id)
   missionLane = laneForScenario(scenario?.id)
   laneIdentified.clear()
@@ -963,11 +979,13 @@ export function initFleet() {
   // Catalog and custom scenarios seed a launch plan from their authored assignments so
   // drones resolve through the physical site pool without a manual bay-planning pass.
   // Held locally for bay computation and re-applied after resetMission() clears the store plan.
-  const seededLaunchPlan: LaunchBayPlan | null =
-    !launchPlan && scenario.defaultLaunchAssignments
-      ? { assignments: { ...scenario.defaultLaunchAssignments }, bayStatuses: [], readyToLaunch: true, blockers: [] }
-      : null
+  const seededLaunchPlan: LaunchBayPlan | null = !launchPlan
+    ? seededLaunchPlanFromScenario(scenario)
+    : null
   const effectiveLaunchPlan = launchPlan ?? seededLaunchPlan
+  // Preserve mobile CB overrides across resetMission so initFleet / demo restarts still
+  // spawn from the repositioned base. setScenario clears overrides on a scenario swap.
+  const preservedSiteOverrides = { ...siteOverrides }
 
   const colors = ['#00d4ff', '#44ff88', '#ffaa00', '#ff88ff', '#ff6644', '#cc44ff', '#ffdd00', '#ff4488']
   const droneIds = Array.from({ length: scenario.droneCount }, (_, i) => `uav-${String(i + 1).padStart(2, '0')}`)
@@ -996,7 +1014,12 @@ export function initFleet() {
         validateRoute: (droneId, route) => validateOperatorRoute(scenario, droneId, route).accepted,
       })
 
-  const launchSlots = buildLaunchSlotsForPlan(scenario, effectiveLaunchPlan, restoredRoutes.routes)
+  const launchSlots = replanLaunchSlots(
+    scenario,
+    effectiveLaunchPlan,
+    restoredRoutes.routes,
+    preservedSiteOverrides,
+  )
 
   const drones = droneIds.map((id, i) => ({
     id,
@@ -1024,7 +1047,11 @@ export function initFleet() {
   useDroneStore.getState().setDrones(drones)
   useDroneStore.getState().resetMission()
 
-  // resetMission() clears launchPlan; re-apply the authored site-pool assignments.
+  // resetMission() clears launchPlan and siteOverrides; restore both so a pre-launch
+  // mobile CB move still drives spawn geometry and launch doctrine.
+  if (Object.keys(preservedSiteOverrides).length > 0) {
+    useDroneStore.setState({ siteOverrides: preservedSiteOverrides })
+  }
   if (seededLaunchPlan) useDroneStore.getState().setLaunchPlan(seededLaunchPlan)
 
   // Re-apply weather state (in case variant changed since last load)

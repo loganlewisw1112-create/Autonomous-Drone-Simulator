@@ -23,6 +23,9 @@ function assessment(over: Partial<MissionAssessment> = {}): MissionAssessment {
     progressPercent: 64,
     objectives: [],
     lifeSafety: { status: 'pass', severity: 'none', cap: 100, findings: [] },
+    authorization: {
+      requiredCount: 2, completedCount: 2, missedStepIds: [], complete: true, scoreContribution: 10,
+    },
     tier1: 42,
     tier2: 30,
     uncappedTotal: 72,

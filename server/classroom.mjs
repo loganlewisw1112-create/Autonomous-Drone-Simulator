@@ -18,8 +18,8 @@
 //     was secret.
 
 import http from 'node:http'
-import { readFileSync } from 'node:fs'
-import { readFile, mkdir, writeFile } from 'node:fs/promises'
+import { readFileSync, existsSync } from 'node:fs'
+import { readFile, mkdir, writeFile, unlink } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import os from 'node:os'
@@ -31,6 +31,14 @@ const PORT = Number(process.argv[2] || process.env.PORT || 8080)
 // Resolve relative to the repo root (this file lives in ./server).
 const distDir = fileURLToPath(new URL('../dist', import.meta.url))
 const runsDir = fileURLToPath(new URL('../classroom-runs', import.meta.url))
+// Gitignored school unlock material — written automatically on first typed code.
+// Tests may point CLASSROOM_SECRETS_DIR at a temp folder so they never touch a
+// developer's real local-secrets/.
+const secretsDir = process.env.CLASSROOM_SECRETS_DIR
+  ? path.resolve(process.env.CLASSROOM_SECRETS_DIR)
+  : fileURLToPath(new URL('../local-secrets', import.meta.url))
+const instructorHashPath = path.join(secretsDir, 'instructor-access-hash.txt')
+const instructorCodePath = path.join(secretsDir, 'instructor-access-code.txt')
 
 // Single source of truth for the guardrails and the class-code alphabet, shared with
 // src/classroom/protocol.ts. This file is plain ESM JS and cannot import the TS module,
@@ -328,8 +336,199 @@ async function serveStatic(req, res) {
   }
 }
 
+function sendJson(res, status, body) {
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
+  res.end(JSON.stringify(body))
+}
+
+async function readRequestBody(req, limit = 4096) {
+  const chunks = []
+  let total = 0
+  for await (const chunk of req) {
+    total += chunk.length
+    if (total > limit) return null
+    chunks.push(chunk)
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+/** Read the school unlock digest from gitignored local-secrets (if present). */
+export function loadInstructorAccessHashFromDisk() {
+  try {
+    if (!existsSync(instructorHashPath)) return null
+    const lines = readFileSync(instructorHashPath, 'utf8').split(/\r?\n/)
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      if (/^[0-9a-fA-F]{64}$/.test(trimmed)) return trimmed.toLowerCase()
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function hashAccessCode(code) {
+  const normalized = String(code).replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, '').trim()
+  if (!normalized) return null
+  return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex')
+}
+
+function codesMatchExpected(code, expectedHash) {
+  if (!expectedHash || typeof code !== 'string') return false
+  const normalized = code.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, '').trim()
+  if (!normalized) return false
+  const asHex = normalized.toLowerCase()
+  if (/^[0-9a-f]{64}$/.test(asHex)) {
+    const a = Buffer.from(asHex, 'utf8')
+    const b = Buffer.from(expectedHash, 'utf8')
+    return a.length === b.length && crypto.timingSafeEqual(a, b)
+  }
+  const digest = hashAccessCode(normalized)
+  if (!digest) return false
+  const a = Buffer.from(digest, 'utf8')
+  const b = Buffer.from(expectedHash, 'utf8')
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
+
+/**
+ * Health probe for the desktop shell / web Yes dialog.
+ *   GET/HEAD /api/health → { ok: true, service: 'classroom-relay' }
+ */
+export async function handleHealthHttp(req, res) {
+  const url = new URL(req.url || '/', 'http://localhost')
+  if (url.pathname !== '/api/health') return false
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    sendJson(res, 405, { ok: false, error: 'method-not-allowed' })
+    return true
+  }
+  sendJson(res, 200, { ok: true, service: 'classroom-relay' })
+  return true
+}
+
+/**
+ * Option A unlock APIs:
+ *   GET    /api/instructor-access           → { configured }
+ *   POST   /api/instructor-access/verify    → { ok }  (never returns the hash)
+ *   POST   /api/instructor-access/provision → first writer wins; 409 if already set
+ *   DELETE /api/instructor-access           → intentional admin reset of disk secrets
+ */
+export async function handleInstructorAccessHttp(req, res) {
+  const url = new URL(req.url || '/', 'http://x')
+  if (!url.pathname.startsWith('/api/instructor-access')) return false
+
+  if (url.pathname === '/api/instructor-access' && req.method === 'GET') {
+    sendJson(res, 200, { configured: loadInstructorAccessHashFromDisk() !== null })
+    return true
+  }
+
+  if (url.pathname === '/api/instructor-access' && req.method === 'DELETE') {
+    try {
+      if (existsSync(instructorHashPath)) await unlink(instructorHashPath)
+      if (existsSync(instructorCodePath)) await unlink(instructorCodePath)
+    } catch (err) {
+      console.error('instructor-access reset failed', err)
+      sendJson(res, 500, { ok: false, error: 'reset-failed' })
+      return true
+    }
+    sendJson(res, 200, { ok: true })
+    return true
+  }
+
+  if (url.pathname === '/api/instructor-access/verify' && req.method === 'POST') {
+    const raw = await readRequestBody(req)
+    if (raw === null) {
+      sendJson(res, 413, { ok: false, error: 'too-large' })
+      return true
+    }
+    let body
+    try {
+      body = JSON.parse(raw || '{}')
+    } catch {
+      sendJson(res, 400, { ok: false, error: 'bad-json' })
+      return true
+    }
+    const expected = loadInstructorAccessHashFromDisk()
+    if (!expected) {
+      sendJson(res, 404, { ok: false, error: 'not-configured' })
+      return true
+    }
+    sendJson(res, 200, { ok: codesMatchExpected(body?.code, expected) })
+    return true
+  }
+
+  if (url.pathname === '/api/instructor-access/provision' && req.method === 'POST') {
+    const raw = await readRequestBody(req)
+    if (raw === null) {
+      sendJson(res, 413, { ok: false, error: 'too-large' })
+      return true
+    }
+    let body
+    try {
+      body = JSON.parse(raw || '{}')
+    } catch {
+      sendJson(res, 400, { ok: false, error: 'bad-json' })
+      return true
+    }
+    const existing = loadInstructorAccessHashFromDisk()
+    if (existing) {
+      sendJson(res, 409, { ok: false, error: 'already-configured' })
+      return true
+    }
+    const hash = typeof body?.hash === 'string' ? body.hash.trim().toLowerCase() : ''
+    if (!/^[0-9a-f]{64}$/.test(hash)) {
+      sendJson(res, 400, { ok: false, error: 'bad-hash' })
+      return true
+    }
+    try {
+      await mkdir(secretsDir, { recursive: true })
+      const hashContents = [
+        '# School instructor unlock digest (SHA-256 hex). Auto-written on first typed code.',
+        '# Do not commit this folder. Delete this file (or DELETE /api/instructor-access) to reset.',
+        hash,
+        '',
+      ].join('\n')
+      await writeFile(instructorHashPath, hashContents, { encoding: 'utf8', flag: 'wx' })
+      if (typeof body?.code === 'string' && body.code.trim()) {
+        const plaintext = body.code.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, '').trim()
+        // Optional local-admin recovery only — never required of the instructor UI.
+        await writeFile(
+          instructorCodePath,
+          [
+            '# Optional plaintext recovery for this machine. Gitignored. Never commit.',
+            plaintext,
+            '',
+          ].join('\n'),
+          { encoding: 'utf8', flag: 'wx' },
+        ).catch(() => { /* recovery file is best-effort */ })
+      }
+    } catch (err) {
+      if (err && (err.code === 'EEXIST' || loadInstructorAccessHashFromDisk())) {
+        sendJson(res, 409, { ok: false, error: 'already-configured' })
+        return true
+      }
+      console.error('instructor-access provision failed', err)
+      sendJson(res, 500, { ok: false, error: 'provision-failed' })
+      return true
+    }
+    sendJson(res, 201, { ok: true })
+    return true
+  }
+
+  sendJson(res, 404, { ok: false, error: 'not-found' })
+  return true
+}
+
+async function handleHttp(req, res) {
+  if (await handleHealthHttp(req, res)) return
+  if (await handleInstructorAccessHttp(req, res)) return
+  return serveStatic(req, res)
+}
+
 export function startRelay(port = PORT) {
-  const server = http.createServer(serveStatic)
+  const server = http.createServer((req, res) => {
+    void handleHttp(req, res)
+  })
   const wss = new WebSocketServer({ server })
 
   wss.on('connection', sock => {

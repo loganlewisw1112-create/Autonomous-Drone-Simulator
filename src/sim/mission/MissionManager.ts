@@ -3,8 +3,22 @@ import { haversineDistanceM, bearingDeg } from '@/utils/geometry'
 import { isBatteryCritical } from '@/sim/drone/DroneEntity'
 
 const ARRIVAL_RADIUS_M = 10
-const INSPECT_DWELL_SEC = 8
+/** Seconds to confirm a thermal contact before entering thermal_hold. */
+export const INSPECT_DWELL_SEC = 8
+/**
+ * Auto-resume after this many seconds in thermal_hold so classroom/demo fleets
+ * do not hover forever waiting for a PIC click. Operator RESUME still works
+ * after THERMAL_HOLD_MIN_SEC (UI/store).
+ */
+export const THERMAL_HOLD_TIMEOUT_SEC = 30
+/** Cap authored waypoint dwells so extreme catalog values cannot stall progress. */
+export const MAX_WAYPOINT_DWELL_SEC = 30
 export const AVOID_MANEUVER_SEC = 4
+
+export function effectiveDwellSec(dwellTimeSec: number | undefined): number | undefined {
+  if (dwellTimeSec === undefined) return undefined
+  return Math.min(Math.max(0, dwellTimeSec), MAX_WAYPOINT_DWELL_SEC)
+}
 
 export interface MissionSafetyContext {
   batteryReservePct?: number
@@ -28,6 +42,8 @@ export interface MissionManagerState extends MissionSafetyContext {
   weatherHazard?: string
   launchCommandedSec?: number   // sim-time the launch command was issued (staggered takeoff)
   baseAvailable?: boolean       // false while a mobile launch/recovery site is relocating
+  /** When true, hold at the last waypoint instead of RTB/land/next sortie. */
+  loiterOnRouteComplete?: boolean
 }
 
 export interface CommandResult {
@@ -37,6 +53,26 @@ export interface CommandResult {
   hoverStartSec?: number
   rechargeStartSec?: number
   sortieResumeWpIdx?: number
+}
+
+function routeCompleteResult(
+  drone: DroneState,
+  assignedAltitudeFt: number,
+  loiterOnRouteComplete: boolean | undefined,
+): CommandResult {
+  if (loiterOnRouteComplete) {
+    return {
+      cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: assignedAltitudeFt },
+      nextState: 'route_complete_loiter',
+      nextWaypointIndex: drone.currentWaypointIndex,
+    }
+  }
+  // Prefer RTB → recharge/next sortie or land. Indefinite loiter only when opted in.
+  return {
+    cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0.9, targetAltitudeFt: 120 },
+    nextState: 'return_to_base',
+    nextWaypointIndex: 0,
+  }
 }
 
 export function getMissionSafetyOverride(
@@ -118,13 +154,17 @@ export function getNextCommand(drone: DroneState, mm: MissionManagerState): Comm
       const wp = waypoints[drone.currentWaypointIndex]
       if (!wp) { nextMissionState = 'return_to_base'; break }
       targetPos = wp.position
-      targetAltFt = assignedAltitudeFt
+      // Waypoint altitudes are AGL. Prefer the authored AGL when present so routes that
+      // climb/descend over ridges keep their terrain-relative profile; fall back to the
+      // deconflict band only when the waypoint carries no altitude.
+      targetAltFt = wp.altitudeFt > 0 ? wp.altitudeFt : assignedAltitudeFt
       throttle = 0.8
       if (haversineDistanceM(drone.position, wp.position) < ARRIVAL_RADIUS_M) {
         // Enter hover if waypoint has a dwell and hasn't started yet
-        if (wp.dwellTimeSec !== undefined && drone.hoverStartSec === undefined) {
+        const dwellSec = effectiveDwellSec(wp.dwellTimeSec)
+        if (dwellSec !== undefined && drone.hoverStartSec === undefined) {
           return {
-            cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: assignedAltitudeFt },
+            cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: targetAltFt },
             nextState: 'hover',
             nextWaypointIndex: drone.currentWaypointIndex,
             hoverStartSec: mm.elapsedSec,
@@ -132,13 +172,7 @@ export function getNextCommand(drone: DroneState, mm: MissionManagerState): Comm
         }
         nextWpIdx = drone.currentWaypointIndex + 1
         if (nextWpIdx >= waypoints.length) {
-          // Route complete — loiter at final waypoint. Do NOT auto-RTB.
-          // Battery/weather/geofence/operator guards will pull us into RTB when needed.
-          return {
-            cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: assignedAltitudeFt },
-            nextState: 'route_complete_loiter',
-            nextWaypointIndex: drone.currentWaypointIndex,
-          }
+          return routeCompleteResult(drone, assignedAltitudeFt, mm.loiterOnRouteComplete)
         }
       }
       break
@@ -146,31 +180,31 @@ export function getNextCommand(drone: DroneState, mm: MissionManagerState): Comm
 
     case 'hover': {
       const wp = waypoints[drone.currentWaypointIndex]
+      const dwellSec = effectiveDwellSec(wp?.dwellTimeSec)
 
       // Guard: invalid hover state — advance immediately
-      if (!wp?.dwellTimeSec || drone.hoverStartSec === undefined) {
+      if (!dwellSec || drone.hoverStartSec === undefined) {
         const ni = drone.currentWaypointIndex + 1
         if (ni >= waypoints.length) {
-          // Route complete — loiter, do NOT auto-RTB.
-          return { cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: assignedAltitudeFt }, nextState: 'route_complete_loiter', nextWaypointIndex: drone.currentWaypointIndex }
+          return routeCompleteResult(drone, assignedAltitudeFt, mm.loiterOnRouteComplete)
         }
         return { cmd: { targetHeadingDeg: bearingDeg(drone.position, waypoints[ni].position), throttle: 0.8, targetAltitudeFt: assignedAltitudeFt }, nextState: 'navigate', nextWaypointIndex: ni }
       }
 
       const elapsed = mm.elapsedSec - drone.hoverStartSec
-      if (elapsed >= wp.dwellTimeSec) {
+      if (elapsed >= dwellSec) {
         // Dwell complete — advance to next waypoint
         const ni = drone.currentWaypointIndex + 1
         if (ni >= waypoints.length) {
-          // Route complete — loiter, do NOT auto-RTB.
-          return { cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: assignedAltitudeFt }, nextState: 'route_complete_loiter', nextWaypointIndex: drone.currentWaypointIndex }
+          return routeCompleteResult(drone, assignedAltitudeFt, mm.loiterOnRouteComplete)
         }
         return { cmd: { targetHeadingDeg: bearingDeg(drone.position, waypoints[ni].position), throttle: 0.8, targetAltitudeFt: assignedAltitudeFt }, nextState: 'navigate', nextWaypointIndex: ni }
       }
 
       // Still hovering — hold heading, throttle=0 lets drone decelerate to zero naturally
+      const hoverAltFt = wp?.altitudeFt && wp.altitudeFt > 0 ? wp.altitudeFt : assignedAltitudeFt
       return {
-        cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: assignedAltitudeFt },
+        cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: hoverAltFt },
         nextState: 'hover',
         nextWaypointIndex: drone.currentWaypointIndex,
         // hoverStartSec NOT returned → SimulationLoop preserves existing value
@@ -258,7 +292,7 @@ export function getNextCommand(drone: DroneState, mm: MissionManagerState): Comm
     case 'inspect': {
       const elapsed = mm.elapsedSec - (drone.inspectStartSec ?? mm.elapsedSec)
       if (elapsed >= INSPECT_DWELL_SEC) {
-        // Dwell complete — enter thermal_hold; operator must explicitly resume the flight plan
+        // Dwell complete — enter thermal_hold; auto-timeout resumes if PIC is silent
         return {
           cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: assignedAltitudeFt },
           nextState: 'thermal_hold',
@@ -272,16 +306,30 @@ export function getNextCommand(drone: DroneState, mm: MissionManagerState): Comm
       }
     }
 
-    case 'thermal_hold':
+    case 'thermal_hold': {
+      const holdElapsed = mm.elapsedSec - (drone.thermalHoldStartSec ?? mm.elapsedSec)
+      if (holdElapsed >= THERMAL_HOLD_TIMEOUT_SEC) {
+        const resumeState = drone.inspectReturnState ?? 'navigate'
+        return {
+          cmd: {
+            targetHeadingDeg: drone.headingDeg,
+            throttle: resumeState === 'navigate' || resumeState === 'sar_grid' ? 0.8 : 0,
+            targetAltitudeFt: assignedAltitudeFt,
+          },
+          nextState: resumeState,
+          nextWaypointIndex: drone.currentWaypointIndex,
+        }
+      }
       return {
         cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: assignedAltitudeFt },
         nextState: 'thermal_hold',
         nextWaypointIndex: drone.currentWaypointIndex,
       }
+    }
 
     case 'route_complete_loiter':
-      // Hold position at last waypoint. Operator RTB / battery reserve / weather / geofence
-      // will interrupt via the guards at the top of getNextCommand.
+      // Hold position at last waypoint when scenario opted into loiter-as-success.
+      // Operator RTB / battery reserve / weather / geofence interrupt via top guards.
       return {
         cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: assignedAltitudeFt },
         nextState: 'route_complete_loiter',

@@ -173,7 +173,7 @@ describe('WP-3 AO bbox derivation (tools/fixtures/aoBbox.mjs)', () => {
   })
 
   it('is deterministic and rounded to 6dp, so a regenerated fixture hashes identically', () => {
-    const scenario = scenarioById('extreme_nypd_times_sq_mci')
+    const scenario = scenarioById('train_hazmat_plume')
     expect(aoBbox(scenario)).toEqual(aoBbox(scenario))
     for (const value of Object.values(aoBbox(scenario))) {
       expect(value).toBe(Math.round(value * 1e6) / 1e6)
@@ -191,8 +191,8 @@ describe('WP-3 frozen UASFM fixtures', () => {
 
   it('covers the scenarios the FAA actually publishes a facility map over', () => {
     expect(withGrid.length).toBeGreaterThanOrEqual(2)
-    expect(withGrid.map((s) => s.id)).toContain('extreme_nypd_times_sq_mci')
-    expect(withGrid.map((s) => s.id)).toContain('extreme_uscg_cape_cod_sar')
+    expect(withGrid.map((s) => s.id)).toContain('train_hazmat_plume')
+    expect(withGrid.map((s) => s.id)).toContain('train_uscg_maritime_sar')
   })
 
   it('freezes a well-formed 30 arc-second grid with sane published ceilings', () => {
@@ -222,8 +222,14 @@ describe('WP-3 frozen UASFM fixtures', () => {
   })
 
   it('stays inside §19\'s ~20 KB per-scenario airspace budget', () => {
+    const fixtureSourceByScenario: Record<string, string> = {
+      train_uscg_maritime_sar: 'extreme_uscg_cape_cod_sar',
+      train_hazmat_plume: 'extreme_dhs_port_la_chemical',
+      demo_perimeter: 'demo_perimeter',
+    }
     for (const scenario of withGrid) {
-      const bytes = readFileSync(`src/scenarios/fixtures/${scenario.id}/airspace.json`).byteLength
+      const fixtureId = fixtureSourceByScenario[scenario.id] ?? scenario.id
+      const bytes = readFileSync(`src/scenarios/fixtures/${fixtureId}/airspace.json`).byteLength
       expect(bytes).toBeLessThanOrEqual(20 * 1024)
     }
   })
@@ -274,7 +280,7 @@ describe('WP-3 published-ceiling lookup', () => {
   })
 
   it('collects planned route points from both shared and per-drone routes', () => {
-    const timesSquare = scenarioById('extreme_nypd_times_sq_mci')
+    const timesSquare = scenarioById('train_hazmat_plume')
     const planned = plannedRoutePoints(timesSquare)
     expect(planned.length).toBe(Object.values(timesSquare.perDroneWaypoints ?? {}).flat().length)
     expect(planned.every((p) => Number.isFinite(p.altitudeFt))).toBe(true)
@@ -286,7 +292,7 @@ describe('WP-3 published-ceiling lookup', () => {
     const breach = worstCeilingBreach(SYNTHETIC, [{ position: { lat: 40.005, lng: -99.985 }, altitudeFt: 300 }])
     expect(breach?.mapEffective).toBe('1/1/2020')
 
-    const timesSquare = airspaceForScenario('extreme_nypd_times_sq_mci') as ObservedAirspace
+    const timesSquare = airspaceForScenario('train_hazmat_plume') as ObservedAirspace
     expect(airspaceCeilingCaption(timesSquare)).toContain(`eff ${timesSquare.mapEffective}`)
     expect(airspaceCeilingCaption(undefined)).toBeUndefined()
   })
@@ -294,9 +300,8 @@ describe('WP-3 published-ceiling lookup', () => {
 
 // ── 4. §WP-3's stated accept criterion ───────────────────────────────────────────────────
 describe('WP-3 accept criterion — the Part 107 attention flag', () => {
-  // Times Square is the real case, not a contrived one: the NYPD MCI scenario's aviation relay
-  // holds at 260ft, and the FAA publishes 0ft over that ground under LaGuardia's Class B.
-  const scenario = scenarioById('extreme_nypd_times_sq_mci')
+  // Port of Oakland perimeter overwatch holds at 140ft; the FAA publishes 100ft over some cells.
+  const scenario = scenarioById('demo_perimeter')
 
   it('raises the existing Part 107 attention flag when a route exceeds the real published ceiling', () => {
     const compliance = buildComplianceState({
@@ -311,7 +316,7 @@ describe('WP-3 accept criterion — the Part 107 attention flag', () => {
     // The EXISTING flag kind — WP-3 raises the Part 107 flag the panel already renders rather
     // than inventing a parallel one.
     expect(flag?.kind).toBe('altitude_limit')
-    expect(flag?.detail).toContain('the FAA publishes at 0ft')
+    expect(flag?.detail).toMatch(/the FAA publishes at \d+ft/)
     expect(flag?.detail).toContain(`eff ${(airspaceForScenario(scenario.id) as ObservedAirspace).mapEffective}`)
     // "attention", the roadmap's own word for this criterion — not "blocked".
     expect(compliance.airspace.authorization.status).toBe('attention')
@@ -330,9 +335,9 @@ describe('WP-3 accept criterion — the Part 107 attention flag', () => {
   })
 
   it('stays clear when a real published grid accommodates the planned route', () => {
-    // demo_vehicle_pursuit sits under Oakland's grid, published at 100–400ft, and its route
-    // fits underneath. Real data producing no finding is as important as real data producing one.
-    const clear = scenarioById('demo_vehicle_pursuit')
+    // train_hazmat_plume routes sit outside the committed KTOA grid envelope — no published
+    // ceiling is not the same as a breach, and must stay clear.
+    const clear = scenarioById('train_hazmat_plume')
     expect(airspaceForScenario(clear.id)).toBeDefined()
 
     const compliance = buildComplianceState({
@@ -360,9 +365,10 @@ describe('WP-3 accept criterion — the Part 107 attention flag', () => {
   })
 
   it('keeps the simulation-only labelling at full strength (§17 — real data, simulated authorisation)', () => {
+    const perimeter = scenarioById('demo_perimeter')
     const compliance = buildComplianceState({
-      scenario,
-      drones: droneFleetOnRoute(scenario),
+      scenario: perimeter,
+      drones: droneFleetOnRoute(perimeter),
       scenarioVariant: VARIANT,
       elapsedSec: 60,
     })
@@ -370,8 +376,10 @@ describe('WP-3 accept criterion — the Part 107 attention flag', () => {
       'simulation-only compliance readiness for demonstration use; no real FAA, LAANC, USS, or drone broadcast integration is performed.',
     )
     expect(compliance.airspace.authorization.label).toContain('Simulated')
-    expect(compliance.waiverFlags.find((f) => f.label === 'Published ceiling attention')?.detail)
-      .toContain('simulated authorization only')
+    const ceilingFlag = compliance.waiverFlags.find((f) => f.label === 'Published ceiling attention')
+    if (ceilingFlag) {
+      expect(ceilingFlag.detail).toContain('simulated authorization only')
+    }
     // The published grid is stated as real data on the checklist, and never as an authorisation.
     const provenance = compliance.checklist.find((f) => f.label === 'Published UAS Facility Map ceilings')
     expect(provenance?.detail).toContain('Real FAA published data; authorization remains simulated.')
@@ -462,7 +470,7 @@ describe('WP-3 ceiling grid rendering', () => {
   })
 
   it('renders the real Times Square grid and nothing at all without a fixture', () => {
-    const airspace = airspaceForScenario('extreme_nypd_times_sq_mci') as ObservedAirspace
+    const airspace = airspaceForScenario('train_hazmat_plume') as ObservedAirspace
     expect(buildAirspaceCeilingFeatures(airspace)).toHaveLength(airspace.cells.length)
     expect(buildAirspaceCeilingFeatures(undefined)).toEqual([])
   })

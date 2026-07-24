@@ -1,4 +1,4 @@
-import { useDroneStore } from '@/store/droneStore'
+import { useDroneStore, MAX_REPLAY_FRAMES } from '@/store/droneStore'
 import { useAuthStore } from '@/store/authStore'
 import { encryptJson, makeId } from '@/account/crypto'
 import { putRunBundle } from '@/account/accountDb'
@@ -23,9 +23,10 @@ import type {
 // changes.
 
 // The v2 detail can be large, so its replay track is downsampled to at most this
-// many frames (first + last always kept) before encryption. The live buffer is
-// already bounded to 300 frames, so this only bites on a longer future window.
-const MAX_DETAIL_FRAMES = 300
+// many frames (first + last always kept) before encryption. Live recording stops
+// at MAX_REPLAY_FRAMES (750 = 25 min); this cap only bites if a future path
+// stores a longer buffer.
+const MAX_DETAIL_FRAMES = MAX_REPLAY_FRAMES
 
 export function buildRunSummary(session: MissionReplaySession): StoredRunSummary {
   const lastFrame = session.frames[session.frames.length - 1]
@@ -102,9 +103,9 @@ export function buildRunDetail(
   const replayCoverage: StoredRunDetailReplayCoverage = {
     startSec: frames[0]?.elapsedSec ?? 0,
     endSec: durationSec,
-    // The rolling buffer keeps only the last N frames; a non-zero first tick
-    // means earlier frames were dropped by that bounded window.
-    truncated: frames.length > 0 && frames[0].tick > 0,
+    // Stop-at-25-min recording: early frames are never dropped. `truncated` is
+    // true only if recording hit the max frame count (mission may have continued).
+    truncated: frames.length >= MAX_REPLAY_FRAMES,
   }
   const report = buildAfterActionPackage({
     scenario,

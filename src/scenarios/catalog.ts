@@ -1,7 +1,11 @@
-import { demoBasic, demoSAR } from '@/scenarios/demoBasic'
-import { suspectSearch, vehiclePursuit, sarCoastal, portPerimeter, wildfireRecon } from '@/scenarios/demoScenarios'
-import { EXTREME_SCENARIOS } from '@/scenarios/extremeScenarios'
+import { HISTORICAL_SCENARIOS } from '@/scenarios/historicalScenarios'
 import { NIST_LANE_SCENARIOS } from '@/scenarios/nistLanes'
+import {
+  EXPECTED_CATALOG_COUNT,
+  INCIDENT_MISSION_COUNT,
+  NIST_MISSION_COUNT,
+} from '@/scenarios/scenarioManifest'
+import { TRAINING_SCENARIOS } from '@/scenarios/trainingScenarios'
 import { auditScenarioRoutes, buildSafeDroneRoutes, droneIdForIndex, relocatePointOutsideGeofences } from '@/sim/mission/routeAudit'
 import { getWeatherProfile } from '@/sim/weather/weatherEngine'
 import { haversineDistanceM } from '@/utils/geometry'
@@ -23,16 +27,12 @@ import type {
 } from '@/types'
 
 const RAW_SCENARIOS: ScenarioConfig[] = [
-  demoBasic,
-  demoSAR,
-  suspectSearch,
-  vehiclePursuit,
-  sarCoastal,
-  portPerimeter,
-  wildfireRecon,
-  ...EXTREME_SCENARIOS,
+  ...TRAINING_SCENARIOS,
+  ...HISTORICAL_SCENARIOS,
   ...NIST_LANE_SCENARIOS,
 ]
+
+export { EXPECTED_CATALOG_COUNT, INCIDENT_MISSION_COUNT, NIST_MISSION_COUNT }
 
 // Recognized agency tokens, scanned in name-then-description order. This replaces a fragile
 // name-prefix split that produced non-agencies like "SAR — COASTAL" as the commanding agency.
@@ -40,7 +40,9 @@ const RAW_SCENARIOS: ScenarioConfig[] = [
 // evaluation time and reads this via deriveAgencies.
 const KNOWN_AGENCIES = [
   'SFPD', 'OPD', 'CHP', 'BART PD', 'LAPD', 'NYPD', 'FDNY', 'USCG', 'CAL FIRE', 'USFS',
-  'CBP', 'FBI', 'ATF', 'USSS', 'DHS', 'FEMA', 'LAHSA', 'DMH',
+  'CBP', 'FBI', 'ATF', 'USSS', 'DHS', 'FEMA', 'LAHSA', 'DMH', 'EPA', 'NTSB', 'NWS', 'USGS',
+  'NIST', 'NCEM', 'MDFR', 'SAR', 'LA County DMH', 'USGS HVO', 'Hawaii County', 'CRASAR',
+  'Snohomish County', 'Asheville PD',
 ] as const
 
 const MOBILE_SITE_DEFAULTS: Partial<Record<LaunchRecoverySite['kind'], { radiusM: number; timeSec: number }>> = {
@@ -368,8 +370,8 @@ function nearestStation(position: LatLng, stations: RechargeStation[]): Recharge
 }
 
 function deriveMissionBrief(scenario: ScenarioConfig): MissionBrief {
-  const agencies = deriveAgencies(scenario)
-  const missionClass = missionClassFor(scenario)
+  const agencies = scenario.agencies ?? deriveAgencies(scenario)
+  const missionClass = missionClassLabel(scenario)
   return {
     agencies,
     situation: firstSentence(scenario.description),
@@ -391,8 +393,6 @@ function deriveMissionBrief(scenario: ScenarioConfig): MissionBrief {
 }
 
 function deriveDispatchTimeline(scenario: ScenarioConfig): DispatchTimelineEntry[] {
-  if (scenario.id === 'extreme_multiagency_sf_pursuit') return sfPursuitDispatchTimeline(scenario)
-
   const localDispatch = localDispatchSourcesFor(scenario)
   const supportSource = supportDispatchSourceFor(scenario)
   const leadUnit = leadFieldUnitFor(scenario)
@@ -430,27 +430,6 @@ function deriveDispatchTimeline(scenario: ScenarioConfig): DispatchTimelineEntry
   })
 
   return entries.sort((a, b) => a.timeSec - b.timeSec)
-}
-
-function sfPursuitDispatchTimeline(scenario: ScenarioConfig): DispatchTimelineEntry[] {
-  return [
-    entry(scenario, 'sfpd-open', 0, 'SFPD DISPATCH', 'urgent', 'dispatch',
-      'SFPD DISPATCH: pursuit package opened from Financial District LKL; SFPD shadows launch from Embarcadero staging.'),
-    entry(scenario, 'opd-roof', 10, 'OPD DISPATCH', 'urgent', 'agency_update',
-      'OPD DISPATCH: OPD air liaison confirms Jack London Square simulated rooftop staging for UAV-03 and UAV-04.'),
-    entry(scenario, 'chp-roof', 20, 'CHP GOLDEN GATE', 'advisory', 'agency_update',
-      'CHP GOLDEN GATE: CHP East Bay intercept cell confirms UAV-05 rooftop launch and I-580 corridor handoff.'),
-    entry(scenario, 'field-units', 32, 'OPD FIELD UNITS', 'urgent', 'field_unit',
-      'OPD units en route from Jack London Square toward I-880; officer status two minutes out, CHP unit staging at I-580 hold.'),
-    entry(scenario, 'operator-uav05', 42, 'OPERATOR TASK', 'urgent', 'operator_task',
-      'OPERATOR TASK: move UAV-05 to I-580 hold point; OPD units are two minutes out.'),
-    entry(scenario, 'bart-perimeter', 66, 'BART PD', 'advisory', 'field_unit',
-      'BART PD unit on scene at Berkeley station perimeter; update LKL if suspect diverts toward transit access.'),
-    entry(scenario, 'safety-bridge', 60, 'SAFETY', 'advisory', 'safety',
-      'Safety note: Bay Bridge superstructure comms window active; relay and intercept drones must maintain approved corridor altitude.'),
-    entry(scenario, 'mission-update', 96, 'FEDERAL LIAISON', 'advisory', 'agency_update',
-      'Mission update: East Bay intercept logic active, perimeter sealers hold Albany Hills exits until field units report current status.'),
-  ]
 }
 
 function entry(
@@ -588,6 +567,7 @@ function deriveOperationalFeatures(scenario: ScenarioConfig, routes: Record<stri
 }
 
 function deriveAgencies(scenario: ScenarioConfig): string[] {
+  if (scenario.agencies?.length) return [...scenario.agencies]
   const text = `${scenario.name} ${scenario.description}`
   const found = KNOWN_AGENCIES.filter((agency) =>
     new RegExp(`\\b${agency.replace(/ /g, '\\s+')}\\b`, 'i').test(text),
@@ -609,19 +589,37 @@ function firstSentence(text: string): string {
   return text.split(/[.!?]/)[0]?.trim() || text
 }
 
+function missionClassLabel(scenario: ScenarioConfig): string {
+  if (scenario.missionClass) return scenario.missionClass.replace(/_/g, ' ')
+  return missionClassFor(scenario)
+}
+
 function missionClassFor(scenario: ScenarioConfig): string {
   const text = `${scenario.name} ${scenario.description}`.toLowerCase()
+  if (text.includes('nist')) return 'nist skills'
+  if (text.includes('landslide') || text.includes('oso') || text.includes('sr-530')) return 'landslide monitoring'
+  if (text.includes('volcanic') || text.includes('kilauea') || text.includes('lava')) return 'volcanic response'
+  if (text.includes('collapse') || text.includes('surfside') || text.includes('usar')) return 'structural collapse search'
+  if (text.includes('tornado') || text.includes('ef-5') || text.includes('joplin')) return 'tornado damage assessment'
+  if (text.includes('flood') || text.includes('harvey') || text.includes('katrina') || text.includes('bayou')) return 'flood response'
+  if (text.includes('derailment') || text.includes('vinyl') || text.includes('east palestine')) return 'hazmat reconnaissance'
   if (text.includes('sar') || text.includes('missing') || text.includes('search')) return 'search-and-rescue'
   if (text.includes('pursuit') || text.includes('suspect') || text.includes('vehicle')) return 'pursuit/locate'
   if (text.includes('fire')) return 'wildfire reconnaissance'
-  if (text.includes('hazmat') || text.includes('chemical')) return 'hazmat reconnaissance'
+  if (text.includes('hazmat') || text.includes('chemical') || text.includes('plume')) return 'hazmat reconnaissance'
   if (text.includes('perimeter') || text.includes('security')) return 'perimeter security'
-  if (text.includes('welfare') || text.includes('hurricane') || text.includes('usar')) return 'disaster/welfare response'
+  if (text.includes('welfare') || text.includes('hurricane') || text.includes('helene') || text.includes('usar')) return 'disaster/welfare response'
+  if (text.includes('inspection') || text.includes('bridge') || text.includes('infrastructure')) return 'infrastructure inspection'
   return scenario.missionType.replace(/_/g, ' ')
 }
 
 function primaryObjectiveFor(scenario: ScenarioConfig): string {
-  const missionClass = missionClassFor(scenario)
+  const missionClass = missionClassLabel(scenario)
+  if (missionClass.includes('landslide')) return 'Monitor debris-field stability, map accessible sectors, and keep responders out of secondary-slide hazard zones.'
+  if (missionClass.includes('volcanic')) return 'Track moving lava-front geometry, maintain evacuation corridors, and cue ground guidance without entering gas/plume hazards.'
+  if (missionClass.includes('collapse')) return 'Maintain structured revisit cadence over the collapse zone, cue void-space thermal contacts, and deconflict multi-operator airspace.'
+  if (missionClass.includes('tornado')) return 'Segment the damage path, assign sectors by severity, and cue ground triage by coverage rate.'
+  if (missionClass.includes('flood')) return 'Clear flooded corridors under TFR/manned-rescue deconfliction and prioritize rooftop or water-edge thermal contacts.'
   if (missionClass.includes('search')) return 'Locate simulated persons or vessels, cue rescue resources, and clear assigned probability sectors.'
   if (missionClass.includes('pursuit')) return 'Maintain safe aerial observation, support route handoffs, and cue ground units to last known location.'
   if (missionClass.includes('wildfire')) return 'Map fire edge, identify spotfires, and maintain standoff from the active column.'
@@ -655,6 +653,8 @@ function routePatternFor(scenario: ScenarioConfig, role: string): string {
 
 function featureTypeFor(scenario: ScenarioConfig): OperationalFeature['type'] {
   const text = `${scenario.name} ${scenario.description}`.toLowerCase()
+  if (text.includes('landslide') || text.includes('debris')) return 'search_sector'
+  if (text.includes('collapse') || text.includes('surfside')) return 'perimeter'
   if (text.includes('bridge')) return 'bridge'
   if (text.includes('beach') || text.includes('coastal')) return 'shoreline'
   if (text.includes('fire')) return 'fireline'
@@ -664,7 +664,7 @@ function featureTypeFor(scenario: ScenarioConfig): OperationalFeature['type'] {
 }
 
 function isCityScenario(scenario: ScenarioConfig): boolean {
-  return /\b(SFPD|OPD|CHP|BART PD|LAPD|NYPD|ATF|DMH|Oakland|Hollywood|Times Square|Seattle|SF|city|urban|hotel|BART)\b/i
+  return /\b(SFPD|OPD|CHP|BART PD|LAPD|NYPD|ATF|DMH|Oakland|Hollywood|Times Square|Seattle|SF|Houston|Asheville|Paradise|Surfside|Skid Row|city|urban|hotel|BART|LAFD)\b/i
     .test(`${scenario.name} ${scenario.description}`)
 }
 
@@ -675,10 +675,15 @@ function isMaritimeScenario(scenario: ScenarioConfig): boolean {
 function localDispatchSourcesFor(scenario: ScenarioConfig): string[] {
   const text = `${scenario.name} ${scenario.description}`
   if (/NYPD|Times Square/i.test(text)) return ['NYPD DISPATCH', 'FDNY DISPATCH']
-  if (/LAPD|Hollywood/i.test(text)) return ['LAPD DISPATCH', 'LAFD DISPATCH']
+  if (/LAPD|Hollywood|Skid Row|LAHSA/i.test(text)) return ['LAPD DISPATCH', 'LAFD DISPATCH']
   if (/SFPD|OPD|CHP|BART PD|SF|Oakland/i.test(text)) return ['SFPD DISPATCH', 'OPD DISPATCH']
-  if (/USCG|coastal|harbor|marine|vessel/i.test(text)) return ['USCG SECTOR', 'HARBOR OPS']
-  if (/fire|wildfire/i.test(text)) return ['FIRE OPS', 'ICP']
+  if (/USCG|coastal|harbor|marine|vessel|maritime/i.test(text)) return ['USCG SECTOR', 'HARBOR OPS']
+  if (/volcanic|kilauea|hvo/i.test(text)) return ['HVO DISPATCH', 'ICP']
+  if (/landslide|oso|sr-530/i.test(text)) return ['SNOHOMISH DISPATCH', 'ICP']
+  if (/harvey|katrina|flood|bayou|helene|asheville/i.test(text)) return ['ICP', 'FEMA LIAISON']
+  if (/surfside|collapse|usar/i.test(text)) return ['MDFR DISPATCH', 'ICP']
+  if (/east palestine|derailment|epa|hazmat/i.test(text)) return ['EPA DISPATCH', 'ICP']
+  if (/fire|wildfire|camp fire|marshall/i.test(text)) return ['FIRE OPS', 'ICP']
   if (/FEMA|hurricane|USAR|welfare/i.test(text)) return ['ICP', 'FEMA LIAISON']
   if (/CBP|Border|Rio Grande|Eagle Pass/i.test(text)) return ['CBP DISPATCH', 'FEDERAL LIAISON']
   if (/ATF/i.test(text)) return ['ATF DISPATCH', 'FEDERAL LIAISON']

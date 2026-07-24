@@ -168,13 +168,14 @@ describe('lane scoring (WP-9 accept criteria)', () => {
 })
 
 describe('lane scenarios are registered and well-formed', () => {
-  it('ships an open and an obstructed lane in the catalog', () => {
-    expect(NIST_LANE_SCENARIOS).toHaveLength(2)
+  it('includes six NIST lane kinds in the catalog', () => {
+    expect(NIST_LANE_SCENARIOS).toHaveLength(6)
     for (const scenario of NIST_LANE_SCENARIOS) {
       expect(ALL_SCENARIOS.some((s) => s.id === scenario.id)).toBe(true)
       expect(scenario.description).toMatch(/SIMULATION ONLY/)
+      expect(scenario.missionClass).toBe('nist_skills')
     }
-    expect(allLanes().map((l) => l.kind).sort()).toEqual(['obstructed', 'open'])
+    expect(allLanes().map((l) => l.kind).sort()).toEqual(['confined', 'maritime', 'night', 'obstructed', 'open', 'urban'])
   })
 
   it('binds each lane to its scenario and nothing else', () => {

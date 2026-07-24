@@ -10,6 +10,14 @@ const { joinClassMock } = vi.hoisted(() => ({ joinClassMock: vi.fn() }))
 
 vi.mock('@/classroom/classroomClient', () => ({ joinClass: joinClassMock }))
 vi.mock('@/App', () => ({ default: () => <main>Simulator</main> }))
+vi.mock('@/classroom/desktopBridge', () => ({
+  desktopPromptAlreadyHandled: () => true,
+  getClassroomDesktopBridge: () => null,
+}))
+vi.mock('@/platform/appTarget', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('@/platform/appTarget')>()
+  return { ...mod, isWindowsClient: () => true }
+})
 
 beforeEach(() => {
   joinClassMock.mockReset()

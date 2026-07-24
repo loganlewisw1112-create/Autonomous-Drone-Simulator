@@ -4,6 +4,7 @@ import {
   type BuildingIndex,
 } from '@/sim/terrain/buildingIndex'
 import wildfireBuildings from './fixtures/demo_wildfire/buildings.json'
+import surfsideBuildings from './fixtures/hist_surfside_cts_2021/buildings.json'
 
 // Frozen Overture-derived footprints produced by tools/fixtures/buildings.mjs. Like terrain
 // fixtures, these are committed data and never fetched while the simulator is running.
@@ -13,6 +14,8 @@ const BUILDINGS: Record<string, BuildingFeatureCollection> = {
   // content of that trial — so it reuses the identical committed fixture rather than
   // shipping a second copy of the same bytes.
   nist_obstructed_lane: wildfireBuildings as unknown as BuildingFeatureCollection,
+  // Phase 6 — Surfside collapse AO (Overture footprints + small DEM for base MSL).
+  hist_surfside_cts_2021: surfsideBuildings as unknown as BuildingFeatureCollection,
 }
 
 const INDEXES = new Map<string, BuildingIndex>()

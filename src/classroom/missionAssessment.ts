@@ -3,13 +3,19 @@ import { scoreLane, type LaneScore } from '@/sim/mission/laneScoring'
 import { laneForScenario } from '@/scenarios/nistLanes'
 import { batteryReservePctForDrone } from '@/sim/mission/rechargeStations'
 import { verifyChain } from '@/utils/chainOfCustody'
+import {
+  authorizationStepsFromEvents,
+  evaluateAuthorizationTraining,
+} from '@/sim/mission/authorizationTraining'
 import type {
+  AuthorizationStepId,
   DroneState,
   GroundUnitState,
   LatLng,
   MissionEvent,
   MissionMetrics,
   ScenarioConfig,
+  ScenarioVariantConfig,
   ThermalContactState,
 } from '@/types'
 
@@ -49,10 +55,21 @@ export interface LifeSafetyAssessment {
   findings: AssessmentFinding[]
 }
 
+/** Classroom rubric for operational authorization training (Phase 4). */
+export interface AuthorizationAssessment {
+  requiredCount: number
+  completedCount: number
+  missedStepIds: AuthorizationStepId[]
+  complete: boolean
+  /** 0–10 stewardship contribution from completing required auth steps. */
+  scoreContribution: number
+}
+
 export interface MissionAssessment {
   progressPercent: number
   objectives: MissionObjectiveProgress[]
   lifeSafety: LifeSafetyAssessment
+  authorization: AuthorizationAssessment
   tier1: number
   tier2: number
   uncappedTotal: number
@@ -83,6 +100,9 @@ export interface MissionAssessmentInput {
   /** Events issued by an actor id with this prefix are interventions, never participant credit. */
   interventionActorPrefix: string
   evidenceVerified?: boolean
+  /** Optional override when the live store already tracks completed auth steps. */
+  authorizationCompletedSteps?: readonly AuthorizationStepId[]
+  scenarioVariant?: ScenarioVariantConfig
 }
 
 const TICKS_PER_SEC = 20
@@ -96,6 +116,17 @@ const CAP_BY_SEVERITY: Record<AssessmentSeverity, 100 | 79 | 59 | 39> = {
   minor: 79,
   major: 59,
   critical: 39,
+}
+
+const DEFAULT_AUTH_VARIANT: ScenarioVariantConfig = {
+  seed: 0,
+  timeOfDay: 'day',
+  season: 'summer',
+  weatherSeverity: 0,
+  commsDegradation: 0,
+  thermalDensity: 0,
+  batteryPressure: 0,
+  terrainDifficulty: 0,
 }
 
 export function buildMissionAssessment(input: MissionAssessmentInput): MissionAssessment {
@@ -133,8 +164,9 @@ export function buildMissionAssessment(input: MissionAssessmentInput): MissionAs
     SEVERITY_RANK[finding.severity] > SEVERITY_RANK[worst] ? finding.severity : worst
   ), 'none')
   const cap = CAP_BY_SEVERITY[severity]
+  const authorization = scoreAuthorization(input, participantEvents)
   const tier1 = scoreIncidentStabilization(progress.objectives, findings, input.metrics)
-  const tier2 = scoreResourceStewardship(input, progress.objectives)
+  const tier2 = scoreResourceStewardship(input, progress.objectives, authorization)
   const uncappedTotal = clampScore(tier1 + tier2, 100)
   const total = Math.min(uncappedTotal, cap)
 
@@ -147,6 +179,7 @@ export function buildMissionAssessment(input: MissionAssessmentInput): MissionAs
     progressPercent: progress.percent,
     objectives: progress.objectives,
     lifeSafety: { status: severity === 'none' ? 'pass' : 'fail', severity, cap, findings },
+    authorization,
     tier1,
     tier2,
     uncappedTotal,
@@ -154,6 +187,28 @@ export function buildMissionAssessment(input: MissionAssessmentInput): MissionAs
     band: bandFor(total),
     interventions,
     ...(nistLane ? { nistLane } : {}),
+  }
+}
+
+function scoreAuthorization(
+  input: MissionAssessmentInput,
+  events: readonly MissionEvent[],
+): AuthorizationAssessment {
+  const completed = input.authorizationCompletedSteps
+    ?? authorizationStepsFromEvents(events)
+  const variant = input.scenarioVariant ?? DEFAULT_AUTH_VARIANT
+  const progress = evaluateAuthorizationTraining(input.scenario, variant, completed)
+  const requiredCount = progress.requiredStepIds.length
+  const completedCount = progress.requiredStepIds.filter((id) => progress.completedStepIds.includes(id)).length
+  const scoreContribution = requiredCount === 0
+    ? 10
+    : Math.round((completedCount / requiredCount) * 10)
+  return {
+    requiredCount,
+    completedCount,
+    missedStepIds: [...progress.missedStepIds],
+    complete: progress.ready,
+    scoreContribution,
   }
 }
 
@@ -298,6 +353,7 @@ function scoreIncidentStabilization(
 function scoreResourceStewardship(
   input: MissionAssessmentInput,
   objectives: readonly MissionObjectiveProgress[],
+  authorization: AuthorizationAssessment,
 ): number {
   const recovery = objectives.find((objective) => objective.kind === 'fleet_recovery')?.completion ?? 0
   const reserve = input.drones.length === 0 ? 0 : Math.min(...input.drones.map((drone) => (
@@ -306,11 +362,14 @@ function scoreResourceStewardship(
   const usefulProgress = objectives.length === 0 ? 0
     : objectives.reduce((sum, objective) => sum + objective.completion, 0) / objectives.length
   const evidenceOk = input.evidenceVerified ?? (input.events.length > 0 && verifyChain([...input.events]))
+  // Auth training is 0–10 of stewardship (was folded into evidence/progress). Missed steps
+  // reduce the score without inventing a life-safety finding.
   return clampScore(
-    Math.round(recovery * 15)
-    + Math.round(Math.min(1, reserve) * 10)
+    Math.round(recovery * 12)
+    + Math.round(Math.min(1, reserve) * 8)
     + Math.round(usefulProgress * 5)
-    + (evidenceOk ? 10 : 0),
+    + (evidenceOk ? 5 : 0)
+    + authorization.scoreContribution,
     40,
   )
 }

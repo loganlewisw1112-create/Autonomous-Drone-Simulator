@@ -42,6 +42,9 @@ function assessment(): MissionAssessment {
         message: 'Response exceeded the threshold.',
       }],
     },
+    authorization: {
+      requiredCount: 3, completedCount: 3, missedStepIds: [], complete: true, scoreContribution: 10,
+    },
     tier1: 44,
     tier2: 28,
     uncappedTotal: 72,

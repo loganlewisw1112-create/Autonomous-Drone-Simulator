@@ -1,6 +1,6 @@
 import { airspaceCeilingCaption, airspaceForScenario, plannedRoutePoints, worstCeilingBreach } from '@/sim/mission/airspace'
+import { buildAuthorizationFromProfile } from '@/sim/mission/authorizationTraining'
 import type {
-  AirspaceAuthorization,
   ComplianceFlag,
   ComplianceState,
   DroneState,
@@ -35,7 +35,7 @@ export function buildComplianceState(input: BuildComplianceStateInput): Complian
     .filter((drone) => ['stranded', 'unrecoverable_sim'].includes(drone.missionState))
     .map((drone) => drone.id)
   const maxObservedAltitudeFt = input.drones.reduce((max, drone) => Math.max(max, drone.altitudeFt), 0)
-  const authorization = buildAuthorization(input.scenario)
+  const authorization = buildAuthorizationFromProfile(input.scenario)
   const waiverFlags = buildWaiverFlags(input, maxObservedAltitudeFt)
   const ceilingCaption = airspaceCeilingCaption(airspaceForScenario(input.scenario?.id))
 
@@ -88,46 +88,10 @@ export function buildComplianceState(input: BuildComplianceStateInput): Complian
   }
 }
 
-function buildAuthorization(scenario: ScenarioConfig | null): AirspaceAuthorization {
-  if (!scenario) {
-    return {
-      kind: 'not_required',
-      status: 'attention',
-      label: 'No active airspace request',
-      reference: 'Load a scenario to derive simulated airspace readiness.',
-    }
-  }
-
-  const text = `${scenario.id} ${scenario.name} ${scenario.description}`.toLowerCase()
-  if (/urban|city|port|airport|harbor|coastal|pursuit|perimeter/.test(text)) {
-    return {
-      kind: 'simulated_laanc',
-      status: 'ready',
-      label: 'Simulated LAANC / USS authorization',
-      reference: 'Authorization state is derived locally from scenario metadata and visible constraints.',
-    }
-  }
-
-  if (/wildfire|fema|hurricane|usar|border|mountain|hazmat/.test(text)) {
-    return {
-      kind: 'field_incident_command',
-      status: 'ready',
-      label: 'Incident command airspace coordination',
-      reference: 'Scenario assumes an incident command airspace cell with simulated UAS coordination.',
-    }
-  }
-
-  return {
-    kind: 'not_required',
-    status: 'ready',
-    label: 'Uncontrolled simulated airspace',
-    reference: 'No controlled-airspace authorization is modeled for this scenario.',
-  }
-}
-
 function buildWaiverFlags(input: BuildComplianceStateInput, maxObservedAltitudeFt: number): ComplianceFlag[] {
   const flags: ComplianceFlag[] = []
   const text = `${input.scenario?.id ?? ''} ${input.scenario?.name ?? ''} ${input.scenario?.description ?? ''}`.toLowerCase()
+  const profile = input.scenario?.authorizationProfile
 
   if (maxObservedAltitudeFt > 400) {
     flags.push({
@@ -170,12 +134,14 @@ function buildWaiverFlags(input: BuildComplianceStateInput, maxObservedAltitudeF
     })
   }
 
-  if (input.drones.some((drone) => drone.signalDbm <= -90 || drone.bvlosFlag)) {
+  if (input.drones.some((drone) => drone.signalDbm <= -90 || drone.bvlosFlag) || profile?.bvlosExpected) {
     flags.push({
       kind: 'bvlos',
       severity: 'urgent',
       label: 'BVLOS / command-link attention',
-      detail: 'At least one drone has simulated command-link loss or BVLOS flag active.',
+      detail: profile?.bvlosExpected && !input.drones.some((drone) => drone.signalDbm <= -90 || drone.bvlosFlag)
+        ? 'Scenario authorization profile expects simulated BVLOS / lost-link mitigations before launch.'
+        : 'At least one drone has simulated command-link loss or BVLOS flag active.',
     })
   }
 
@@ -188,7 +154,7 @@ function buildWaiverFlags(input: BuildComplianceStateInput, maxObservedAltitudeF
     })
   }
 
-  if (/crowd|concert|stadium|city|urban|times square|hollywood/.test(text)) {
+  if (profile?.opsOverPeopleExpected || /crowd|concert|stadium|city|urban|times square|bowl/.test(text)) {
     flags.push({
       kind: 'operations_over_people',
       severity: 'advisory',

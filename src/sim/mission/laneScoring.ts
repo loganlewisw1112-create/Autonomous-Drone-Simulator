@@ -57,7 +57,7 @@ export interface NistLaneTarget {
   label: string
 }
 
-export type NistLaneKind = 'open' | 'obstructed' | 'confined'
+export type NistLaneKind = 'open' | 'obstructed' | 'confined' | 'night' | 'maritime' | 'urban'
 
 export interface NistLaneDefinition {
   id: string

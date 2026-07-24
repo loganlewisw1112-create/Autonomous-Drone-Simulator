@@ -21,6 +21,9 @@ const assessment: MissionAssessment = {
   progressPercent: 58,
   objectives: [],
   lifeSafety: { status: 'pass', severity: 'none', cap: 100, findings: [] },
+  authorization: {
+    requiredCount: 0, completedCount: 0, missedStepIds: [], complete: true, scoreContribution: 0,
+  },
   tier1: 39,
   tier2: 28,
   uncappedTotal: 67,

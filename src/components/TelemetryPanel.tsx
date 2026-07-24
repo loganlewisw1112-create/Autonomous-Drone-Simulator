@@ -5,11 +5,13 @@ import { verifyChain } from '@/utils/chainOfCustody'
 import { encodeDroneTelemetry, formatMAVLinkLine } from '@/utils/mavlink'
 import { buildComplianceState } from '@/sim/demo/complianceEngine'
 import { airspaceCeilingCaption, airspaceForScenario } from '@/sim/mission/airspace'
+import { evaluateAuthorizationTraining } from '@/sim/mission/authorizationTraining'
 import { buildMissionOutcomeSummary } from '@/sim/demo/missionOutcome'
 import { buildSectorPodReport, type SectorPodReport, type SectorSweep } from '@/sim/sensors/podReporting'
 import { buildUtmAirspaceState } from '@/sim/demo/utmEngine'
 import { platformForDrone, LEGACY_FAA_SPEED_LIMIT_MS } from '@/sim/drone/platformCatalog'
-import { occlusionServiceFor } from '@/scenarios/terrainFixtures'
+import { thermalPayloadStatus } from '@/sim/sensors/ThermalSim'
+import { occlusionServiceFor, resolveTerrainFixtureId } from '@/scenarios/terrainFixtures'
 import { laneForScenario } from '@/scenarios/nistLanes'
 import { scoreLane } from '@/sim/mission/laneScoring'
 import { terrainAltitudeSnapshot } from '@/sim/terrain/altitude'
@@ -45,6 +47,8 @@ const EVENT_COLORS: Record<string, string> = {
   conflict_resolved: C_GREEN,
   thermal_detection: C_MAGENTA,
   preflight_complete: C_GREEN,
+  authorization_step_complete: C_YELLOW,
+  authorization_complete: C_GREEN,
   operator_command: C_BLUE,
 }
 
@@ -63,12 +67,13 @@ export function TelemetryPanel() {
   const [mavlinkFeed, setMavlinkFeed] = useState<string[]>([])
   const mavFeedRef = useRef<HTMLDivElement>(null)
 
-  const { drones, ui, events, telemetryHistory, thermalContacts, metrics, elapsedSec, scenario, scenarioVariant, positionHistory, weatherState, setSensorMode } = useDroneStore(
+  const { drones, ui, events, telemetryHistory, thermalContacts, metrics, elapsedSec, scenario, scenarioVariant, positionHistory, weatherState, authorizationCompletedSteps, setSensorMode } = useDroneStore(
     useShallow((s) => ({
       drones: s.drones, ui: s.ui, events: s.events, telemetryHistory: s.telemetryHistory,
       thermalContacts: s.thermalContacts, metrics: s.metrics, elapsedSec: s.elapsedSec,
       scenario: s.scenario, scenarioVariant: s.scenarioVariant, positionHistory: s.positionHistory,
-      weatherState: s.weatherState, setSensorMode: s.setSensorMode,
+      weatherState: s.weatherState, authorizationCompletedSteps: s.authorizationCompletedSteps,
+      setSensorMode: s.setSensorMode,
     })),
   )
 
@@ -77,7 +82,7 @@ export function TelemetryPanel() {
     : drones[0]
 
   const history = selected ? (telemetryHistory[selected.id] ?? []) : []
-  const terrainScenarioId = scenario?.id
+  const terrainScenarioId = scenario ? resolveTerrainFixtureId(scenario) : undefined
   const terrainService = useMemo(
     () => terrainScenarioId ? occlusionServiceFor(terrainScenarioId) : undefined,
     [terrainScenarioId],
@@ -136,6 +141,12 @@ export function TelemetryPanel() {
   const compliance = useMemo(
     () => activeTab === 'readiness' ? buildComplianceState({ scenario, drones, scenarioVariant, elapsedSec }) : null,
     [activeTab, scenario, drones, scenarioVariant, elapsedSec],
+  )
+  const authTraining = useMemo(
+    () => activeTab === 'readiness'
+      ? evaluateAuthorizationTraining(scenario, scenarioVariant, authorizationCompletedSteps)
+      : null,
+    [activeTab, scenario, scenarioVariant, authorizationCompletedSteps],
   )
   const utm = useMemo(
     () => activeTab === 'readiness' ? buildUtmAirspaceState({ scenario, drones, elapsedSec }) : null,
@@ -234,13 +245,46 @@ export function TelemetryPanel() {
             </Suspense>
           )}
 
-          {/* Sensor mode */}
+          {/* Sensor mode — Phase 7 radiometric payload status (Johnson R_d, not gameplay 60 m) */}
           <div className="panel-section">
             <div className="panel-label">Sensor Mode</div>
             <div className="btn-group" style={{ marginTop: 2 }}>
               <button className={`btn${ui.sensorMode === 'eo' ? ' active' : ''}`} onClick={() => setSensorMode('eo')}>EO</button>
               <button className={`btn${ui.sensorMode === 'ir' ? ' active' : ''}`} onClick={() => setSensorMode('ir')}>IR / THERMAL</button>
             </div>
+            {selected && scenario && (() => {
+              const status = thermalPayloadStatus(
+                platformForDrone(scenario, selected.id),
+                weatherState,
+              )
+              return (
+                <div
+                  data-testid="thermal-payload-status"
+                  style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}
+                >
+                  <TRow label="THERMAL PAYLOAD" value={status.sensorName} />
+                  <TRow
+                    label="R_D (PERSON)"
+                    value={status.detectionRangeM != null
+                      ? `${Math.round(status.detectionRangeM)} m`
+                      : 'UNSOURCED'}
+                    warn={status.detectionRangeM == null}
+                  />
+                  {status.netdMk != null && (
+                    <TRow label="NETD" value={`${status.netdMk} mK`} />
+                  )}
+                  {status.radiometric && status.radiometricAccuracyC != null && (
+                    <TRow
+                      label="RADIOMETRIC"
+                      value={`±${status.radiometricAccuracyC} °C (sim metadata)`}
+                    />
+                  )}
+                  <div style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 2, lineHeight: 1.35 }}>
+                    SIMULATION ONLY — Johnson detection + NETD/contrast; not a full IR image chain.
+                  </div>
+                </div>
+              )
+            })()}
           </div>
 
           {/* Warnings */}
@@ -484,6 +528,15 @@ export function TelemetryPanel() {
             <div className="panel-label" style={{ marginBottom: 8 }}>Compliance & Airspace Readiness</div>
             <ReadinessPill label="REMOTE ID" value={compliance.remoteId.status.toUpperCase()} tone={compliance.remoteId.status === 'broadcasting' ? 'good' : 'warn'} />
             <ReadinessPill label="AUTH" value={compliance.airspace.authorization.label} tone={compliance.airspace.authorization.status === 'ready' ? 'good' : 'warn'} />
+            {authTraining && (
+              <ReadinessPill
+                label="AUTH TRAINING"
+                value={authTraining.ready
+                  ? `${authTraining.completedStepIds.length}/${authTraining.requiredStepIds.length} steps complete`
+                  : `${authTraining.missedStepIds.length} step(s) incomplete — launch blocked`}
+                tone={authTraining.ready ? 'good' : 'warn'}
+              />
+            )}
             <ReadinessPill label="MAX ALT" value={`${Math.round(compliance.airspace.maxObservedAltitudeFt)}ft AGL`} tone={compliance.airspace.maxObservedAltitudeFt <= 400 ? 'good' : 'bad'} />
             {/* REALISM_ROADMAP WP-3 — real published FAA ceilings, with their edition date.
                 The date is not decoration: the accept criterion is that a stale fixture is

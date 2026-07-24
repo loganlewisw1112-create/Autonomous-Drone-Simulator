@@ -395,6 +395,21 @@ export const femaFortMyers: ScenarioConfig = {
     'uav-04': 'Strip 4 — beach edge and seawall collapse',
     'uav-05': 'USAR Relay — 220ft AGL, task force comms bridge',
   },
+  // Phase 4 hook for Harvey-class TFR deconfliction (full hist_harvey scenario is Phase 5).
+  authorizationProfile: {
+    kind: 'field_incident_command',
+    requiredSteps: ['remote_id', 'airspace_request', 'ceiling_check', 'tfr_conflict_ack'],
+    nightSteps: ['night_ops'],
+    tfrExercise: {
+      id: 'tfr-disaster-deconflict-hook',
+      label: 'Disaster TFR / manned-rescue deconfliction (training hook)',
+      summary:
+        'Practice acknowledging temporary flight restrictions and manned SAR traffic before UAS entry — Harvey-class exercise. Full historical Houston scenario ships in Phase 5.',
+      requireAcknowledgment: true,
+    },
+    label: 'Incident command airspace coordination',
+    reference: 'Scenario assumes an incident command airspace cell with simulated UAS coordination.',
+  },
 }
 
 // ── 7. ATF Group IX — Oakland Stash House Surveillance ────────────────────

@@ -1,24 +1,106 @@
 {
-  "_comment": "Authoring input for the fixture pipeline (WP-0). Each entry pins a scenario to a date and area of operations so tools/fixtures/index.mjs can freeze real geodata into src/scenarios/fixtures/<id>/. Coordinates are the scenario startPosition. Observed weather is applied to realistic INCIDENT scenarios only — NOT to demo_basic / demo_sar, the onboarding tutorials, whose real-day weather can close launch bays (>30kt gust) and must stay launchable.",
-  "_dateProvenance": "Two kinds of realDate, and the distinction is deliberate. `dateKind: \"documented\"` means the scenario models a specific real incident and the date is that incident's real date — the weather that was actually over that place that day. `dateKind: \"representative\"` means the scenario models a mission TYPE rather than one named event; the date is a real, seasonally-appropriate day at the real location, and the weather is genuinely observed, but it is not tied to a specific historical callout. Never present a representative date as a documented one.",
+  "_comment": "Authoring input for the fixture pipeline (WP-0). Phase 5 adds 10 historical disaster scenarios (T+N response windows) plus refreshed training ids. Observed weather aliases in observedWeather.ts map new ids to committed fixtures until dedicated fetches land in Phase 6.",
+  "_dateProvenance": "Two kinds of realDate: documented = specific real incident; representative = seasonally appropriate day at real location.",
   "scenarios": [
     {
-      "id": "extreme_fema_fort_myers",
-      "name": "FEMA USAR — Hurricane Ian, Fort Myers Beach",
-      "lat": 26.465,
-      "lng": -81.955,
-      "realDate": "2022-09-28",
+      "id": "hist_kilauea_leilani_2018",
+      "name": "HIST — Kīlauea Leilani Estates Guidance (2018)",
+      "lat": 19.469,
+      "lng": -154.917,
+      "realDate": "2018-05-27",
       "dateKind": "documented",
-      "note": "Hurricane Ian landfall near Fort Myers Beach / Estero Island. Real ERA5 winds (59kt sustained, 110kt gust) correctly ground the fleet — the sim refusing to launch into documented hurricane conditions IS the realism."
+      "responseWindowHours": 48,
+      "note": "T+48h guided extraction window — not peak lava entry."
     },
     {
-      "id": "extreme_cal_fire_dixie",
-      "name": "CAL FIRE / USFS — Dixie Fire, Northern Flank",
-      "lat": 40.0072,
-      "lng": -121.0085,
-      "realDate": "2021-08-04",
+      "id": "hist_oso_sr530_2014",
+      "name": "HIST — Oso SR-530 Landslide Recon (2014)",
+      "lat": 48.283,
+      "lng": -121.849,
+      "realDate": "2014-03-23",
       "dateKind": "documented",
-      "note": "Dixie Fire, 2021 — the 4 August run on the northern flank that overran Greenville. Real fire-weather for the day the scenario models."
+      "responseWindowHours": 24,
+      "note": "Terrain fixture rationed for Phase 6 DEM fetch — committed."
+    },
+    {
+      "id": "hist_harvey_houston_2017",
+      "name": "HIST — Hurricane Harvey TFR Deconfliction (2017)",
+      "lat": 29.76,
+      "lng": -95.37,
+      "realDate": "2017-08-28",
+      "dateKind": "documented",
+      "responseWindowHours": 72,
+      "note": "TFR + manned SAR deconfliction training hook."
+    },
+    {
+      "id": "hist_camp_fire_paradise_2018",
+      "name": "HIST — Camp Fire Paradise Mapping (2018)",
+      "lat": 39.759,
+      "lng": -121.622,
+      "realDate": "2018-11-12",
+      "dateKind": "documented",
+      "responseWindowHours": 96,
+      "note": "Post-fire mapping phase; terrain fixture committed in Phase 6."
+    },
+    {
+      "id": "hist_surfside_cts_2021",
+      "name": "HIST — Surfside Champlain Towers Collapse (2021)",
+      "lat": 25.887,
+      "lng": -80.122,
+      "realDate": "2021-06-24",
+      "dateKind": "documented",
+      "responseWindowHours": 12,
+      "note": "Phase 6: small DEM + Overture building footprints committed."
+    },
+    {
+      "id": "hist_helene_asheville_2024",
+      "name": "HIST — Hurricane Helene Asheville Comms Denial (2024)",
+      "lat": 35.595,
+      "lng": -82.551,
+      "realDate": "2024-09-29",
+      "dateKind": "documented",
+      "responseWindowHours": 48,
+      "note": "Mountain terrain fixture committed in Phase 6."
+    },
+    {
+      "id": "hist_katrina_lower_ninth_2005",
+      "name": "HIST — Katrina Lower Ninth Triage (2005)",
+      "lat": 29.964,
+      "lng": -90.067,
+      "realDate": "2005-08-31",
+      "dateKind": "documented",
+      "responseWindowHours": 72,
+      "note": "T+72h triage window — counterfactual UAS capability backtest."
+    },
+    {
+      "id": "hist_joplin_ef5_2011",
+      "name": "HIST — Joplin EF-5 Damage Path (2011)",
+      "lat": 37.084,
+      "lng": -94.513,
+      "realDate": "2011-05-23",
+      "dateKind": "documented",
+      "responseWindowHours": 24,
+      "note": "NIST SP-1139 aligned linear damage path."
+    },
+    {
+      "id": "hist_marshall_fire_2021",
+      "name": "HIST — Marshall Fire No-Launch Decision (2021)",
+      "lat": 39.959,
+      "lng": -105.165,
+      "realDate": "2021-12-30",
+      "dateKind": "documented",
+      "responseWindowHours": 0,
+      "note": "Peak-wind day intentional — launch refusal IS the lesson."
+    },
+    {
+      "id": "hist_east_palestine_2023",
+      "name": "HIST — East Palestine Rail Hazmat (2023)",
+      "lat": 40.834,
+      "lng": -80.541,
+      "realDate": "2023-02-05",
+      "dateKind": "documented",
+      "responseWindowHours": 48,
+      "note": "Plume standoff + persistent monitoring cadence."
     },
     {
       "id": "demo_sar_coastal",
@@ -30,112 +112,58 @@
       "note": "Representative San Francisco summer marine-layer morning."
     },
     {
-      "id": "extreme_uscg_cape_cod_sar",
-      "name": "USCG District 1 — Atlantic Mariner SAR",
+      "id": "train_uscg_maritime_sar",
+      "name": "USCG — Atlantic Mariner SAR (Training)",
       "lat": 41.6688,
       "lng": -70.2978,
       "realDate": "2024-11-19",
       "dateKind": "representative",
-      "note": "Representative late-autumn Nantucket Sound day (25kt gust, 49°F) — the season that actually drives Atlantic mariner SAR callouts, and hard enough to matter without closing the launch bays. 2024-11-12 was tried first and came back at 42kt gust, which grounds the fleet; Fort Myers/Ian is the one scenario that should teach that lesson."
+      "note": "Refreshed from Cape Cod SAR keeper."
     },
     {
-      "id": "extreme_cbp_big_bend_desert_sar",
-      "name": "CBP Big Bend — Desert Humanitarian SAR",
-      "lat": 29.377,
-      "lng": -103.7285,
-      "realDate": "2024-07-22",
-      "dateKind": "representative",
-      "note": "Representative Chihuahuan Desert midsummer day — heat is the operative hazard in Big Bend humanitarian SAR."
-    },
-    {
-      "id": "extreme_lapd_skid_row_welfare",
-      "name": "LAPD SkyWatch — Skid Row Welfare Grid",
+      "id": "train_welfare_grid",
+      "name": "LAPD / LAHSA — Heat Welfare Grid (Training)",
       "lat": 34.0422,
       "lng": -118.2472,
       "realDate": "2024-01-16",
       "dateKind": "representative",
-      "note": "Representative Los Angeles winter night — cold-weather welfare checks are the real driver for this mission type."
+      "note": "Refreshed Skid Row welfare keeper."
     },
     {
-      "id": "extreme_nypd_times_sq_mci",
-      "name": "NYPD Aviation — Times Square MCI",
-      "lat": 40.757,
-      "lng": -73.9862,
-      "realDate": "2024-11-28",
-      "dateKind": "representative",
-      "note": "Representative Manhattan late-November day — a high-density crowd event in the AO the scenario models."
+      "id": "train_wildfire_flank",
+      "name": "CAL FIRE / USFS — Wildfire Flank Recon (Training)",
+      "lat": 40.0072,
+      "lng": -121.0085,
+      "realDate": "2021-08-04",
+      "dateKind": "documented",
+      "note": "Dixie Fire representative day; dedicated train_wildfire_flank DEM committed in Phase 6."
     },
     {
-      "id": "extreme_lapd_hollywood_bowl",
-      "name": "LAPD SIS — Hollywood Bowl Response",
-      "lat": 34.1118,
-      "lng": -118.3375,
-      "realDate": "2024-08-17",
-      "dateKind": "representative",
-      "note": "Representative Los Angeles summer evening — Hollywood Bowl performance season."
-    },
-    {
-      "id": "extreme_dhs_port_la_chemical",
-      "name": "DHS CIKR — Port of LA Chemical Response",
+      "id": "train_hazmat_plume",
+      "name": "LAFD / USCG — Port Hazmat Plume (Training)",
       "lat": 33.7321,
       "lng": -118.2699,
       "realDate": "2024-09-12",
       "dateKind": "representative",
-      "note": "Representative San Pedro Bay early-autumn day. Wind direction governs plume drift, which is the operative decision here."
+      "note": "Refreshed Port of LA hazmat keeper."
     },
     {
-      "id": "extreme_atf_oakland_stash",
-      "name": "ATF Group IX — Oakland Stash Surveillance",
-      "lat": 37.7385,
-      "lng": -122.1935,
-      "realDate": "2024-10-03",
+      "id": "train_mountain_sar",
+      "name": "SAR — Mountain Trail Missing Hiker",
+      "lat": 39.7392,
+      "lng": -104.9903,
+      "realDate": "2024-07-15",
       "dateKind": "representative",
-      "note": "Representative East Bay autumn day — the clear, low-wind spell that favours long static surveillance."
+      "note": "Front Range DEM committed in Phase 6."
     },
     {
-      "id": "extreme_usss_presidential_sf",
-      "name": "USSS — Presidential Visit SF Advance Sweep",
-      "lat": 37.7838,
-      "lng": -122.4,
-      "realDate": "2024-06-20",
+      "id": "demo_wildfire",
+      "name": "CAL FIRE — Wildfire Recon (East Bay)",
+      "lat": 37.8992,
+      "lng": -122.2432,
+      "realDate": "2024-08-10",
       "dateKind": "representative",
-      "note": "Representative downtown San Francisco early-summer day."
-    },
-    {
-      "id": "extreme_multiagency_sf_pursuit",
-      "name": "Multi-Agency — SF to Albany Hills Suspect Pursuit",
-      "lat": 37.7213,
-      "lng": -122.2205,
-      "realDate": "2024-05-08",
-      "dateKind": "representative",
-      "note": "Representative East Bay late-spring day across the pursuit corridor."
-    },
-    {
-      "id": "extreme_fbi_hrt_compound",
-      "name": "FBI HRT — Compound Siege (ISR/Entry/Extract)",
-      "lat": 34.5398,
-      "lng": -117.2932,
-      "realDate": "2024-05-09",
-      "dateKind": "representative",
-      "note": "Representative Mojave high-desert spring day — afternoon wind is the limiting factor on a long ISR hold."
-    },
-    {
-      "id": "extreme_cbp_eagle_pass",
-      "name": "CBP Eagle Pass — Rio Grande Relay",
-      "lat": 28.7062,
-      "lng": -100.4965,
-      "realDate": "2024-03-14",
-      "dateKind": "representative",
-      "note": "Representative south-Texas early-spring day on the Rio Grande."
-    },
-    {
-      "id": "extreme_cbp_rio_grande_longrange",
-      "name": "CBP Laredo — Rio Grande 25-Mile Relay Patrol",
-      "lat": 26.5655,
-      "lng": -99.1195,
-      "realDate": "2024-04-11",
-      "dateKind": "representative",
-      "note": "Representative Laredo-sector spring day across the 25-mile relay corridor."
+      "note": "Committed terrain + buildings fixture AO."
     }
   ]
 }

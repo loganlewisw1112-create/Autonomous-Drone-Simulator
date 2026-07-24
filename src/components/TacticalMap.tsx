@@ -8,14 +8,18 @@ import { MissionStatusFeed } from '@/components/MissionStatusFeed'
 import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
 import { buildAirspaceCeilingFeatures, buildConflictFeatures, buildGnssUncertaintyFeatures, buildIrFootprintFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
 import { addScenarioBuildingLayer, removeScenarioBuildingLayer } from '@/components/scenarioBuildingLayers.target'
+import { addScenarioTerrainLayer, removeScenarioTerrainLayer } from '@/components/scenarioTerrainLayers.target'
 import { airspaceCeilingCaption, airspaceForScenario } from '@/sim/mission/airspace'
 import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
+import { resolveTerrainFixtureId } from '@/scenarios/terrainFixtures'
 import { buildAirspaceReservationFeatures, buildExternalTrafficFeatures, buildUtmAirspaceState, utmAirspaceStateEquals } from '@/sim/demo/utmEngine'
 import { useDeviceMode, type DeviceMode } from '@/hooks/useDeviceMode'
 import { buildAppendedWaypoint, canAppend, routeWithoutWaypoint } from '@/components/mapRouteEditing'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/components/designer/designerValidation'
 import { type SiteRepositionResult } from '@/sim/mission/siteReposition'
 import { isMobileLaunchSite, resolveLaunchSite } from '@/sim/mission/siteResolver'
+import { platformForDrone } from '@/sim/drone/platformCatalog'
+import { thermalPayloadStatus } from '@/sim/sensors/ThermalSim'
 import type { LatLng, LaunchRecoverySite, RouteSuggestion, ScenarioConfig } from '@/types'
 import { haversineDistanceM } from '@/utils/geometry'
 
@@ -373,13 +377,13 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   // assumed reserved chrome bands. Desktop keeps its historical values — LAW.1.
   const badgeInset = mapBadgeInsets(deviceMode)
 
-  const { drones, scenario, thermalContacts, positionHistory, ui, droneWaypoints, routeSuggestions, selectedThermalId, selectThermal, groundUnits, recoveryTeams, toggleLayer, siteOverrides } = useDroneStore(
+  const { drones, scenario, thermalContacts, positionHistory, ui, droneWaypoints, routeSuggestions, selectedThermalId, selectThermal, groundUnits, recoveryTeams, toggleLayer, siteOverrides, weatherState } = useDroneStore(
     useShallow((s) => ({
       drones: s.drones, scenario: s.scenario, thermalContacts: s.thermalContacts, positionHistory: s.positionHistory,
       ui: s.ui, droneWaypoints: s.droneWaypoints, routeSuggestions: s.routeSuggestions,
       selectedThermalId: s.selectedThermalId, selectThermal: s.selectThermal,
       groundUnits: s.groundUnits, recoveryTeams: s.recoveryTeams, toggleLayer: s.toggleLayer,
-      siteOverrides: s.siteOverrides,
+      siteOverrides: s.siteOverrides, weatherState: s.weatherState,
     })),
   )
 
@@ -1019,6 +1023,24 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     // registered first, so inserting before it also keeps routes, geofences and alerts legible.
     const beforeId = map.getLayer('thermal-circle') ? 'thermal-circle' : undefined
     addScenarioBuildingLayer(map, deviceMode, beforeId)
+  }, [deviceMode, mapReady, scenario])
+
+  // Phase 6 — MapLibre terrain from the same committed Terrarium DEM the sim samples.
+  // Desktop/Windows/classroom enable setTerrain; mobile build aliases to a no-op.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady || !mapStyleLoadedRef.current) return
+
+    let cancelled = false
+    const fixtureId = scenario ? resolveTerrainFixtureId(scenario) : undefined
+    void addScenarioTerrainLayer(map, maplibregl, fixtureId, deviceMode).then(() => {
+      if (cancelled) removeScenarioTerrainLayer(map)
+    })
+
+    return () => {
+      cancelled = true
+      removeScenarioTerrainLayer(map)
+    }
   }, [deviceMode, mapReady, scenario])
 
   // ── Effect 2a: Launch/recovery site markers and reposition affordances ────
@@ -1672,7 +1694,14 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         >
           {(() => {
             const n = new Set(thermalContacts.map((d) => d.sourceId)).size
-            return `◍ IR / THERMAL · WHITE-HOT · ${n} HEAT CONTACT${n !== 1 ? 'S' : ''}`
+            const selectedDrone = ui.selectedDroneId
+              ? drones.find((d) => d.id === ui.selectedDroneId)
+              : drones[0]
+            const payload = scenario && selectedDrone
+              ? thermalPayloadStatus(platformForDrone(scenario, selectedDrone.id), weatherState)
+              : null
+            const payloadBit = payload ? ` · ${payload.summary}` : ''
+            return `◍ IR · WHITE-HOT · ${n} CONTACT${n !== 1 ? 'S' : ''}${payloadBit}`
           })()}
         </div>
       )}
@@ -1814,6 +1843,9 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
               )}
             </div>
             <div style={{ marginTop: 4, color: 'var(--text-dim)', fontSize: 9 }}>T+{contact.tick ?? 0} ticks</div>
+            <div style={{ marginTop: 4, color: 'var(--text-dim)', fontSize: 8, maxWidth: 220, lineHeight: 1.35 }}>
+              SIMULATION ONLY — exact heat-source coords for training (not GNSS error)
+            </div>
             {contact.groundUnitId && (
               <div style={{ color: '#ff88ff', marginTop: 4 }}>⛑ Unit dispatched</div>
             )}

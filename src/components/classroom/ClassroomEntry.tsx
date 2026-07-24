@@ -3,26 +3,49 @@ import { useShallow } from 'zustand/react/shallow'
 import App from '@/App'
 import { useClassroomStore } from '@/classroom/classroomStore'
 import { useAuthStore } from '@/store/authStore'
+import { desktopPromptAlreadyHandled } from '@/classroom/desktopBridge'
+import { isClassroomServerPromptResolved } from '@/classroom/serverProbe'
 import { JoinGate } from '@/components/classroom/JoinGate'
 import { ClassSetup } from '@/components/classroom/ClassSetup'
 import { ClassroomHome } from '@/components/classroom/ClassroomHome'
 import { ClassroomAuthGate } from '@/components/classroom/ClassroomAuthGate'
+import { ClassroomServerPrompt } from '@/components/classroom/ClassroomServerPrompt'
 import { InstructorHub } from '@/components/classroom/InstructorHub'
 import { CoordinatorConsole } from '@/components/classroom/CoordinatorConsole'
 import { MissionScorecard } from '@/components/classroom/MissionScorecard'
+import { ClassroomWindowsGate } from '@/components/PlatformGate'
+import { isWindowsClient } from '@/platform/appTarget'
 import './classroom.css'
 
 // Single lazy entry for the whole classroom feature. main.tsx renders this ONLY
 // when the build flag is set, so the module (and its networking) never ships in the
 // mobile/Windows bundles. Bare `/` opens ClassroomHome; role params open setup/join
 // behind ClassroomAuthGate so the live ClassSetup / JoinGate / console stay intact.
+// Classroom is Windows-only (laptops/desktops) — phones and tablets are gated out.
 export function ClassroomEntry({
   mode, initialClassId,
 }: {
   mode: 'home' | 'student' | 'instructor'
   initialClassId?: string
 }) {
+  if (!isWindowsClient()) return <ClassroomWindowsGate />
+  return <ClassroomEntryInner mode={mode} initialClassId={initialClassId} />
+}
+
+function ClassroomEntryInner({
+  mode, initialClassId,
+}: {
+  mode: 'home' | 'student' | 'instructor'
+  initialClassId?: string
+}) {
+  const [serverPromptDone, setServerPromptDone] = useState(
+    () => desktopPromptAlreadyHandled() || isClassroomServerPromptResolved(),
+  )
   const { status, role } = useClassroomStore(useShallow((s) => ({ status: s.status, role: s.role })))
+
+  if (!serverPromptDone) {
+    return <ClassroomServerPrompt onResolved={() => setServerPromptDone(true)} />
+  }
 
   if (mode === 'home') return <ClassroomHome />
 

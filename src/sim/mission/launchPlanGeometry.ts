@@ -2,6 +2,43 @@ import { BAY_SPACING_M, planCoordinatedLaunch, type LaunchSlot } from '@/sim/mis
 import { droneIdForIndex } from '@/sim/mission/routeAudit'
 import type { LatLng, LaunchBayPlan, ScenarioConfig, Waypoint } from '@/types'
 
+/** Seed a ready plan from authored defaults when the operator has not confirmed one yet. */
+export function seededLaunchPlanFromScenario(scenario: ScenarioConfig): LaunchBayPlan | null {
+  if (!scenario.defaultLaunchAssignments) return null
+  return {
+    assignments: { ...scenario.defaultLaunchAssignments },
+    bayStatuses: [],
+    readyToLaunch: true,
+    blockers: [],
+  }
+}
+
+export function effectiveLaunchPlan(
+  scenario: ScenarioConfig,
+  launchPlan: LaunchBayPlan | null,
+): LaunchBayPlan | null {
+  return launchPlan ?? seededLaunchPlanFromScenario(scenario)
+}
+
+/**
+ * Recompute coordinated bays around the current (possibly overridden) launch sites.
+ * Used by initFleet and by pre-launch mobile-base reposition so every shell launches
+ * from the same fan geometry.
+ */
+export function replanLaunchSlots(
+  scenario: ScenarioConfig,
+  launchPlan: LaunchBayPlan | null,
+  routes: Readonly<Record<string, readonly Waypoint[]>>,
+  siteOverrides: Readonly<Record<string, LatLng>> = {},
+): Record<string, LaunchSlot> {
+  return buildLaunchSlotsForPlan(
+    scenario,
+    effectiveLaunchPlan(scenario, launchPlan),
+    routes,
+    siteOverrides,
+  )
+}
+
 export function buildLaunchSlotsForPlan(
   scenario: ScenarioConfig,
   plan: LaunchBayPlan | null,

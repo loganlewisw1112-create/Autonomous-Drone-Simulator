@@ -28,6 +28,14 @@ export default defineConfig(({ mode }) => {
     : appTarget === 'windows'
       ? 'scenarioBuildingLayers.windows.ts'
       : 'scenarioBuildingLayers.target.ts'
+  const terrainFixtureModule = appTarget === 'mobile'
+    ? 'terrainFixtures.mobile.ts'
+    : 'terrainFixtures.ts'
+  const terrainLayerModule = appTarget === 'mobile'
+    ? 'scenarioTerrainLayers.mobile.ts'
+    : appTarget === 'windows'
+      ? 'scenarioTerrainLayers.windows.ts'
+      : 'scenarioTerrainLayers.target.ts'
 
   const defineEnv: Record<string, string> = {}
   if (mode === 'classroom') {
@@ -64,6 +72,14 @@ export default defineConfig(({ mode }) => {
       {
         find: '@/components/scenarioBuildingLayers.target',
         replacement: resolve(__dirname, 'src/components', buildingLayerModule),
+      },
+      {
+        find: '@/components/scenarioTerrainLayers.target',
+        replacement: resolve(__dirname, 'src/components', terrainLayerModule),
+      },
+      {
+        find: '@/scenarios/terrainFixtures',
+        replacement: resolve(__dirname, 'src/scenarios', terrainFixtureModule),
       },
       { find: '@', replacement: resolve(__dirname, 'src') },
     ],

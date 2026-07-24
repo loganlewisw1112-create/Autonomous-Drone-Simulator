@@ -162,16 +162,20 @@ describe('replaySession', () => {
     expect(enriched.recoveryTeams[0].droneId).toBe('uav-02')
   })
 
-  it('MAX_FRAMES rolling window evicts oldest frame', () => {
-    const MAX_FRAMES = 300
-    const frames: FullMissionFrame[] = Array.from({ length: MAX_FRAMES + 1 }, (_, i) =>
-      makeFrame(i * 40, [makeDrone('uav-01')])
+  it('MAX_REPLAY_FRAMES stop-at-cap keeps the earliest frames and rejects newer ones', () => {
+    const MAX_FRAMES = 750
+    const frames: FullMissionFrame[] = Array.from({ length: MAX_FRAMES }, (_, i) =>
+      makeFrame(i * 40, [makeDrone('uav-01')]),
     )
-    const rolling = frames.length >= MAX_FRAMES
-      ? frames.slice(1)
-      : frames
-    expect(rolling).toHaveLength(MAX_FRAMES)
-    expect(rolling[0].tick).toBe(40) // oldest was evicted
+    expect(frames).toHaveLength(MAX_FRAMES)
+    expect(frames[0].tick).toBe(0)
+
+    // Simulating stop-at-cap: once full, further appends are ignored (no drop-oldest).
+    const nextTick = MAX_FRAMES * 40
+    const afterCap = frames.length >= MAX_FRAMES ? frames : [...frames, makeFrame(nextTick, [makeDrone('uav-01')])]
+    expect(afterCap).toHaveLength(MAX_FRAMES)
+    expect(afterCap[0].tick).toBe(0)
+    expect(afterCap[afterCap.length - 1].tick).toBe((MAX_FRAMES - 1) * 40)
   })
 
   it('elapsedSec is consistent with tick count', () => {

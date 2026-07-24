@@ -1,0 +1,129 @@
+{
+  "scenarioId": "train_mountain_sar",
+  "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
+  "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
+  "license": "US Geological Survey — US federal government work, public domain",
+  "note": "Independent read of 3DEP at native resolution; used to bound the fixture error, not to build it.",
+  "points": [
+    {
+      "lat": 39.721234,
+      "lng": -105.013664,
+      "elevationM": 1588.13,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.721234,
+      "lng": -105.001982,
+      "elevationM": 1595.13,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.721234,
+      "lng": -104.9903,
+      "elevationM": 1604.45,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.721234,
+      "lng": -104.978618,
+      "elevationM": 1604.73,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.721234,
+      "lng": -104.966936,
+      "elevationM": 1611.92,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.730217,
+      "lng": -105.013664,
+      "elevationM": 1585.83,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.730217,
+      "lng": -105.001982,
+      "elevationM": 1598.62,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.730217,
+      "lng": -104.9903,
+      "elevationM": 1596.9,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.730217,
+      "lng": -104.978618,
+      "elevationM": 1619.19,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.730217,
+      "lng": -104.966936,
+      "elevationM": 1626.06,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.7392,
+      "lng": -105.013664,
+      "elevationM": 1587.04,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.7392,
+      "lng": -105.001982,
+      "elevationM": 1591.42,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.7392,
+      "lng": -104.9903,
+      "elevationM": 1596.45,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.7392,
+      "lng": -104.978618,
+      "elevationM": 1611.33,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.7392,
+      "lng": -104.966936,
+      "elevationM": 1620.71,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.748183,
+      "lng": -105.013664,
+      "elevationM": 1581.05,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.748183,
+      "lng": -105.001982,
+      "elevationM": 1584.62,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.748183,
+      "lng": -104.9903,
+      "elevationM": 1591.83,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.748183,
+      "lng": -104.978618,
+      "elevationM": 1602.67,
+      "resolutionM": 1
+    },
+    {
+      "lat": 39.748183,
+      "lng": -104.966936,
+      "elevationM": 1612.33,
+      "resolutionM": 1
+    }
+  ]
+}

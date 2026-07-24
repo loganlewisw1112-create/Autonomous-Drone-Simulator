@@ -33,7 +33,9 @@ export function runQuickDemo(scenarioId: string = 'demo_basic'): QuickDemoResult
   // spawns drones at coordinated bays, emits mission_start.
   initFleet()
 
-  // Same completion evidence the PreflightChecklist modal emits on Continue.
+  // Same authorization + preflight evidence the PreflightChecklist modal emits on Continue.
+  useDroneStore.getState().completeAuthorizationTraining('quick_demo')
+  const authSteps = useDroneStore.getState().authorizationCompletedSteps
   useDroneStore.getState().emitEvent({
     eventType: 'preflight_complete',
     droneId: 'system',
@@ -41,18 +43,21 @@ export function runQuickDemo(scenarioId: string = 'demo_basic'): QuickDemoResult
       scenarioId: found.id,
       itemsConfirmed: PREFLIGHT_CHECKLIST.length,
       categories: Array.from(new Set(PREFLIGHT_CHECKLIST.map((item) => item.category))),
+      authorizationStepsCompleted: authSteps,
+      authorizationReady: true,
       mode: 'quick_demo',
+      simulationOnly: true,
     },
   })
 
   // Same plan shape the LaunchBayPlanner commits via Auto-Assign → Confirm.
   const st = useDroneStore.getState()
   if (!st.scenario) return { ok: false, reason: 'scenario failed to load' }
-  const plan = buildAutoLaunchBayPlan(st.scenario, st.weatherState)
+  const plan = buildAutoLaunchBayPlan(st.scenario, st.weatherState, st.siteOverrides)
   if (!plan.readyToLaunch) {
     return { ok: false, reason: plan.blockers[0] ?? 'launch plan not ready' }
   }
-  const placements = buildLaunchSlotsForPlan(st.scenario, plan, st.droneWaypoints)
+  const placements = buildLaunchSlotsForPlan(st.scenario, plan, st.droneWaypoints, st.siteOverrides)
   if (!useDroneStore.getState().applyParkedLaunchPlan(plan, placements)) {
     return { ok: false, reason: 'fleet is not parked for launch-plan application' }
   }

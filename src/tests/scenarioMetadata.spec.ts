@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { INCIDENT_SCENARIOS } from '@/scenarios/catalog'
+import { INCIDENT_MISSION_COUNT, INCIDENT_SCENARIOS } from '@/scenarios/catalog'
 
 const CITY_LAUNCH_KINDS = new Set(['rooftop', 'police_rooftop', 'mobile_command'])
 const GENERIC_OR_WATER_LABEL = /\b(generic|default|ocean|open water|bay water|bridge[- ]adjacent|unknown)\b/i
@@ -15,7 +15,7 @@ function isCityScenario(scenarioName: string, description: string): boolean {
 
 describe('multiagency scenario metadata', () => {
   it('upgrades every scenario with mission brief, dispatch timeline, route briefs, and operational features', () => {
-    expect(INCIDENT_SCENARIOS).toHaveLength(21)
+    expect(INCIDENT_SCENARIOS).toHaveLength(INCIDENT_MISSION_COUNT)
 
     for (const scenario of INCIDENT_SCENARIOS) {
       expect(scenario.missionBrief?.agencies.length, scenario.id).toBeGreaterThan(0)
@@ -92,49 +92,15 @@ describe('multiagency scenario metadata', () => {
     }
   })
 
-  it('stages SF pursuit UAV-03, UAV-04, and UAV-05 from simulated Jack London Square rooftops', () => {
-    const scenario = INCIDENT_SCENARIOS.find((item) => item.id === 'extreme_multiagency_sf_pursuit')
+  it('models long-range maritime SAR with relay progression', () => {
+    const scenario = INCIDENT_SCENARIOS.find((item) => item.id === 'train_uscg_maritime_sar')
     expect(scenario).toBeTruthy()
     if (!scenario) return
 
-    for (const id of ['uav-03', 'uav-04', 'uav-05']) {
-      const launchId = scenario.defaultLaunchAssignments?.[id]
-      const launch = launchId ? scenario.launchSites?.[launchId] : undefined
-      expect(launch, id).toBeTruthy()
-      if (!launch) continue
-      expect(launch.label, id).toContain('Jack London Square')
-      expect(launch.surfaceNote, id).toMatch(/simulated rooftop/i)
-      expect(['rooftop', 'police_rooftop']).toContain(launch.kind)
-      expect(launch.position.lat, id).toBeGreaterThan(37.793)
-      expect(launch.position.lat, id).toBeLessThan(37.798)
-      expect(launch.position.lng, id).toBeGreaterThan(-122.279)
-      expect(launch.position.lng, id).toBeLessThan(-122.273)
-    }
-  })
-
-  it('models Rio Grande as a long-range battery and staged US-83 recharge operation', () => {
-    const scenario = INCIDENT_SCENARIOS.find((item) => item.id === 'extreme_cbp_rio_grande_longrange')
-    expect(scenario).toBeTruthy()
-    if (!scenario) return
-
-    expect(scenario.batteryProfile?.label).toBe('Long-Range Li-ion Endurance Kit')
-    expect(scenario.batteryProfile?.reservePct).toBe(25)
-    expect(scenario.rechargeStations?.map((station) => station.id)).toEqual([
-      'rg-rs-falcon-us83',
-      'rg-rs-roma-us83',
-      'rg-rs-rgc-us83',
-      'rg-rs-lajoya-us83',
-      'rg-rs-mission-us83',
-    ])
-
-    const rechargeFeatures = scenario.operationalFeatures?.filter((feature) => feature.type === 'recharge_station') ?? []
-    expect(rechargeFeatures).toHaveLength(5)
-
-    for (let i = 1; i <= scenario.droneCount; i++) {
-      const id = `uav-${String(i).padStart(2, '0')}`
-      expect(scenario.perDroneRechargeStations?.[id], id).toHaveLength(5)
-      expect(scenario.droneRouteBriefs?.[id]?.recoveryPlan, id).toContain('US-83')
-    }
+    expect(scenario.maxSorties).toBe(2)
+    const relay = scenario.perDroneWaypoints?.['uav-05']
+    expect(relay?.length).toBeGreaterThan(1)
+    expect(relay?.every((wp) => (wp.dwellTimeSec ?? 0) <= 25)).toBe(true)
   })
 })
 

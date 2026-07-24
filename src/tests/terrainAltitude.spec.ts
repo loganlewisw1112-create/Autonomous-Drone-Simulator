@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createTerrainOcclusionService } from '@/sim/terrain/OcclusionService'
-import { aglFtToMslM, terrainAltitudeSnapshot } from '@/sim/terrain/altitude'
+import {
+  aglFtToMslM,
+  ensureSurfaceClearanceAglFt,
+  terrainAltitudeSnapshot,
+} from '@/sim/terrain/altitude'
 import type { TerrainRaster } from '@/sim/terrain/terrainRaster'
 
 const raster: TerrainRaster = {
@@ -67,5 +71,20 @@ describe('terrain altitude conversion', () => {
     })
     expect(ground).not.toHaveBeenCalled()
     expect(surface).not.toHaveBeenCalled()
+  })
+
+  it('raises commanded AGL just enough to clear structures and ridges', () => {
+    const service = serviceWithStructure()
+    const position = { lat: 1, lng: 1 }
+    // 12 m structure ≈ 39.37 ft; commanded 30 ft AGL leaves ~-9.37 ft clearance.
+    const raised = ensureSurfaceClearanceAglFt(service, position, 30, 20)
+    expect(raised).toBeGreaterThan(30)
+    const after = terrainAltitudeSnapshot(service, position, raised)
+    expect(after.surfaceClearanceFt).toBeCloseTo(20, 5)
+  })
+
+  it('leaves commanded AGL alone when clearance is already sufficient', () => {
+    const service = serviceWithStructure()
+    expect(ensureSurfaceClearanceAglFt(service, { lat: 1, lng: 1 }, 100, 20)).toBe(100)
   })
 })

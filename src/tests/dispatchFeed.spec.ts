@@ -68,21 +68,18 @@ describe('mission status feed builder', () => {
     expect(buildMissionStatusFeed({ scenario: null, elapsedSec: 0, events: [], drones: [], thermalDetections: [] })).toEqual([])
   })
 
-  it('includes local dispatch, field-unit status, and operator-task categories for SF pursuit', () => {
-    const sfPursuit = ALL_SCENARIOS.find((s) => s.id === 'extreme_multiagency_sf_pursuit')
-    expect(sfPursuit).toBeTruthy()
-    if (!sfPursuit) return
+  it('includes multi-agency dispatch categories for Harvey TFR scenario', () => {
+    const harvey = ALL_SCENARIOS.find((s) => s.id === 'hist_harvey_houston_2017')
+    expect(harvey).toBeTruthy()
+    if (!harvey) return
 
-    const feed = buildMissionStatusFeed({ scenario: sfPursuit, elapsedSec: 180, events: [], drones: [], thermalDetections: [] })
+    const feed = buildMissionStatusFeed({ scenario: harvey, elapsedSec: 120, events: [], drones: [], thermalDetections: [] })
     const categories = new Set(feed.map((entry) => entry.category))
     const sources = new Set(feed.map((entry) => entry.source))
-    const messages = feed.map((entry) => entry.message).join('\n')
 
     expect([...categories]).toEqual(expect.arrayContaining(['dispatch', 'field_unit', 'operator_task', 'agency_update', 'safety']))
-    expect(sources.has('SFPD DISPATCH')).toBe(true)
-    expect(sources.has('OPD DISPATCH')).toBe(true)
-    expect(messages).toMatch(/officer|unit|ground team|on scene|en route/i)
-    expect(messages).toMatch(/OPERATOR TASK: move UAV-05 to I-580 hold point/i)
+    expect(sources.has('ICP')).toBe(true)
+    expect(sources.has('FEMA LIAISON')).toBe(true)
   })
 
   it('categorizes live operator commands as operator task feed entries', () => {
@@ -123,37 +120,25 @@ describe('mission status feed builder', () => {
     expect(feed.some((entry) => entry.message.includes('received operator command'))).toBe(false)
   })
 
-  it('names Rio Grande roadside recharge stations in derived recharge updates', () => {
-    const rioGrande = ALL_SCENARIOS.find((s) => s.id === 'extreme_cbp_rio_grande_longrange')
-    expect(rioGrande).toBeTruthy()
-    if (!rioGrande) return
+  it('names recharge station labels in derived recharge updates when stations exist', () => {
+    const maritime = ALL_SCENARIOS.find((s) => s.id === 'train_uscg_maritime_sar')
+    expect(maritime).toBeTruthy()
+    if (!maritime) return
 
     const feed = buildMissionStatusFeed({
-      scenario: rioGrande,
+      scenario: maritime,
       elapsedSec: 160,
       drones: [drone],
       thermalDetections: [],
       events: [
-        event('rtb_triggered', 'uav-03', 130, {
-          reason: 'low_battery',
-          rechargeStationId: 'rg-rs-rgc-us83',
-          rechargeStationLabel: 'Rio Grande City / US-83 Recharge',
-        }),
-        event('recharge_start', 'uav-03', 150, {
-          sortieNum: 3,
-          rechargeStationId: 'rg-rs-rgc-us83',
-          rechargeStationLabel: 'Rio Grande City / US-83 Recharge',
+        event('recharge_start', 'uav-01', 150, {
+          sortieNum: 2,
+          rechargeStationLabel: 'Forward staging recharge',
         }),
       ],
     })
 
-    expect(feed.some((entry) =>
-      entry.source === 'UAV-03' &&
-      entry.message.includes('Rio Grande City / US-83 Recharge')
-    )).toBe(true)
-    expect(feed.some((entry) =>
-      entry.message.includes('diverting to Rio Grande City / US-83 Recharge')
-    )).toBe(true)
+    expect(feed.some((entry) => entry.message.includes('Forward staging recharge'))).toBe(true)
   })
 })
 

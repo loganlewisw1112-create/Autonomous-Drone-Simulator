@@ -43,6 +43,7 @@ function runMission(ticks: number): MissionRunResult {
   initFleet()
 
   // Mirror the production start path so lifecycle enters `running` before End Mission.
+  useDroneStore.getState().completeAuthorizationTraining('test')
   useDroneStore.getState().beginLaunchSequence()
   useDroneStore.getState().setRunning(true)
   startSimLoop()

@@ -15,6 +15,9 @@ const COLUMNS: Array<{ key: string; label: string; get: (r: ClassRunResult) => s
   { key: 'nistTime', label: 'NIST-OT', get: (r) => nistOvertime(r) },
   { key: 'progress', label: 'Progress%', get: (r) => Math.round(r.assessment.progressPercent) },
   { key: 'lifeSafety', label: 'Safety', get: (r) => r.assessment.lifeSafety.status },
+  // Phase 4 — operational authorization training completeness for the class wall / CSV.
+  { key: 'auth', label: 'Auth%', get: (r) => authPct(r) },
+  { key: 'authMissed', label: 'AuthMissed', get: (r) => authMissed(r) },
   { key: 'durationSec', label: 'Dur(s)', get: (r) => r.summary.durationSec },
   { key: 'waypointsReached', label: 'WP', get: (r) => r.summary.metrics.waypointsReached },
   { key: 'conflictsDetected', label: 'Conflicts', get: (r) => r.summary.metrics.conflictsDetected },
@@ -42,6 +45,18 @@ function nistOvertime(r: ClassRunResult): string | number {
 function minBattery(r: ClassRunResult): number {
   const outs = r.summary.droneOutcomes
   return outs.length ? Math.min(...outs.map((o) => o.batteryPct)) : 0
+}
+
+function authPct(r: ClassRunResult): string | number {
+  const auth = r.assessment.authorization
+  if (!auth || auth.requiredCount === 0) return '—'
+  return Math.round((auth.completedCount / auth.requiredCount) * 100)
+}
+
+function authMissed(r: ClassRunResult): string | number {
+  const auth = r.assessment.authorization
+  if (!auth) return '—'
+  return auth.missedStepIds.length === 0 ? 'ok' : auth.missedStepIds.join('|')
 }
 
 function toCsv(runs: ClassRunResult[]): string {

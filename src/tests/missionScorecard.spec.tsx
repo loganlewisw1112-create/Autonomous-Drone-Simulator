@@ -12,6 +12,14 @@ import { useDroneStore } from '@/store/droneStore'
 import type { MissionAssessment } from '@/classroom/missionAssessment'
 
 vi.mock('@/App', () => ({ default: () => <main data-testid="student-app">Simulator</main> }))
+vi.mock('@/classroom/desktopBridge', () => ({
+  desktopPromptAlreadyHandled: () => true,
+  getClassroomDesktopBridge: () => null,
+}))
+vi.mock('@/platform/appTarget', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('@/platform/appTarget')>()
+  return { ...mod, isWindowsClient: () => true }
+})
 
 function assessment(patch: Partial<MissionAssessment> = {}): MissionAssessment {
   return {
@@ -26,6 +34,13 @@ function assessment(patch: Partial<MissionAssessment> = {}): MissionAssessment {
         code: 'CONTACT_RESPONSE_SLOW', severity: 'major', sourceId: 'thermal-1',
         message: 'Response exceeded the threshold.',
       }],
+    },
+    authorization: {
+      requiredCount: 3,
+      completedCount: 3,
+      missedStepIds: [],
+      complete: true,
+      scoreContribution: 10,
     },
     tier1: 44,
     tier2: 28,

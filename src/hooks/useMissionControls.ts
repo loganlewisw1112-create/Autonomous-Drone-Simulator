@@ -52,6 +52,7 @@ export function useMissionControls() {
 
   function handleStart() {
     if (!scenario || !launchReady) return
+    if (!useDroneStore.getState().isAuthorizationTrainingReady()) return
     const currentLifecycle = useDroneStore.getState().lifecycle
     if (currentLifecycle !== 'idle' && currentLifecycle !== 'preflight') return
     // Issue the coordinated launch command: parked drones enter the 'preflight'

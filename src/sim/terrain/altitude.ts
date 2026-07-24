@@ -37,6 +37,29 @@ export function aglFtToMslM(
 }
 
 /**
+ * Raise commanded AGL just enough to keep minimum surface clearance over DEM / structures.
+ * Authored altitude remains AGL; this only lifts the live target when the surface rises under
+ * the aircraft (ridges, rooftops) so drones climb/descend with the terrain rather than
+ * ploughing into it at a fixed MSL.
+ */
+export function ensureSurfaceClearanceAglFt(
+  service: TerrainOcclusionService | undefined,
+  position: LatLng,
+  commandedAglFt: number,
+  minClearanceFt = 20,
+): number {
+  const snapshot = terrainAltitudeSnapshot(service, position, commandedAglFt)
+  if (
+    snapshot.coverage !== 'available'
+    || snapshot.surfaceClearanceFt === null
+    || snapshot.surfaceClearanceFt >= minClearanceFt
+  ) {
+    return commandedAglFt
+  }
+  return commandedAglFt + (minClearanceFt - snapshot.surfaceClearanceFt)
+}
+
+/**
  * Describe an AGL flight altitude in the terrain frame without changing altitude semantics.
  * Aircraft MSL is derived from bare ground; structures affect clearance, not the canonical AGL.
  */

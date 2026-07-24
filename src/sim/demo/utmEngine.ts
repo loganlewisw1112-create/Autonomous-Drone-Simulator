@@ -160,6 +160,20 @@ function buildReservations(scenario: ScenarioConfig | null): AirspaceReservation
     })
   }
 
+  // Phase 4 / Harvey-class hook: authored TFR exercises appear as a distinct reservation
+  // so operators can practice deconfliction acknowledgment (simulation-only).
+  const tfr = scenario?.authorizationProfile?.tfrExercise
+  if (tfr) {
+    reservations.push({
+      id: tfr.id,
+      label: tfr.label,
+      polygon: squareAround(origin, 0.0055),
+      altitudeFloorFt: 0,
+      altitudeCeilingFt: 500,
+      status: 'active',
+    })
+  }
+
   return reservations
 }
 

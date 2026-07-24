@@ -36,17 +36,30 @@ export function loadClassMission(config: ClassConfig): LoadResult {
   }
   initFleet()
 
+  store.completeAuthorizationTraining('classroom')
   store.emitEvent({
     eventType: 'preflight_complete',
     droneId: 'system',
-    payload: { scenarioId: scenario.id, itemsConfirmed: PREFLIGHT_CHECKLIST.length, mode: 'classroom' },
+    payload: {
+      scenarioId: scenario.id,
+      itemsConfirmed: PREFLIGHT_CHECKLIST.length,
+      authorizationStepsCompleted: useDroneStore.getState().authorizationCompletedSteps,
+      authorizationReady: true,
+      mode: 'classroom',
+      simulationOnly: true,
+    },
   })
 
   const ready = useDroneStore.getState()
   if (!ready.scenario) return { ok: false, reason: 'scenario failed to load' }
-  const plan = buildAutoLaunchBayPlan(ready.scenario, ready.weatherState)
+  const plan = buildAutoLaunchBayPlan(ready.scenario, ready.weatherState, ready.siteOverrides)
   if (!plan.readyToLaunch) return { ok: false, reason: plan.blockers[0] ?? 'launch plan not ready' }
-  const placements = buildLaunchSlotsForPlan(ready.scenario, plan, ready.droneWaypoints)
+  const placements = buildLaunchSlotsForPlan(
+    ready.scenario,
+    plan,
+    ready.droneWaypoints,
+    ready.siteOverrides,
+  )
   if (!store.applyParkedLaunchPlan(plan, placements)) {
     return { ok: false, reason: 'fleet is not parked for launch-plan application' }
   }

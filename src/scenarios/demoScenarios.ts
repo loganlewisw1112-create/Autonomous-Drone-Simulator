@@ -200,6 +200,14 @@ export const sarCoastal: ScenarioConfig = {
   batteryStartPct: 100,
   batteryDrainRatePerSec: 0.020, // sea winds, methodical grid speed
   commsLossWindows: [{ startSec: 90, durationSec: 18 }], // marine layer RF absorption
+  // Phase 4 — explicit auth profile (labels match legacy LAANC inference for PRE_WP3 parity).
+  authorizationProfile: {
+    kind: 'simulated_laanc',
+    requiredSteps: ['remote_id', 'airspace_request', 'ceiling_check'],
+    nightSteps: ['night_ops'],
+    label: 'Simulated LAANC / USS authorization',
+    reference: 'Authorization state is derived locally from scenario metadata and visible constraints.',
+  },
 }
 
 /**
@@ -267,6 +275,7 @@ export const portPerimeter: ScenarioConfig = {
       { id: 'd2-gate-s',   position: { lat: 37.7935, lng: -122.2858 }, altitudeFt: 120, label: 'Gate-S (truck)', dwellTimeSec: 8 },
     ],
     'uav-03': [
+      { id: 'd3-oak-low', position: { lat: 37.7790, lng: -122.2710 }, altitudeFt: 150, label: 'Oak-Grid-LowCeiling', dwellTimeSec: 8 },
       { id: 'd3-gate-n',  position: { lat: 37.7995, lng: -122.2875 }, altitudeFt: 140, label: 'Gate-N' },
       { id: 'd3-bow-ne',  position: { lat: 37.7995, lng: -122.2820 }, altitudeFt: 140, label: 'Bow-NE', dwellTimeSec: 8 },
       { id: 'd3-berth-e', position: { lat: 37.7968, lng: -122.2808 }, altitudeFt: 140, label: 'Berth-E', dwellTimeSec: 8 },
@@ -356,4 +365,11 @@ export const wildfireRecon: ScenarioConfig = {
   batteryStartPct: 100,
   batteryDrainRatePerSec: 0.028, // thermal updrafts, variable wind, high power draw
   commsLossWindows: [{ startSec: 80, durationSec: 20 }], // smoke column RF absorption
+  authorizationProfile: {
+    kind: 'field_incident_command',
+    requiredSteps: ['remote_id', 'airspace_request', 'ceiling_check'],
+    nightSteps: ['night_ops'],
+    label: 'Incident command airspace coordination',
+    reference: 'Scenario assumes an incident command airspace cell with simulated UAS coordination.',
+  },
 }

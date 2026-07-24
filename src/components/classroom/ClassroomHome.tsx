@@ -25,8 +25,9 @@ export function ClassroomHome() {
           </div>
           <ClassroomAuthForm allowRoleSwitch />
           <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.45, padding: '0 4px' }}>
-            Live multi-device sessions need the LAN relay
-            (<code style={{ fontFamily: 'var(--font-mono)' }}>npm run classroom</code>).
+            Live multi-device sessions: Windows desktop app
+            (<code style={{ fontFamily: 'var(--font-mono)' }}>npm run classroom:desktop</code>)
+            or terminal relay (<code style={{ fontFamily: 'var(--font-mono)' }}>npm run classroom</code>).
             Ops Center: <a href="?app=1" style={{ color: 'inherit' }}>?app=1</a>.
           </div>
         </div>
@@ -60,8 +61,9 @@ export function ClassroomHome() {
         </button>
 
         <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.45 }}>
-          Live multi-device sessions need the LAN relay
-          (<code style={{ fontFamily: 'var(--font-mono)' }}>npm run classroom</code>).
+          Live multi-device sessions: Windows desktop app
+          (<code style={{ fontFamily: 'var(--font-mono)' }}>npm run classroom:desktop</code>)
+          or terminal relay (<code style={{ fontFamily: 'var(--font-mono)' }}>npm run classroom</code>).
           Ops Center: <a href="?app=1" style={{ color: 'inherit' }}>?app=1</a>.
         </div>
       </div>

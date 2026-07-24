@@ -50,9 +50,14 @@ export function validateOperatorRoute(
     .filter((finding) => finding.droneId === droneId)
   const parsedDroneIndex = Number(droneId.slice(-2))
   const droneIndex = Number.isFinite(parsedDroneIndex) ? Math.max(0, parsedDroneIndex - 1) : 0
-  const terrainWarnings = auditTerrainClearance(scenario.id, droneId, route, {
-    fromPosition: fromPosition ?? defaultDroneStartPosition(scenario, droneIndex),
-  })
+  const terrainWarnings = auditTerrainClearance(
+    scenario.terrainFixtureId ?? scenario.id,
+    droneId,
+    route,
+    {
+      fromPosition: fromPosition ?? defaultDroneStartPosition(scenario, droneIndex),
+    },
+  )
 
   return {
     // Terrain coverage/clearance remains advisory. Only the established geofence audit rejects.

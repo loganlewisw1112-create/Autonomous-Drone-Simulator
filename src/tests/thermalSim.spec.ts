@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   checkThermalDetections,
+  thermalPayloadStatus,
   thermalTargetGeometry,
   type ThermalDetectionEnvironment,
 } from '@/sim/sensors/ThermalSim'
@@ -133,6 +134,49 @@ describe('strict thermal detection pipeline (WP-5)', () => {
       'source-complete-id-b',
     ])
     expect(forward[0].confidence).not.toBe(forward[1].confidence)
+  })
+
+  it('reports contact positions exactly equal to heat-source truth', () => {
+    const source = person('exact', 25)
+    const detections = checkThermalDetections(drone(), [source], 100, 7331, environment())
+    expect(detections).toHaveLength(1)
+    expect(detections[0].position).toEqual(source.position)
+    // Confidence still varies with noise — only the lat/lng must stay exact.
+    expect(detections[0].confidence).toBeGreaterThan(0.3)
+  })
+
+  it('retires the legacy 60 m short-range path when environment is omitted', () => {
+    const source = person('no-env', 20)
+    // Four-argument callers used to get gameplay-range detections; Phase 7 fails closed.
+    expect(checkThermalDetections(drone({ altitudeFt: 40 }), [source], 50, 42)).toEqual([])
+  })
+
+  it('gates Teal Hadron 640R detections on Johnson range and NETD contrast', () => {
+    const tealEnv = environment(PLATFORM_CATALOG.teal_2)
+    const rangeM = effectiveDetectionRangeM(PLATFORM_CATALOG.teal_2.thermal, 0.5, 1)!
+    expect(rangeM).toBeGreaterThan(200) // radiometric class, not legacy 60 m
+    expect(checkThermalDetections(drone(), [person('inside', rangeM - 1)], 100, 7331, tealEnv)).toHaveLength(1)
+    expect(checkThermalDetections(drone(), [person('outside', rangeM + 1)], 100, 7331, tealEnv)).toHaveLength(0)
+    // NETD 40 mK still uses the 2 °C contrast floor (≤50 mK)
+    const lowContrast = person('low', 20, { tempC: 21.99, backgroundTempC: 20 })
+    const okContrast = person('ok', 20, { tempC: 22, backgroundTempC: 20 })
+    expect(checkThermalDetections(drone(), [lowContrast], 100, 7331, tealEnv)).toHaveLength(0)
+    expect(checkThermalDetections(drone(), [okContrast], 100, 7331, tealEnv)).toHaveLength(1)
+  })
+
+  it('fails closed for Freefly (no integrated thermal) and BRINC (unpublished optics)', () => {
+    const source = person('near', 20)
+    expect(checkThermalDetections(drone(), [source], 100, 7331, environment(PLATFORM_CATALOG.freefly_astro_max))).toEqual([])
+    expect(checkThermalDetections(drone(), [source], 100, 7331, environment(PLATFORM_CATALOG.brinc_lemur_2))).toEqual([])
+  })
+
+  it('exposes operator HUD status with sensor name and R_d', () => {
+    const teal = thermalPayloadStatus(PLATFORM_CATALOG.teal_2)
+    expect(teal.sensorName).toBe('FLIR Hadron 640R')
+    expect(teal.detectionRangeM).toBeCloseTo(283.33, 1)
+    expect(teal.radiometricAccuracyC).toBe(5)
+    expect(teal.summary).toContain('R_d')
+    expect(thermalPayloadStatus(PLATFORM_CATALOG.freefly_astro_max).detectionRangeM).toBeNull()
   })
 
   it('derives campfire and heat-source geometry from their authored footprint', () => {

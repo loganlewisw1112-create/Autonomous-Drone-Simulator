@@ -20,6 +20,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
 })
 
 describe('authStore classroom roles', () => {
@@ -68,7 +69,7 @@ describe('authStore classroom roles', () => {
     expect(useAuthStore.getState().activeAccount?.instructorUnlocked).toBe(true)
   }, 20000)
 
-  it('rejects unlock with a wrong access code', async () => {
+  it('rejects unlock with a wrong access code when a hash is already configured', async () => {
     await useAuthStore.getState().signUp(
       'teach2', 'Instructor', 'password123', false,
       { role: 'instructor' },
@@ -79,15 +80,19 @@ describe('authStore classroom roles', () => {
     expect(useAuthStore.getState().activeAccount?.instructorUnlocked).toBe(false)
   }, 20000)
 
-  it('rejects unlock when the build has no access hash', async () => {
+  it('provisions the first typed code when no hash is configured yet', async () => {
     await useAuthStore.getState().signUp(
       'teach3', 'Instructor', 'password123', false,
       { role: 'instructor' },
     )
     vi.stubEnv('VITE_INSTRUCTOR_ACCESS_HASH', '')
+    localStorage.clear()
+    // Fresh fetch failures are fine — first-code persists on this device only.
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
     const ok = await useAuthStore.getState().unlockInstructor(ACCESS_CODE)
-    expect(ok).toBe(false)
-    expect(useAuthStore.getState().authError).toMatch(/not configured/)
+    expect(ok).toBe(true)
+    expect(useAuthStore.getState().activeAccount?.instructorUnlocked).toBe(true)
+    expect(localStorage.getItem('drone-sim:instructor-access-hash:v1')).toBe(ACCESS_HASH)
   }, 20000)
 
   it('can still unlock at signup when an access code is supplied', async () => {

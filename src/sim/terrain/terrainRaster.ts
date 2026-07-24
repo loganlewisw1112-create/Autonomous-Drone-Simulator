@@ -45,6 +45,8 @@ export interface TerrainHeader {
   surface: string
   elevationRangeM: { min: number; max: number }
   verticalQuantumM?: number
+  /** Absolute Web-Mercator pixel origin of the crop — enables lossless MapLibre re-tiles. */
+  mercatorPixelOrigin?: { x: number; y: number }
 }
 
 /** A decoded DEM: metres MSL, row-major, row 0 = north edge, column 0 = west edge. */

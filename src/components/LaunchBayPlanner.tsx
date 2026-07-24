@@ -80,7 +80,10 @@ export function LaunchBayPlanner() {
       setApplyError(null)
       setShowLaunchBay(false)
     } else {
-      setApplyError('Launch plan could not be applied. Confirm the fleet is parked and try again.')
+      const authReady = useDroneStore.getState().isAuthorizationTrainingReady()
+      setApplyError(authReady
+        ? 'Launch plan could not be applied. Confirm the fleet is parked and try again.'
+        : 'Authorization training incomplete — finish RID / airspace / ceiling / TFR steps in preflight first.')
     }
   }
 

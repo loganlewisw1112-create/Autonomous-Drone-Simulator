@@ -5,7 +5,7 @@ import { startClass } from '@/classroom/classroomClient'
 import { useClassroomStore } from '@/classroom/classroomStore'
 import { useAuthStore } from '@/store/authStore'
 import { createClassroom, touchClassroomOpened } from '@/account/classroomArchive'
-import { configuredInstructorAccessHash } from '@/account/instructorAccess'
+import { instructorAccessIsConfigured } from '@/account/instructorAccess'
 import type { ClassConfig } from '@/classroom/protocol'
 import type { ScenarioVariantConfig } from '@/types'
 
@@ -53,7 +53,7 @@ export function ClassSetup({
   })))
 
   const unlocked = activeAccount?.instructorUnlocked === true
-  const unlockConfigured = useMemo(() => configuredInstructorAccessHash() !== null, [])
+  const schoolUnlockConfigured = instructorAccessIsConfigured()
 
   function pick(id: string) {
     setScenarioId(id)
@@ -128,15 +128,10 @@ export function ClassSetup({
           >
             <div style={{ fontSize: 13, fontWeight: 700 }}>Insert access code here</div>
             <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.45 }}>
-              One-time for this instructor account. After it succeeds, this field will not
-              appear again — only when creating a brand-new instructor account.
+              {schoolUnlockConfigured
+                ? 'Enter the school access code for this classroom. One-time per instructor account — after it succeeds, this field will not appear again.'
+                : 'Type the access code you want for this school. The first code entered here becomes the unlock code automatically — you do not create folders or hex digests.'}
             </div>
-            {!unlockConfigured && (
-              <div style={{ color: '#ff8080', fontSize: 12 }} data-testid="instructor-hash-missing">
-                Instructor unlock is not enabled on this build. Contact the administrator who
-                provisions instructor unlocks.
-              </div>
-            )}
             <input
               className="cls-input"
               type="text"
@@ -153,7 +148,7 @@ export function ClassSetup({
             <button
               type="button"
               className="cls-btn"
-              disabled={busy || !unlockConfigured || !accessCode.trim()}
+              disabled={busy || !accessCode.trim()}
               onClick={() => void handleUnlock()}
             >
               {busy ? 'Unlocking…' : 'Finish account setup'}

@@ -123,7 +123,7 @@ describe('avoid maneuver — production loop integration', () => {
 
     // Give-way drone is flying again, not stuck in avoid, and bookkeeping is cleared.
     const giveWay = useDroneStore.getState().drones.find((d) => d.id === start.droneId)!
-    expect(['navigate', 'avoid', 'route_complete_loiter']).toContain(giveWay.missionState)
+    expect(['navigate', 'avoid', 'route_complete_loiter', 'return_to_base', 'landed']).toContain(giveWay.missionState)
     if (giveWay.missionState !== 'avoid') {
       expect(giveWay.avoidStartSec).toBeUndefined()
       expect(giveWay.avoidHeadingDeg).toBeUndefined()

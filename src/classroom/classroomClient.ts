@@ -733,6 +733,8 @@ function currentAssessment(
     interventionActorPrefix: CLASSROOM_INTERVENTION_ACTOR_PREFIX,
     isFinal,
     evidenceVerified,
+    authorizationCompletedSteps: s.authorizationCompletedSteps,
+    scenarioVariant: s.scenarioVariant,
   })
 }
 
