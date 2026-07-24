@@ -79,11 +79,11 @@ function toActive(account: AccountRecord): ActiveAccount {
     username: account.username,
     displayName: account.displayName,
     role: account.role,
-    // Legacy instructors (pre deferred-unlock) have no pending flag and already
-    // passed the old signup gate — treat them as unlocked. New instructors set
-    // instructorUnlockPending until the Start a training class code succeeds.
+    // Unlock is stored as instructorUnlockedAt after the Start a training class
+    // code succeeds. Missing timestamp = still locked (including pre-existing
+    // instructor profiles that need one more supervised unlock on this page).
     instructorUnlocked: account.role === 'instructor'
-      ? (typeof account.instructorUnlockedAt === 'number' || account.instructorUnlockPending !== true)
+      ? typeof account.instructorUnlockedAt === 'number'
       : undefined,
   }
 }
