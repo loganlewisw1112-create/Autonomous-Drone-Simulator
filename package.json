@@ -35,7 +35,7 @@
     "@noble/ciphers": "^2.2.0",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^1.8.0",
-    "maplibre-gl": "^5.24.0",
+    "maplibre-gl": "^6.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^3.9.2",
