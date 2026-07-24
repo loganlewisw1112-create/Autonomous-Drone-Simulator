@@ -2,18 +2,28 @@
 
 ## Launch The Simulator
 
-Choose the deployment made for your device. These are independent Vercel apps with separate platform-specific builds.
+Three independent Vercel apps, one codebase, separated by build-time env vars.
 
 | Version | Open | Requirements |
 |---|---|---|
 | **Mobile** | **[Launch Mobile Simulator](https://autonomous-drone-simulator-mobile.vercel.app/)** | Any phone or tablet, portrait or landscape |
 | **Windows** | **[Launch Windows Simulator](https://autonomous-drone-simulator.vercel.app/)** | Windows PC only |
+| **Classroom** | **[Launch Classroom (Instructor / Student)](https://autonomous-drone-simulator-classroom.vercel.app/)** | Any modern desktop or laptop browser |
+
+### Classroom demo links
+
+| Role | Open |
+|---|---|
+| **Instructor console** | **[Start a class](https://autonomous-drone-simulator-classroom.vercel.app/?coordinator=1)** |
+| **Student join** | **[Join a class](https://autonomous-drone-simulator-classroom.vercel.app/?join=)** |
+
+The hosted classroom build is the **client showcase** (create class, join gate, coordinator wall UI). A live multi-student session still needs the LAN relay on the instructor machine — `npm run classroom` — because the WebSocket relay cannot run on Vercel serverless. Same-room students open the instructor's LAN URL; remote demos can show the classroom UI from the Vercel link above.
 
 The Windows link is platform-locked. Open it on a phone, macOS, or anything that isn't Windows and you get an **ERROR — WINDOWS VERSION ONLY** screen with a button through to the mobile version instead.
 
-Either version lets you spin up an encrypted local account or sign back into one. That account lives in the browser storage of the device you made it on — nothing is uploaded, and the mobile and Windows deployments don't share it.
+Mobile and Windows each support an encrypted local account in that browser's storage — nothing is uploaded, and the three deployments do not share accounts.
 
-Click **▶ LAUNCH DEMO** on the welcome screen for a one-tap guided mission.
+On Mobile or Windows, click **▶ LAUNCH DEMO** on the welcome screen for a one-tap guided mission.
 
 A local-first React + TypeScript simulator for the kind of multi-drone public-safety missions a human operator supervises rather than flies. You plan the mission, clear preflight, launch, retask drones mid-flight, work thermal detections, check readiness and airspace, then replay it and export the after-action package — all in the browser, none of it wired to real aircraft or live aviation systems.
 
@@ -187,18 +197,23 @@ into app code.
 
 The app deploys to **Vercel** via its Git integration: every merge to `main`
 triggers a production build (`npm run build`, output `dist/`, Node 20 from
-`engines`/`.nvmrc`) in each of the two Vercel projects described below.
+`engines`/`.nvmrc`) in each of the three Vercel projects described below.
 `vercel.json` adds immutable caching for hashed assets plus basic security
 headers.
 
-The mobile and Windows links above are the **same codebase and the same
-build command**, deployed as two separate Vercel projects. The only thing
-that tells one build apart from the other is a single per-project
-environment variable set in each project's Vercel dashboard —
-`VITE_APP_TARGET=mobile` on the mobile project, `VITE_APP_TARGET=windows` on
-the Windows project (read in `src/platform/appTarget.ts`). No other
-build-time configuration differs between them, and neither project requires
-any other environment variables.
+The three launch links above are the **same codebase and the same build
+command**, deployed as three separate Vercel projects. What differs is a single
+per-project environment variable in each project's Vercel dashboard:
+
+| Project | Env |
+|---|---|
+| Mobile | `VITE_APP_TARGET=mobile` |
+| Windows | `VITE_APP_TARGET=windows` |
+| Classroom | `VITE_CLASSROOM_ENABLED=true` (`VITE_APP_TARGET` left unset) |
+
+No other build-time configuration differs between them. Classroom is client-only
+on Vercel — the LAN WebSocket relay (`server/classroom.mjs`) is started locally
+with `npm run classroom` for a real multi-device class.
 
 The mobile target **never falls back to the desktop grid**: `useDeviceMode`
 (`src/hooks/useDeviceMode.ts`) always renders the mobile shell for

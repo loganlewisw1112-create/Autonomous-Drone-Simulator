@@ -15,8 +15,11 @@ export const TILE_ASPECT = 3 / 2
 
 // One student's live tile. Canvas 2D over the shared backdrop bitmap — never a
 // MapLibre instance (24 WebGL contexts would fail late on someone else's laptop).
-// A single rAF lerps between the last two 1 Hz frames so the wall glides instead
+// A single rAF lerps between the last two grid frames so the wall glides instead
 // of stepping (a stepping wall reads as broken even when nothing is wrong).
+// Must match classroomClient GRID_PUBLISH_INTERVAL_MS.
+const GRID_LERP_MS = 250
+
 export function StudentTile({
   studentId, name, backdrop, bbox, selected, onClick,
 }: {
@@ -53,7 +56,7 @@ export function StudentTile({
         // a column reflow, a window resize or a monitor change, with no transient blur.
         const size = syncCanvasToDisplaySize(canvas, TILE_ASPECT)
         if (size) {
-          const alpha = Math.min(1, (performance.now() - stamp.current) / 1000)
+          const alpha = Math.min(1, (performance.now() - stamp.current) / GRID_LERP_MS)
           const fitted = fitBboxToAspect(bbox, size.width, size.height)
           renderTile(ctx, backdrop, lerpDrones(prev.current, next.current, alpha), fitted, size.width, size.height)
         }
