@@ -49,6 +49,7 @@ function InstructorFlow({
   role: ReturnType<typeof useClassroomStore.getState>['role']
 }) {
   const activeClassroomId = useClassroomStore((s) => s.activeClassroomId)
+  const closedError = useClassroomStore((s) => s.error)
   const setActiveClassroomId = useClassroomStore((s) => s.setActiveClassroomId)
   const [readyForSetup, setReadyForSetup] = useState(false)
 
@@ -64,7 +65,9 @@ function InstructorFlow({
         <div className="cls-card">
           <div style={{ fontWeight: 700 }}>Class ended</div>
           <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-            Session archive saved to this instructor account when a classroom was selected.
+            {closedError === 'archive-failed'
+              ? 'Class closed, but the session archive could not be saved to this device. Check storage and try ending a class again after the next session.'
+              : 'Session archive saved to this instructor account when a classroom was selected.'}
           </div>
           <button
             type="button"

@@ -268,7 +268,23 @@ function handleInstructorMessage(raw: string): void {
       const snap = openSealed<SessionSnapshot>(msg.from, cipher, msg.sealed)
       if (!snap?.incomplete) return
       if (store.runs.some((r) => r.studentId === msg.from && !r.incomplete)) break
-      if (!snap.assessment) break
+      const rosterEntry = store.roster.find((r) => r.studentId === msg.from)
+      if (!snap.assessment) {
+        // Early leave before assessment exists — keep progress for archive via departed.
+        if (rosterEntry) {
+          store.rememberDeparted({
+            studentId: msg.from,
+            accountId: snap.student.accountId ?? rosterEntry.accountId,
+            displayName: snap.student.displayName || rosterEntry.displayName,
+            joinedAt: rosterEntry.joinedAt,
+            leftAt: Date.now(),
+            incomplete: true,
+            progressPercent: snap.progressPercent,
+            interventionCount: store.commands.filter((c) => c.studentId === msg.from).length,
+          })
+        }
+        break
+      }
       store.addRun({
         studentId: msg.from,
         displayName: snap.student.displayName,
@@ -331,17 +347,21 @@ export function focusStudent(studentId: StudentId | null): void {
 }
 
 export async function closeClass(): Promise<void> {
-  await flushInstructorArchive()
+  const archiveResult = await flushInstructorArchive()
   if (classId) send({ v: PROTOCOL_VERSION, type: 'class.close', classId })
   teardown()
-  useClassroomStore.getState().setStatus('closed')
+  useClassroomStore.getState().setStatus(
+    'closed',
+    archiveResult === false ? 'archive-failed' : null,
+  )
 }
 
-async function flushInstructorArchive(): Promise<void> {
+/** @returns true saved, false failed, null skipped (no durable classroom / not instructor). */
+async function flushInstructorArchive(): Promise<boolean | null> {
   const auth = useAuthStore.getState()
   const store = useClassroomStore.getState()
-  if (!auth.activeAccount || !auth.sessionKey || auth.activeAccount.role !== 'instructor') return
-  if (!store.activeClassroomId || !store.classId || !store.config || !store.sessionStartedAt) return
+  if (!auth.activeAccount || !auth.sessionKey || auth.activeAccount.role !== 'instructor') return null
+  if (!store.activeClassroomId || !store.classId || !store.config || !store.sessionStartedAt) return null
 
   const commandCountsByStudent: Record<string, number> = {}
   for (const cmd of store.commands) {
@@ -359,7 +379,12 @@ async function flushInstructorArchive(): Promise<void> {
     commandCountsByStudent,
     departed: store.departedStudents,
   })
-  await persistSessionArchive(auth.activeAccount.id, auth.sessionKey, archive)
+  const sessionId = await persistSessionArchive(auth.activeAccount.id, auth.sessionKey, archive)
+  if (!sessionId) {
+    console.warn('[classroom] session archive failed to persist to instructor account storage')
+    return false
+  }
+  return true
 }
 
 // ── Student ───────────────────────────────────────────────────────────────────
