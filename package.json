@@ -35,7 +35,7 @@
     "@noble/hashes": "^1.8.0",
     "maplibre-gl": "^5.24.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react-dom": "^19.2.8",
     "recharts": "^3.9.2",
     "ws": "^8.21.1",
     "zustand": "^5.0.2"
@@ -46,7 +46,7 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^26.1.1",
     "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
+    "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.64.0",
     "@typescript-eslint/parser": "^8.18.2",
