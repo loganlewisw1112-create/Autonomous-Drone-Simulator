@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { ClassroomHome } from '@/components/classroom/ClassroomHome'
-import { InstructorHub } from '@/components/classroom/InstructorHub'
+import { ClassSetup } from '@/components/classroom/ClassSetup'
 import { useAuthStore } from '@/store/authStore'
 import { hashInstructorAccessCode } from '@/account/instructorAccess'
 
@@ -50,13 +50,13 @@ describe('ClassroomHome auth', () => {
       sessionKey: new Uint8Array(32),
     })
     render(<ClassroomHome />)
-    expect(screen.getByRole('link', { name: /Continue to instructor classrooms/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Continue to Start a training class/i })).toBeTruthy()
     expect(screen.queryByTestId('classroom-auth')).toBeNull()
   })
 })
 
-describe('InstructorHub unlock gate', () => {
-  it('prompts for access code before create/saved actions', () => {
+describe('ClassSetup unlock gate', () => {
+  it('shows Insert access code here on Start a training class before unlock', () => {
     useAuthStore.setState({
       activeAccount: {
         id: 'i1', username: 'teach', displayName: 'Teacher', role: 'instructor',
@@ -64,15 +64,15 @@ describe('InstructorHub unlock gate', () => {
       },
       sessionKey: new Uint8Array(32),
     })
-    render(<InstructorHub onStartLive={() => {}} />)
+    render(<ClassSetup onOpenSaved={() => {}} />)
     expect(screen.getByText('Start a training class')).toBeTruthy()
     expect(screen.getByTestId('instructor-unlock-section')).toBeTruthy()
     expect(screen.getByPlaceholderText('Insert access code here')).toBeTruthy()
     expect(screen.queryByTestId('create-new-class')).toBeNull()
-    expect(screen.queryByTestId('access-saved-classes')).toBeNull()
+    expect(screen.queryByLabelText('Scenario')).toBeNull()
   })
 
-  it('shows create new class and access saved classes after unlock', () => {
+  it('reveals scenario Create class and Access saved after unlock', () => {
     useAuthStore.setState({
       activeAccount: {
         id: 'i1', username: 'teach', displayName: 'Teacher', role: 'instructor',
@@ -80,9 +80,10 @@ describe('InstructorHub unlock gate', () => {
       },
       sessionKey: new Uint8Array(32),
     })
-    render(<InstructorHub onStartLive={() => {}} />)
+    render(<ClassSetup onOpenSaved={() => {}} />)
     expect(screen.queryByTestId('instructor-unlock-section')).toBeNull()
     expect(screen.getByTestId('create-new-class')).toBeTruthy()
     expect(screen.getByTestId('access-saved-classes')).toBeTruthy()
+    expect(screen.getByLabelText('Scenario')).toBeTruthy()
   })
 })
