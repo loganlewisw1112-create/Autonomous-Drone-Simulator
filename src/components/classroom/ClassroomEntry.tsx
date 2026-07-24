@@ -48,15 +48,8 @@ function InstructorFlow({
   status: ReturnType<typeof useClassroomStore.getState>['status']
   role: ReturnType<typeof useClassroomStore.getState>['role']
 }) {
-  const activeClassroomId = useClassroomStore((s) => s.activeClassroomId)
   const closedError = useClassroomStore((s) => s.error)
-  const setActiveClassroomId = useClassroomStore((s) => s.setActiveClassroomId)
-  const instructorUnlocked = useAuthStore((s) => s.activeAccount?.instructorUnlocked === true)
-  const [readyForSetup, setReadyForSetup] = useState(false)
-
-  useEffect(() => {
-    if (!activeClassroomId) setReadyForSetup(false)
-  }, [activeClassroomId])
+  const [view, setView] = useState<'setup' | 'saved'>('setup')
 
   if (status === 'live' && role === 'instructor') return <CoordinatorConsole />
 
@@ -74,32 +67,30 @@ function InstructorFlow({
             type="button"
             className="cls-btn"
             onClick={() => {
-              setReadyForSetup(false)
+              setView('setup')
               useClassroomStore.getState().setStatus('idle')
             }}
           >
-            Back to classrooms
+            Back to Start a training class
           </button>
         </div>
       </div>
     )
   }
 
-  // Locked instructors always stay on the hub unlock screen — never ClassSetup.
-  if (!instructorUnlocked || !activeClassroomId || !readyForSetup) {
+  // Default instructor landing is ClassSetup (unlock + create). Saved list is opt-in.
+  if (view === 'saved') {
     return (
       <InstructorHub
-        onStartLive={() => setReadyForSetup(true)}
+        onStartLive={() => setView('setup')}
+        onBackToSetup={() => setView('setup')}
       />
     )
   }
 
   return (
     <ClassSetup
-      onBack={() => {
-        setReadyForSetup(false)
-        setActiveClassroomId(activeClassroomId)
-      }}
+      onOpenSaved={() => setView('saved')}
     />
   )
 }
