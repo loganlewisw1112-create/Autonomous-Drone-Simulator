@@ -1,45 +1,112 @@
 # Autonomous Drone Simulator
 
-## Launch The Simulator
+**Browser-only. Simulation-only. No real aircraft.**
 
-Three independent Vercel apps, one codebase, separated by build-time env vars.
-
-| Version | Open | Requirements |
-|---|---|---|
-| **Mobile** | **[Launch Mobile Simulator](https://autonomous-drone-simulator-mobile.vercel.app/)** | Any phone or tablet, portrait or landscape |
-| **Windows** | **[Launch Windows Simulator](https://autonomous-drone-simulator.vercel.app/)** | Windows PC only |
-
-### Classroom demo links
-
-| Role | Open |
-|---|---|
-| **Home (chooser)** | **[Classroom home](https://autonomous-drone-simulator-classroom.vercel.app/)** |
-| **Instructor console** | **[Start a class](https://autonomous-drone-simulator-classroom.vercel.app/?coordinator=1)** |
-| **Student join** | **[Join a class](https://autonomous-drone-simulator-classroom.vercel.app/?join=)** |
-
-The hosted classroom build is the **client showcase** (home chooser, instructor/student accounts, create class, join gate, coordinator wall UI). Student accounts are open to anyone; new instructor accounts finish with a one-time supervised access code on the Start a training class page, then can create a new class or open saved classes. Ending a class archives per-student progress into the instructor’s encrypted on-device classroom history. A live multi-student session still needs the LAN relay on the instructor machine — `npm run classroom` — because the WebSocket relay cannot run on Vercel serverless. Same-room students open the instructor's LAN URL; remote demos can show the classroom UI from the Vercel link above.
-
-The Windows link is platform-locked. Open it on a phone, macOS, or anything that isn't Windows and you get an **ERROR — WINDOWS VERSION ONLY** screen with a button through to the mobile version instead.
-
-Mobile and Windows each support an encrypted local account in that browser's storage — nothing is uploaded, and the three deployments do not share accounts.
-
-On Mobile or Windows, click **▶ LAUNCH DEMO** on the welcome screen for a one-tap guided mission.
-
-A local-first React + TypeScript simulator for the kind of multi-drone public-safety missions a human operator supervises rather than flies. You plan the mission, clear preflight, launch, retask drones mid-flight, work thermal detections, check readiness and airspace, then replay it and export the after-action package — all in the browser, none of it wired to real aircraft or live aviation systems.
-
-On a phone the layout is built around the map rather than fighting it for space. The map runs edge to edge and the panels — fleet, mission control, the data tabs, the scenario picker — slide up over it as drawers instead of boxing it into a corner. You place and drag waypoints by tapping the map directly, retask a drone from the mission drawer while it's still in view, and the launch-bay planner is sized to actually fit a phone screen. Open it on a tablet and you get the same map-first shell with more room to breathe — wider drawers, bigger type, more columns — not a phone layout stretched to fill the glass.
+A local-first React + TypeScript simulator for the multi-drone public-safety missions a human operator **supervises** — plan, preflight, launch, retask, thermal contacts, readiness, replay, and export — without wiring anything to live drones or aviation systems.
 
 ![Animated capture of the simulator running a coastal SAR mission with active drones, the OPS HUB, route suggestions, telemetry, and tactical map overlays.](docs/media/readme/hero-live-workflow.gif)
 
-**What it's actually going for**
+| Try it now | Open |
+|---|---|
+| **Mobile** | **[Launch Mobile](https://autonomous-drone-simulator-mobile.vercel.app/)** — phone or tablet |
+| **Windows** | **[Launch Windows](https://autonomous-drone-simulator.vercel.app/)** — Windows PC only |
+| **Classroom (UI demo)** | **[Classroom home](https://autonomous-drone-simulator-classroom.vercel.app/)** — accounts + instructor/student UI |
 
-Three things set the bar for the whole build:
+> **Live multi-student class?** The Vercel classroom link is a **client showcase**. A real class on your Wi‑Fi needs one instructor machine running `npm run classroom` — step-by-step below.
 
-- **It's the whole job, not a dashboard.** You move through the real arc an operator does — load a scenario, run preflight and launch planning, launch, retask, chase a detection, check readiness, replay, export — instead of staring at a screen of pre-baked numbers.
-- **The autonomy stays on a leash.** Nothing reroutes a drone behind your back. Route suggestions wait for an accept or reject; RTB, hover, recovery, and every export are things you decide and can see.
-- **The sim underneath is deterministic on purpose.** Geofences, weather, comms dropouts, thermal contacts, UTM, compliance flags, and the chain-of-custody log all run from seeded logic — same seed, same mission, every time — which is what makes any of the public-safety framing worth trusting.
+---
 
-## Workflow At A Glance
+## What you get in one glance
+
+- **Full mission arc** — scenario → preflight → launch → retask → thermal → ready → replay → export  
+- **Autonomy on a leash** — route suggestions wait for accept/reject; nothing reroutes behind your back  
+- **Deterministic sim** — same seed → same mission (honest demos and classroom grading)  
+- **Three builds, one repo** — Mobile, Windows, Classroom  
+- **Classroom mode** — instructor wall + student sims, end-to-end encrypted on your LAN  
+
+On Mobile or Windows, tap **▶ LAUNCH DEMO** on the welcome screen for a guided mission.
+
+Windows is platform-locked: open it on a non-Windows device and you get **ERROR — WINDOWS VERSION ONLY** with a path to Mobile.
+
+Accounts stay in **that browser’s storage** — nothing is uploaded; Mobile / Windows / Classroom do **not** share logins.
+
+---
+
+## Run a classroom session (instructor + students)
+
+**Who this is for:** a teacher, club lead, or anyone hosting a class. Students only need a browser on the same Wi‑Fi.
+
+**You need:** Node.js **20+**, this repo, and one computer that stays on (the instructor machine).
+
+### Step 1 — Install once (instructor machine)
+
+```bash
+git clone https://github.com/loganlewisw1112-create/Autonomous-Drone-Simulator.git
+cd Autonomous-Drone-Simulator
+npm install
+```
+
+### Step 2 — Instructor unlock material (maintainers only)
+
+Instructor signup needs a one-time supervised access code. The expected SHA‑256 digest is **not** in git.
+
+1. Create folder `local-secrets/` (already gitignored).  
+2. Put your 64‑character hex digest in `local-secrets/instructor-access-hash.txt` (non-comment line).  
+3. Keep the plaintext code only in `local-secrets/instructor-access-code.txt` on that machine — **never commit it**.
+
+If you are a student: skip this. Your teacher gives you the unlock code when you create an instructor account (or they create it for you).
+
+### Step 3 — Start the classroom server
+
+```bash
+npm run classroom
+```
+
+Wait until you see something like:
+
+```text
+Classroom relay on http://localhost:8080
+Classroom relay on http://192.168.x.x:8080
+```
+
+Leave this terminal open. Closing it ends the class for everyone.
+
+### Step 4 — Instructor (same machine or another device on the Wi‑Fi)
+
+1. Open the LAN URL printed above (on the instructor PC: `http://localhost:8080`).  
+2. Create or sign in as an **Instructor** account.  
+3. Open **Start a training class** (`?coordinator=1` if you need the direct link).  
+4. New instructors: enter the supervised **Insert access code here** once → Finish account setup.  
+5. Choose scenario / seed → **Create class**.  
+6. Note the **6‑character class code** and show students the join URL (same host, join flow).
+
+### Step 5 — Students (phones, laptops, tablets on the same Wi‑Fi)
+
+1. Open the instructor’s LAN address (for example `http://192.168.x.x:8080` — use the IP from Step 3, not `localhost` on their phone).  
+2. Create or sign in as a **Student** account (open signup).  
+3. Enter the **6‑character class code** and join.  
+4. Fly the mission on their device; the instructor wall watches the class.
+
+### Step 6 — End class
+
+Instructor ends the class from the console. Per‑student progress is archived into the instructor’s **encrypted on‑device** classroom history (that browser + that instructor password).
+
+### Quick rules (read once)
+
+| Do | Don’t |
+|---|---|
+| Keep `npm run classroom` running during class | Expect a live multi‑student class on Vercel alone |
+| Put students on the **same Wi‑Fi** as the instructor PC | Ask students to open `localhost` on their phones |
+| Give instructors the unlock code **offline** | Put unlock codes in README, git, or chat logs you publish |
+| Use Student accounts for learners | Use Instructor unlock for every student |
+
+Hosted UI tour (no live relay): [Classroom home](https://autonomous-drone-simulator-classroom.vercel.app/) · [Start a class](https://autonomous-drone-simulator-classroom.vercel.app/?coordinator=1) · [Join](https://autonomous-drone-simulator-classroom.vercel.app/?join=)
+
+More detail: [`docs/CLASSROOM_GUIDE.html`](docs/CLASSROOM_GUIDE.html)
+
+---
+
+## Workflow at a glance
 
 ### 1. Command center overview
 
@@ -89,36 +156,73 @@ When the mission stops, replay controls and report export become available. The 
 
 ![Replay mode showing playback controls, mission timeline, report export button, weather state, thermal contact count, and readiness metrics.](docs/media/readme/08-replay-after-action-export.png)
 
-## What The Simulator Does
+---
 
-### Mission Operations
+## Development timeline (A → Z)
+
+**Z is today.** Earlier letters are foundations this repo still ships.
+
+| | Milestone |
+|---|---|
+| **A** | React 18 + TypeScript + Vite app scaffold; local-first browser target |
+| **B** | Deterministic simulation kernel (seeded loop, same seed → same outcome) |
+| **C** | Scenario catalog + mission briefs (grows to **21** published scenarios) |
+| **D** | MapLibre tactical map: drones, routes, geofences, sites, overlays |
+| **E** | Fleet panel, telemetry, OPS HUB, mission controls |
+| **F** | Preflight checklist + launch-bay planning / auto-assign |
+| **G** | Operator route edit, suggestions (accept/reject), RTB / hover / recovery commands |
+| **H** | Thermal contact workflow + ground-unit dispatch cues |
+| **I** | Safety layer: geofence, deconfliction / avoid maneuvers, battery RTB, comms loss |
+| **J** | Weather profiles + simulated Remote ID / LAANC-style / UTM surfaces (demo-only) |
+| **K** | Replay window + chain-of-custody evidence + KML / GeoJSON / after-action export |
+| **L** | Encrypted on-device accounts (IndexedDB) for Mobile / Windows operators |
+| **M** | Mobile map-first shell (drawers, tap waypoints, tablet sizing tier) |
+| **N** | Windows-only gated desktop console build |
+| **O** | Three Vercel deployments from one codebase (`VITE_APP_TARGET` / classroom flag) |
+| **P** | Realism fixture pipeline (weather, airspace, terrain) with verified SHA‑256 fixtures |
+| **Q** | Terrain / buildings / occlusion + thermal optics ranges (realism WP‑4 / WP‑5) |
+| **R** | Realism WP‑6→11: SAR PoD, GNSS DOP, RF link, NIST lanes, Dryden turbulence, battery discharge |
+| **S** | Classroom LAN relay (`server/classroom.mjs`) + E2EE instructor↔student protocol |
+| **T** | Coordinator wall + live focus maps (basemap tiles, live pose streaming) |
+| **U** | Tactical command assessment Phases 0–9 (advisor → command channel → divert/resume) |
+| **V** | Classroom **instructor / student** accounts wrapping live ClassSetup / Join / console |
+| **W** | Durable classrooms + encrypted session archives + history UI + sync envelope seam |
+| **X** | Supervised instructor unlock via gitignored `local-secrets/` (never in tracked docs) |
+| **Y** | Unlock field on **Start a training class**; Create class / Access saved class(es) |
+| **Z** | **Current:** Mobile + Windows + Classroom showcase live; full LAN class via `npm run classroom`; unlock + archives on instructor device |
+
+---
+
+## What the simulator does
+
+### Mission operations
 
 - Runs 21 scenario catalog entries from `src/scenarios/catalog.ts`.
 - Supports waypoint, SAR parallel-track, perimeter, inspection, pursuit, wildfire, hazmat, welfare, and long-range relay mission patterns.
 - Generates mission briefs, command intent, success criteria, operational constraints, dispatch timelines, and per-drone route briefs.
 - Models multi-drone fleets from 3 to 8 aircraft with per-drone roles, altitude bands, route patterns, launch sites, recovery plans, and sortie plans.
 
-### Operator Controls
+### Operator controls
 
 - Lets the operator start, abort, stop, reset, replay, and speed-control the simulation.
 - Supports per-drone route editing, waypoint dragging, route autosave/restore, command routes, append-waypoint flows, hover, resume, RTB, recharge, deep scan, street sweep, perimeter orbit, expanding search, standoff observe, remote landing, and recovery abort commands.
 - Generates route suggestions that can be accepted or rejected by the operator.
 - Exposes an OPS HUB with active routes, launch/recovery site rows, route suggestions, retask controls, and a dispatch task queue.
 
-### Tactical Map And Telemetry
+### Tactical map and telemetry
 
 - Renders drones, routes, editable route markers, launch and recovery sites, geofences, search areas, operational features, thermal contacts, UTM reservations, and external traffic overlays.
 - Shows per-drone state, battery, signal, speed, altitude, heading, current waypoint, warnings, conflicts, geofence state, weather diversion, recharge state, and recovery state.
 - Tracks mission timeline events including mission start, waypoint reached, route complete, low battery, RTB trigger, emergency landing, comms degraded/lost/restored, conflict detected/resolved, geofence breach, thermal detection, recharge, sortie launch, ground-unit dispatch, and drone recovery.
 
-### Safety, Weather, And Airspace
+### Safety, weather, and airspace
 
 - Applies deterministic geofence checks, deconfliction, route audits, low-battery RTB, comms-loss windows, weather variants, and safety warnings.
 - Models location-aware weather profiles for coastal, urban, wildfire, mountain, desert-border, and generic environments.
 - Simulates regulatory/coordination surfaces: Remote ID status, simulated LAANC or incident-command authorization, Part 107 attention flags, BVLOS/night/over-people flags, airspace reservations, external traffic, and UTM conflicts.
 - Keeps all compliance and UTM behavior deterministic and simulation-only.
 
-### Sensors, Ground Response, And Recovery
+### Sensors, ground response, and recovery
 
 - Simulates thermal detections for people, vehicles, heat sources, and campfires with confidence effects from weather.
 - Supports selecting thermal contacts, focused scan, hover hold, dispatch unit, escalation, false-positive marking, resolution, and clearing contacts.
@@ -126,14 +230,23 @@ When the mission stops, replay controls and report export become available. The 
 - Supports downed-drone recovery teams, weather/access notes, remote landed/stranded states, recovery dispatch, on-scene extraction, and unrecoverable simulation outcomes.
 - Includes recharge stations, staged battery-swap points, multi-sortie plans, and forward recovery behavior for long-range missions.
 
-### Replay, Evidence, And Exports
+### Replay, evidence, and exports
 
 - Records full mission replay frames with drones, thermal contacts, ground units, recovery teams, weather state, active events, and mission metrics.
 - Exports chain-of-custody JSONL, KML, GeoJSON, mission reports, and investor after-action packages.
 - After-action packages include replay frame count, event count, mission KPIs, compliance state, UTM state, chain hash, fleet state, and position samples.
 - Investor Demo Mode guides the app through brief, launch, retask, detection, recovery, and review chapters.
 
-## Scenario Catalog
+### Classroom (current)
+
+- Instructor and student roles with local encrypted profiles.
+- One-time supervised instructor unlock on **Start a training class**.
+- Live LAN session: instructor wall, student sims, E2EE to the instructor browser key.
+- End-of-class archives into instructor-only on-device history; optional sync-envelope export for a future cloud seam.
+
+---
+
+## Scenario catalog
 
 The published simulator currently includes 21 source-backed scenarios.
 
@@ -166,7 +279,9 @@ The published simulator currently includes 21 source-backed scenarios.
 
 </details>
 
-## Run Locally
+---
+
+## Run locally (solo Mobile / Windows style)
 
 ```bash
 npm install
@@ -177,7 +292,9 @@ Open `http://127.0.0.1:5173/`.
 
 For venue demos where network map tiles may be unavailable, open `http://127.0.0.1:5173/?map=fallback` to use the local tactical fallback map.
 
-## Verification Commands
+---
+
+## Verification commands
 
 ```bash
 npm test
@@ -192,6 +309,8 @@ the telemetry charts are a `React.lazy` component, so the ~530 kB charts bundle 
 asynchronously and never blocks first paint. MapLibre is still reported as a large chunk —
 that's the library's own size, isolated into a cacheable vendor bundle rather than inlined
 into app code.
+
+---
 
 ## Deployment
 
@@ -209,11 +328,9 @@ per-project environment variable in each project's Vercel dashboard:
 |---|---|
 | Mobile | `VITE_APP_TARGET=mobile` |
 | Windows | `VITE_APP_TARGET=windows` |
-| Classroom | `VITE_CLASSROOM_ENABLED=true` (`VITE_APP_TARGET` left unset) |
+| Classroom | `VITE_CLASSROOM_ENABLED=true` (`VITE_APP_TARGET` left unset). Production also sets the instructor unlock digest in the Vercel dashboard (never in git). |
 
-No other build-time configuration differs between them. Classroom is client-only
-on Vercel — the LAN WebSocket relay (`server/classroom.mjs`) is started locally
-with `npm run classroom` for a real multi-device class.
+Classroom is **client-only** on Vercel — the WebSocket relay (`server/classroom.mjs`) is started locally with `npm run classroom` for a real multi-device class.
 
 The mobile target **never falls back to the desktop grid**: `useDeviceMode`
 (`src/hooks/useDeviceMode.ts`) always renders the mobile shell for
@@ -234,7 +351,9 @@ GitHub Pages copy on manual dispatch (it sets `GITHUB_PAGES=true` so Vite
 builds with the `/Autonomous-Drone-Simulator/` base path), and `npm run deploy`
 pushes `dist/` to the `gh-pages` branch with the `gh-pages` CLI.
 
-## Architecture & Verification
+---
+
+## Architecture & verification
 
 See [`docs/ARCHITECTURE_NOTES.md`](docs/ARCHITECTURE_NOTES.md) for the deterministic simulation
 kernel, the sim/render decoupling strategy, the evidence-chain design, and the test layering
@@ -250,7 +369,9 @@ tests). The claims below are checkable directly, not just asserted:
 | Component layer has real UI tests, not just simulation-state tests | `npx vitest run src/tests/controlBar.spec.tsx src/tests/operatorCommandPanel.spec.tsx src/tests/replayPanel.spec.tsx src/tests/fleetPanel.spec.tsx src/tests/errorBoundary.spec.tsx` | All pass against the real Zustand store, not mocks |
 | Full gate is green | `npm test && npm run lint && npm run build && npm audit` | 0 type errors, 0 lint errors, successful build, 0 known vulnerabilities |
 
-## Investor Demo Script
+---
+
+## Investor demo script
 
 1. Load `SAR - Coastal / Ocean Beach` (`demo_sar_coastal`) and let preflight / launch bay planning appear.
 2. Turn on `DEMO MODE` in the bottom control bar.
@@ -261,7 +382,9 @@ tests). The claims below are checkable directly, not just asserted:
 7. Stop the mission, enter replay, and export the After Action Package.
 8. Use `DEMO RESET` before a second run to clear transient state and saved waypoint drafts.
 
-## Known Limitations
+---
+
+## Known limitations
 
 - This is a browser simulator only. It does not connect to real drones, Remote ID hardware, FAA services, LAANC, UTM providers, cameras, dispatch systems, or cloud APIs.
 - Regulatory and UTM surfaces are deterministic simulation layers for demo credibility, not operational authorization tools.
@@ -272,4 +395,5 @@ tests). The claims below are checkable directly, not just asserted:
   exact. See the model-assumptions comment in `src/sim/sensors/ThermalSim.ts`.
 - Replay keeps a rolling window of the most recent ~10 minutes of mission frames; longer
   missions drop their earliest frames (the UI flags this when it happens).
-- Generated build output, runtime logs, local environment files, and agent handoff artifacts are intentionally excluded from the published repository.
+- Hosted classroom cannot run the WebSocket relay on Vercel serverless — use `npm run classroom` for live multi-student sessions.
+- Generated build output, runtime logs, local environment files, `local-secrets/`, and agent handoff artifacts are intentionally excluded from the published repository.
