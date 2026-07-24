@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAuthStore, listAccounts } from '@/store/authStore'
 import type { AccountRecord, AccountRole } from '@/account/types'
-import { configuredInstructorAccessHash } from '@/account/instructorAccess'
 
 /**
  * Wraps ClassSetup / JoinGate: require a signed-in classroom account of the
@@ -52,7 +51,8 @@ export function ClassroomAuthGate({
 
 /**
  * Shared sign-in / sign-up form. On classroom home, `allowRoleSwitch` lets the user
- * pick Student or Instructor. Instructor access code is required only at first signup.
+ * pick Student or Instructor. Instructor access code is entered later on the
+ * Start a training class page (one-time per new instructor account).
  */
 export function ClassroomAuthForm({
   requiredRole: fixedRole,
@@ -79,16 +79,10 @@ export function ClassroomAuthForm({
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
-  const [accessCode, setAccessCode] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
   const [busy, setBusy] = useState(false)
 
   const activeRole = fixedRole ?? role
-
-  const instructorUnlockReady = useMemo(
-    () => activeRole !== 'instructor' || configuredInstructorAccessHash() !== null,
-    [activeRole],
-  )
 
   useEffect(() => {
     void listAccounts().then((accounts) => {
@@ -106,7 +100,6 @@ export function ClassroomAuthForm({
       if (mode === 'signup') {
         const ok = await signUp(username, displayName, password, rememberMe, {
           role: activeRole,
-          accessCode: activeRole === 'instructor' ? accessCode : undefined,
         })
         if (ok) onSignedIn?.()
       } else {
@@ -134,7 +127,6 @@ export function ClassroomAuthForm({
     } finally {
       setBusy(false)
       setPassword('')
-      setAccessCode('')
     }
   }
 
@@ -148,7 +140,7 @@ export function ClassroomAuthForm({
         <div style={{ fontSize: 18, fontWeight: 700 }}>{title}</div>
         <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
           {mode === 'signup' && activeRole === 'instructor'
-            ? 'Access code is required once at setup. After that, sign in with username and password only.'
+            ? 'Create username and password first. You will insert the supervised access code once on the Start a training class page.'
             : mode === 'signup'
               ? 'Anyone can create a student account on this device. Progress stays encrypted locally.'
               : 'Sign in with your classroom username and password.'}
@@ -177,13 +169,6 @@ export function ClassroomAuthForm({
       {!storageAvailable && (
         <div style={{ color: '#ffc766', fontSize: 12 }}>
           Device storage unavailable — classroom accounts need IndexedDB.
-        </div>
-      )}
-
-      {mode === 'signup' && activeRole === 'instructor' && !instructorUnlockReady && (
-        <div style={{ color: '#ff8080', fontSize: 12 }} data-testid="instructor-hash-missing">
-          Instructor signup is not enabled on this build. Contact the administrator who
-          provisions instructor unlocks.
         </div>
       )}
 
@@ -234,39 +219,6 @@ export function ClassroomAuthForm({
         onKeyDown={(e) => e.key === 'Enter' && !busy && void handleSubmit()}
       />
 
-      {/* Unlock field ONLY when creating a brand-new instructor account — never on sign-in. */}
-      {mode === 'signup' && activeRole === 'instructor' && (
-        <div
-          data-testid="instructor-unlock-section"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            padding: 12,
-            borderRadius: 8,
-            border: '1px solid var(--border, #26303f)',
-            background: 'rgba(57, 217, 138, 0.06)',
-          }}
-        >
-          <div style={{ fontSize: 13, fontWeight: 700 }}>Instructor unlock (one-time)</div>
-          <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.45 }}>
-            Required only when creating a <strong>new</strong> instructor account.
-            After this account exists, sign-in uses username and password only — this
-            field will not appear again for that instructor.
-          </div>
-          <input
-            className="cls-input"
-            type="password"
-            placeholder="Enter supervised unlock code"
-            autoComplete="off"
-            value={accessCode}
-            onChange={(e) => setAccessCode(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !busy && void handleSubmit()}
-            data-testid="instructor-access-code"
-          />
-        </div>
-      )}
-
       <label className="cls-consent">
         <input
           type="checkbox"
@@ -285,7 +237,7 @@ export function ClassroomAuthForm({
       <button
         type="button"
         className="cls-btn"
-        disabled={busy || !storageAvailable || (mode === 'signup' && activeRole === 'instructor' && !instructorUnlockReady)}
+        disabled={busy || !storageAvailable}
         onClick={() => void handleSubmit()}
       >
         {busy ? 'Working…' : mode === 'signup' ? 'Create account' : 'Sign in'}
