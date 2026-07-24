@@ -432,16 +432,21 @@
           <div class="card flag">
             <span class="card-title">Say this accurately</span>
             <p>
-              <strong>There is no account, login, licence key, or credential required to open the
-              instructor console.</strong> Anyone holding a classroom-enabled build who types
-              <code>?coordinator=1</code> is an instructor. <code>ClassSetup.tsx</code> and
-              <code>classroomClient.ts</code> contain no auth check of any kind.
+              <strong>Instructor and student accounts are required.</strong> Open
+              <code>?coordinator=1</code> or <code>?join=</code>, then sign in.
+              Creating an instructor account needs your agency access code (verified against
+              <code>VITE_INSTRUCTOR_ACCESS_HASH</code> in the build — honest friction, not DRM).
+              Anyone can create a student account. Solo Mobile/Windows operator profiles are separate.
             </p>
             <p>
-              The commercial gate is therefore <strong>who you hand a classroom-enabled build
-              to</strong>, not accounts you provision. That is a real gate — it is enforced at
-              build time and cannot be bypassed at runtime — but it is distribution control, not
-              account control. Do not describe it as per-instructor licensing.
+              Live LAN sessions still use end-to-end encryption to the instructor’s tab key.
+              When a class ends, per-student progress is re-encrypted into that instructor’s
+              IndexedDB classroom archive — only they can open it with their password.
+              A local sync envelope export leaves a clean seam for cloud sync later.
+            </p>
+            <p>
+              The commercial gate for instructor capability is the hashed access code plus who
+              you hand a classroom-enabled build to.
             </p>
           </div>
 

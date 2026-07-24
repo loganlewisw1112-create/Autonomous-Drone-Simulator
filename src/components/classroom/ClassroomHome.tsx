@@ -1,34 +1,68 @@
+import { useShallow } from 'zustand/react/shallow'
+import { useAuthStore } from '@/store/authStore'
+import { ClassroomAuthForm } from '@/components/classroom/ClassroomAuthGate'
+
 // Landing page for a classroom-enabled build opened with no role param.
-// Choosing a role only changes the URL — ClassroomEntry remounts into ClassSetup or JoinGate.
-// No WebSocket, no keys, no class state until the user continues from those screens.
+// Sign in or create a student/instructor account here, then continue to the
+// live instructor hub or student join. No WebSocket until those screens.
 
 export function ClassroomHome() {
+  const { activeAccount, signOut } = useAuthStore(useShallow((s) => ({
+    activeAccount: s.activeAccount,
+    signOut: s.signOut,
+  })))
+
+  if (!activeAccount || (activeAccount.role !== 'instructor' && activeAccount.role !== 'student')) {
+    return (
+      <div className="cls-center">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: 'min(420px, 94vw)' }}>
+          <div className="cls-card" data-testid="classroom-home" style={{ marginBottom: 0 }}>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>Classroom</div>
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4, lineHeight: 1.45 }}>
+              Sign in or create an account. Students can self-register.
+              Instructor accounts need an access code once at setup (supervised).
+            </div>
+          </div>
+          <ClassroomAuthForm allowRoleSwitch />
+          <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.45, padding: '0 4px' }}>
+            Live multi-device sessions need the LAN relay
+            (<code style={{ fontFamily: 'var(--font-mono)' }}>npm run classroom</code>).
+            Ops Center: <a href="?app=1" style={{ color: 'inherit' }}>?app=1</a>.
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="cls-center">
-      <div className="cls-card">
+      <div className="cls-card" data-testid="classroom-home">
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>Classroom</div>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
-            Instructor dashboard or student join — pick a role to continue.
+            Signed in as <strong style={{ color: 'var(--text-primary)' }}>{activeAccount.displayName}</strong>
+            {' · '}{activeAccount.role}
           </div>
         </div>
 
-        <a className="cls-btn" href="?coordinator=1" style={{ textAlign: 'center', textDecoration: 'none' }}>
-          Instructor — start a class
-        </a>
-        <a
-          className="cls-btn ghost"
-          href="?join="
-          style={{ textAlign: 'center', textDecoration: 'none' }}
-        >
-          Student — join with a code
-        </a>
+        {activeAccount.role === 'instructor' ? (
+          <a className="cls-btn" href="?coordinator=1" style={{ textAlign: 'center', textDecoration: 'none' }}>
+            Continue to instructor classrooms
+          </a>
+        ) : (
+          <a className="cls-btn" href="?join=" style={{ textAlign: 'center', textDecoration: 'none' }}>
+            Continue to join a class
+          </a>
+        )}
+
+        <button type="button" className="cls-btn ghost" onClick={() => signOut()}>
+          Sign out
+        </button>
 
         <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.45 }}>
-          Live multi-device sessions need the LAN relay on the instructor machine
+          Live multi-device sessions need the LAN relay
           (<code style={{ fontFamily: 'var(--font-mono)' }}>npm run classroom</code>).
-          This hosted page is the classroom client; the ordinary Ops Center is at{' '}
-          <a href="?app=1" style={{ color: 'inherit' }}>?app=1</a>.
+          Ops Center: <a href="?app=1" style={{ color: 'inherit' }}>?app=1</a>.
         </div>
       </div>
     </div>

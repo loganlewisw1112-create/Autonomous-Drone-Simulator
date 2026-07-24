@@ -203,7 +203,7 @@ export function CoordinatorConsole() {
           <button className={`cls-tab ${rightPane === 'focus' ? 'active' : ''}`} onClick={() => setRightPane('focus')}>Focus</button>
           <button className={`cls-tab ${rightPane === 'results' ? 'active' : ''}`} onClick={() => setRightPane('results')}>Results</button>
         </div>
-        <button className="cls-btn ghost cls-header-btn" onClick={closeClass}>End class</button>
+        <button className="cls-btn ghost cls-header-btn" onClick={() => void closeClass()}>End class</button>
       </header>
 
       <div className="cls-alert-strip">

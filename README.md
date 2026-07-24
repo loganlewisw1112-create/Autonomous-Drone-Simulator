@@ -18,7 +18,7 @@ Three independent Vercel apps, one codebase, separated by build-time env vars.
 | **Instructor console** | **[Start a class](https://autonomous-drone-simulator-classroom.vercel.app/?coordinator=1)** |
 | **Student join** | **[Join a class](https://autonomous-drone-simulator-classroom.vercel.app/?join=)** |
 
-The hosted classroom build is the **client showcase** (home chooser, create class, join gate, coordinator wall UI). A live multi-student session still needs the LAN relay on the instructor machine — `npm run classroom` — because the WebSocket relay cannot run on Vercel serverless. Same-room students open the instructor's LAN URL; remote demos can show the classroom UI from the Vercel link above.
+The hosted classroom build is the **client showcase** (home chooser, instructor/student accounts, create class, join gate, coordinator wall UI). Instructor signup needs `VITE_INSTRUCTOR_ACCESS_HASH` (SHA-256 of your agency access code); student accounts are open. Ending a class archives per-student progress into the instructor’s encrypted on-device classroom history. A live multi-student session still needs the LAN relay on the instructor machine — `npm run classroom` — because the WebSocket relay cannot run on Vercel serverless. Same-room students open the instructor's LAN URL; remote demos can show the classroom UI from the Vercel link above.
 
 The Windows link is platform-locked. Open it on a phone, macOS, or anything that isn't Windows and you get an **ERROR — WINDOWS VERSION ONLY** screen with a button through to the mobile version instead.
 
