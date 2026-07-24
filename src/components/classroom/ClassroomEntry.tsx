@@ -4,15 +4,23 @@ import App from '@/App'
 import { useClassroomStore } from '@/classroom/classroomStore'
 import { JoinGate } from '@/components/classroom/JoinGate'
 import { ClassSetup } from '@/components/classroom/ClassSetup'
+import { ClassroomHome } from '@/components/classroom/ClassroomHome'
 import { CoordinatorConsole } from '@/components/classroom/CoordinatorConsole'
 import { MissionScorecard } from '@/components/classroom/MissionScorecard'
 import './classroom.css'
 
 // Single lazy entry for the whole classroom feature. main.tsx renders this ONLY
-// when the build flag is set AND a classroom URL param is present, so the module
-// (and its networking) never ships in a normal load or the mobile/Windows bundles.
-export function ClassroomEntry({ mode, initialClassId }: { mode: 'student' | 'instructor'; initialClassId?: string }) {
+// when the build flag is set, so the module (and its networking) never ships in the
+// mobile/Windows bundles. Bare `/` opens ClassroomHome; role params open setup/join.
+export function ClassroomEntry({
+  mode, initialClassId,
+}: {
+  mode: 'home' | 'student' | 'instructor'
+  initialClassId?: string
+}) {
   const { status, role } = useClassroomStore(useShallow((s) => ({ status: s.status, role: s.role })))
+
+  if (mode === 'home') return <ClassroomHome />
 
   if (mode === 'instructor') {
     return status === 'live' && role === 'instructor' ? <CoordinatorConsole /> : <ClassSetup />

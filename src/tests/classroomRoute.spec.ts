@@ -7,20 +7,30 @@
  * code fell through to the ordinary simulator and JoinGate's code field was unreachable unless
  * the URL already carried a code. On a LAN, where the instructor reads a 6-character code aloud
  * and nothing hands students a pre-filled link, that was the whole student on-ramp.
+ *
+ * A later regression: classroom-enabled bare `/` also fell through to the Ops Center, so the
+ * dedicated classroom Vercel URL looked identical to the Windows deploy. Home is now a chooser.
  */
 import { describe, expect, it } from 'vitest'
 import { resolveClassroomRoute } from '@/platform/classroomRoute'
 
 describe('resolveClassroomRoute', () => {
   it('renders the ordinary app when the build flag is off, whatever the URL says', () => {
-    for (const search of ['', '?join=ABC123', '?coordinator=1', '?join=']) {
+    for (const search of ['', '?join=ABC123', '?coordinator=1', '?join=', '?app=1']) {
       expect(resolveClassroomRoute(search, false), search).toEqual({ kind: 'app' })
     }
   })
 
-  it('renders the ordinary app on a normal load of the classroom build', () => {
-    expect(resolveClassroomRoute('', true)).toEqual({ kind: 'app' })
-    expect(resolveClassroomRoute('?utm_source=x', true)).toEqual({ kind: 'app' })
+  it('opens the classroom home chooser on a bare load of the classroom build', () => {
+    expect(resolveClassroomRoute('', true)).toEqual({ kind: 'classroom', mode: 'home' })
+    expect(resolveClassroomRoute('?utm_source=x', true)).toEqual({ kind: 'classroom', mode: 'home' })
+    expect(resolveClassroomRoute('?coordinator=0', true)).toEqual({ kind: 'classroom', mode: 'home' })
+    expect(resolveClassroomRoute('?coordinator=true', true)).toEqual({ kind: 'classroom', mode: 'home' })
+  })
+
+  it('keeps ?app=1 as an escape hatch to the ordinary Ops Center', () => {
+    expect(resolveClassroomRoute('?app=1', true)).toEqual({ kind: 'app' })
+    expect(resolveClassroomRoute('?app=1&join=ABC123', true)).toEqual({ kind: 'app' })
   })
 
   it('sends ?join=<CODE> to the student flow with the code prefilled', () => {
@@ -40,11 +50,6 @@ describe('resolveClassroomRoute', () => {
     expect(resolveClassroomRoute('?coordinator=1', true)).toEqual({
       kind: 'classroom', mode: 'instructor',
     })
-  })
-
-  it('ignores a coordinator param that is not exactly 1', () => {
-    expect(resolveClassroomRoute('?coordinator=true', true)).toEqual({ kind: 'app' })
-    expect(resolveClassroomRoute('?coordinator=0', true)).toEqual({ kind: 'app' })
   })
 
   it('prefers the instructor console when both params are present', () => {

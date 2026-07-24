@@ -10,8 +10,9 @@ initRunRecorder()
 void useAuthStore.getState().restoreRememberedSession()
 
 // Classroom is opt-in and OFF by default. Only a build with VITE_CLASSROOM_ENABLED
-// AND a classroom URL param (never present on a normal load) reaches the lazy chunk,
-// so its networking tree-shakes out of the mobile/Windows bundles entirely.
+// reaches the lazy chunk, so its networking tree-shakes out of the mobile/Windows
+// bundles entirely. On that build, bare `/` opens the classroom home chooser — not
+// the ordinary Ops Center (that made the classroom Vercel URL look like Windows).
 function resolveRoot() {
   if (import.meta.env.VITE_CLASSROOM_ENABLED === 'true') {
     const route = resolveClassroomRoute(location.search, true)
