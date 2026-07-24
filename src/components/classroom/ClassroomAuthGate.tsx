@@ -182,8 +182,8 @@ export function ClassroomAuthForm({
 
       {mode === 'signup' && activeRole === 'instructor' && !instructorUnlockReady && (
         <div style={{ color: '#ff8080', fontSize: 12 }} data-testid="instructor-hash-missing">
-          This build has no instructor access hash configured. Set{' '}
-          <code style={{ fontFamily: 'var(--font-mono)' }}>VITE_INSTRUCTOR_ACCESS_HASH</code> and rebuild.
+          Instructor signup is not enabled on this build. Contact the administrator who
+          provisions instructor unlocks.
         </div>
       )}
 
@@ -234,17 +234,37 @@ export function ClassroomAuthForm({
         onKeyDown={(e) => e.key === 'Enter' && !busy && void handleSubmit()}
       />
 
+      {/* Unlock field ONLY when creating a brand-new instructor account — never on sign-in. */}
       {mode === 'signup' && activeRole === 'instructor' && (
-        <input
-          className="cls-input"
-          type="password"
-          placeholder="Instructor access code (or SHA-256 hash)"
-          autoComplete="off"
-          value={accessCode}
-          onChange={(e) => setAccessCode(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !busy && void handleSubmit()}
-          data-testid="instructor-access-code"
-        />
+        <div
+          data-testid="instructor-unlock-section"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            padding: 12,
+            borderRadius: 8,
+            border: '1px solid var(--border, #26303f)',
+            background: 'rgba(57, 217, 138, 0.06)',
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 700 }}>Instructor unlock (one-time)</div>
+          <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.45 }}>
+            Required only when creating a <strong>new</strong> instructor account.
+            After this account exists, sign-in uses username and password only — this
+            field will not appear again for that instructor.
+          </div>
+          <input
+            className="cls-input"
+            type="password"
+            placeholder="Enter supervised unlock code"
+            autoComplete="off"
+            value={accessCode}
+            onChange={(e) => setAccessCode(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !busy && void handleSubmit()}
+            data-testid="instructor-access-code"
+          />
+        </div>
       )}
 
       <label className="cls-consent">

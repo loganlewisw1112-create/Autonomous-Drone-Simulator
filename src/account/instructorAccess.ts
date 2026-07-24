@@ -1,8 +1,8 @@
 import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex } from '@noble/hashes/utils'
 
-// Client-side instructor unlock. Agencies receive the plaintext access code;
-// only its SHA-256 hex lives in the build (VITE_INSTRUCTOR_ACCESS_HASH).
+// Client-side instructor unlock check. The expected digest is injected at build
+// time from deployment configuration or the gitignored local-secrets folder.
 // Honest friction — not DRM. Anyone who patches the bundle can bypass it.
 
 const enc = new TextEncoder()

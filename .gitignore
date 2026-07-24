@@ -14,6 +14,9 @@ coverage/
 # without the instructor key, but it is student work and never belongs in the repo.
 classroom-runs/
 
+# Local-only instructor unlock material — never commit.
+local-secrets/
+
 # Local agent/workspace artifacts
 .agents/
 .claude/

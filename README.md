@@ -8,7 +8,6 @@ Three independent Vercel apps, one codebase, separated by build-time env vars.
 |---|---|---|
 | **Mobile** | **[Launch Mobile Simulator](https://autonomous-drone-simulator-mobile.vercel.app/)** | Any phone or tablet, portrait or landscape |
 | **Windows** | **[Launch Windows Simulator](https://autonomous-drone-simulator.vercel.app/)** | Windows PC only |
-| **Classroom** | **[Launch Classroom](https://autonomous-drone-simulator-classroom.vercel.app/)** | Any modern desktop or laptop browser — opens the instructor/student chooser |
 
 ### Classroom demo links
 
@@ -18,7 +17,7 @@ Three independent Vercel apps, one codebase, separated by build-time env vars.
 | **Instructor console** | **[Start a class](https://autonomous-drone-simulator-classroom.vercel.app/?coordinator=1)** |
 | **Student join** | **[Join a class](https://autonomous-drone-simulator-classroom.vercel.app/?join=)** |
 
-The hosted classroom build is the **client showcase** (home chooser, instructor/student accounts, create class, join gate, coordinator wall UI). Instructor signup needs `VITE_INSTRUCTOR_ACCESS_HASH` (SHA-256 of your agency access code); student accounts are open. Ending a class archives per-student progress into the instructor’s encrypted on-device classroom history. A live multi-student session still needs the LAN relay on the instructor machine — `npm run classroom` — because the WebSocket relay cannot run on Vercel serverless. Same-room students open the instructor's LAN URL; remote demos can show the classroom UI from the Vercel link above.
+The hosted classroom build is the **client showcase** (home chooser, instructor/student accounts, create class, join gate, coordinator wall UI). Student accounts are open to anyone; instructor accounts require a one-time supervised unlock at signup. Ending a class archives per-student progress into the instructor’s encrypted on-device classroom history. A live multi-student session still needs the LAN relay on the instructor machine — `npm run classroom` — because the WebSocket relay cannot run on Vercel serverless. Same-room students open the instructor's LAN URL; remote demos can show the classroom UI from the Vercel link above.
 
 The Windows link is platform-locked. Open it on a phone, macOS, or anything that isn't Windows and you get an **ERROR — WINDOWS VERSION ONLY** screen with a button through to the mobile version instead.
 
