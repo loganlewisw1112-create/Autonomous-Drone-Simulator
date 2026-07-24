@@ -3,6 +3,9 @@ import { useShallow } from 'zustand/react/shallow'
 import { getScenarioOptions } from '@/scenarios/registry'
 import { startClass } from '@/classroom/classroomClient'
 import { useClassroomStore } from '@/classroom/classroomStore'
+import { useAuthStore } from '@/store/authStore'
+import { createClassroom, touchClassroomOpened } from '@/account/classroomArchive'
+import { configuredInstructorAccessHash } from '@/account/instructorAccess'
 import type { ClassConfig } from '@/classroom/protocol'
 import type { ScenarioVariantConfig } from '@/types'
 
@@ -13,17 +16,44 @@ function defaultVariant(seed: number): ScenarioVariantConfig {
   }
 }
 
-// Instructor pre-class screen: pick a scenario, lock or reroll the seed, create the
-// class. A locked seed is the graded contract — every student flies byte-identical
-// conditions, which only determinism makes honest. On create, the parent swaps in
-// the live console.
-export function ClassSetup({ onBack }: { onBack?: () => void }) {
+/**
+ * Instructor pre-class screen (the "Start a training class" card).
+ * New instructors finish the supervised access code here once; then the same
+ * card reveals scenario / seed / Create class plus Access saved class(es).
+ */
+export function ClassSetup({
+  onOpenSaved,
+}: {
+  onOpenSaved?: () => void
+}) {
   const options = useMemo(() => getScenarioOptions(), [])
   const [scenarioId, setScenarioId] = useState(options[0]?.id ?? '')
   const scenario = options.find((o) => o.id === scenarioId)?.config
   const [seed, setSeed] = useState(scenario?.seed ?? 1)
   const [graded, setGraded] = useState(true)
-  const { status, error } = useClassroomStore(useShallow((s) => ({ status: s.status, error: s.error })))
+  const [accessCode, setAccessCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  const { status, error, activeClassroomId, setActiveClassroomId } = useClassroomStore(useShallow((s) => ({
+    status: s.status,
+    error: s.error,
+    activeClassroomId: s.activeClassroomId,
+    setActiveClassroomId: s.setActiveClassroomId,
+  })))
+  const {
+    activeAccount, sessionKey, unlockInstructor, authError, clearAuthError, signOut,
+  } = useAuthStore(useShallow((s) => ({
+    activeAccount: s.activeAccount,
+    sessionKey: s.sessionKey,
+    unlockInstructor: s.unlockInstructor,
+    authError: s.authError,
+    clearAuthError: s.clearAuthError,
+    signOut: s.signOut,
+  })))
+
+  const unlocked = activeAccount?.instructorUnlocked === true
+  const unlockConfigured = useMemo(() => configuredInstructorAccessHash() !== null, [])
 
   function pick(id: string) {
     setScenarioId(id)
@@ -31,66 +61,175 @@ export function ClassSetup({ onBack }: { onBack?: () => void }) {
     if (s) setSeed(s.seed)
   }
 
-  function create() {
-    if (!scenario) return
-    const config: ClassConfig = { kind: 'catalog', scenarioId, variant: defaultVariant(seed) }
-    startClass(config)
+  async function handleUnlock() {
+    if (busy) return
+    setBusy(true)
+    setLocalError(null)
+    clearAuthError()
+    try {
+      const ok = await unlockInstructor(accessCode)
+      if (ok) setAccessCode('')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function create() {
+    if (!scenario || !unlocked || !activeAccount || !sessionKey || busy) return
+    setBusy(true)
+    setLocalError(null)
+    try {
+      let classroomId = activeClassroomId
+      if (!classroomId) {
+        const meta = await createClassroom(
+          activeAccount.id,
+          sessionKey,
+          options.find((o) => o.id === scenarioId)?.label || 'Training class',
+        )
+        if (!meta) {
+          setLocalError('Could not create classroom on this device')
+          return
+        }
+        classroomId = meta.classroomId
+        setActiveClassroomId(classroomId)
+      }
+      await touchClassroomOpened(activeAccount.id, sessionKey, classroomId)
+      const config: ClassConfig = { kind: 'catalog', scenarioId, variant: defaultVariant(seed) }
+      startClass(config)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
     <div className="cls-center">
-      <div className="cls-card">
+      <div className="cls-card" data-testid="class-setup">
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>Start a training class</div>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
-            Students join from their own device with a 6-character code.
+            {unlocked
+              ? 'Students join from their own device with a 6-character code.'
+              : 'Finish instructor setup with the supervised access code, then create the class.'}
           </div>
         </div>
 
-        <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-          Scenario
-          <select className="cls-select" style={{ marginTop: 4 }} value={scenarioId} onChange={(e) => pick(e.target.value)}>
-            {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
-        </label>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Seed</div>
-          <code style={{ fontFamily: 'var(--font-mono)', fontSize: 14 }}>{seed}</code>
-          <button className="cls-btn ghost" style={{ padding: '4px 10px', fontSize: 12 }}
-            onClick={() => setSeed(Math.floor(Math.random() * 1_000_000_000))}
-            disabled={graded}
+        {!unlocked && (
+          <div
+            data-testid="instructor-unlock-section"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              padding: 12,
+              borderRadius: 8,
+              border: '1px solid var(--border, #26303f)',
+              background: 'rgba(57, 217, 138, 0.06)',
+            }}
           >
-            Reroll
-          </button>
-          <label style={{ fontSize: 12, marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input type="checkbox" checked={graded} onChange={(e) => setGraded(e.target.checked)} />
-            Graded (lock seed)
-          </label>
-        </div>
-
-        <button className="cls-btn" disabled={!scenario || status === 'connecting'} onClick={create}>
-          {status === 'connecting' ? 'Creating…' : 'Create class'}
-        </button>
-
-        {onBack && (
-          <button type="button" className="cls-btn ghost" onClick={onBack}>
-            Back to classrooms
-          </button>
-        )}
-
-        {status === 'error' && (
-          <div style={{ color: '#ff8080', fontSize: 12 }}>
-            {error === 'not-instructor' ? 'That code is already running on this relay. Reroll and create again.'
-              : error === 'server-full' ? 'This relay is already hosting its maximum number of classes.'
-                : 'Could not reach the classroom relay. Is the server running on this machine?'}
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Insert access code here</div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.45 }}>
+              One-time for this instructor account. After it succeeds, this field will not
+              appear again — only when creating a brand-new instructor account.
+            </div>
+            {!unlockConfigured && (
+              <div style={{ color: '#ff8080', fontSize: 12 }} data-testid="instructor-hash-missing">
+                Instructor unlock is not enabled on this build. Contact the administrator who
+                provisions instructor unlocks.
+              </div>
+            )}
+            <input
+              className="cls-input"
+              type="password"
+              placeholder="Insert access code here"
+              autoComplete="off"
+              value={accessCode}
+              onChange={(e) => setAccessCode(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !busy && void handleUnlock()}
+              data-testid="instructor-access-code"
+            />
+            <button
+              type="button"
+              className="cls-btn"
+              disabled={busy || !unlockConfigured || !accessCode.trim()}
+              onClick={() => void handleUnlock()}
+            >
+              {busy ? 'Unlocking…' : 'Finish account setup'}
+            </button>
+            {(localError || authError) && (
+              <div style={{ color: '#ff8080', fontSize: 12 }} data-testid="auth-error">
+                {localError || authError}
+              </div>
+            )}
           </div>
         )}
+
+        {unlocked && (
+          <>
+            <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+              Scenario
+              <select className="cls-select" style={{ marginTop: 4 }} value={scenarioId} onChange={(e) => pick(e.target.value)}>
+                {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </label>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Seed</div>
+              <code style={{ fontFamily: 'var(--font-mono)', fontSize: 14 }}>{seed}</code>
+              <button className="cls-btn ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                onClick={() => setSeed(Math.floor(Math.random() * 1_000_000_000))}
+                disabled={graded}
+              >
+                Reroll
+              </button>
+              <label style={{ fontSize: 12, marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input type="checkbox" checked={graded} onChange={(e) => setGraded(e.target.checked)} />
+                Graded (lock seed)
+              </label>
+            </div>
+
+            <button
+              type="button"
+              className="cls-btn"
+              data-testid="create-new-class"
+              disabled={!scenario || busy || status === 'connecting'}
+              onClick={() => void create()}
+            >
+              {status === 'connecting' || busy ? 'Creating…' : 'Create class'}
+            </button>
+
+            {onOpenSaved && (
+              <button
+                type="button"
+                className="cls-btn ghost"
+                data-testid="access-saved-classes"
+                onClick={onOpenSaved}
+              >
+                Access saved class(es)
+              </button>
+            )}
+
+            {localError && (
+              <div style={{ color: '#ff8080', fontSize: 12 }}>{localError}</div>
+            )}
+
+            {status === 'error' && (
+              <div style={{ color: '#ff8080', fontSize: 12 }}>
+                {error === 'not-instructor' ? 'That code is already running on this relay. Reroll and create again.'
+                  : error === 'server-full' ? 'This relay is already hosting its maximum number of classes.'
+                    : 'Could not reach the classroom relay. Is the server running on this machine?'}
+              </div>
+            )}
+          </>
+        )}
+
         <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
           End-to-end encrypted to a key only this browser holds. If you lose this tab’s session,
           the class’s data is unrecoverable — that is real E2EE, not a defect.
           Ending the class archives results to your instructor account.
         </div>
+
+        <button type="button" className="cls-btn ghost" onClick={() => signOut()}>Sign out</button>
+        <a className="cls-btn ghost" href="?" style={{ textAlign: 'center', textDecoration: 'none' }}>Home</a>
       </div>
     </div>
   )
