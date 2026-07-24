@@ -434,9 +434,10 @@
             <p>
               <strong>Instructor and student accounts are required.</strong> Open
               <code>?coordinator=1</code> or <code>?join=</code>, then sign in.
-              Creating an instructor account needs your agency access code (verified against
-              <code>VITE_INSTRUCTOR_ACCESS_HASH</code> in the build — honest friction, not DRM).
-              Anyone can create a student account. Solo Mobile/Windows operator profiles are separate.
+              Creating a <em>new</em> instructor account needs a one-time supervised unlock
+              code on the signup form; after that instructor exists, they sign in with
+              username and password only. Anyone can create a student account.
+              Solo Mobile/Windows operator profiles are separate.
             </p>
             <p>
               Live LAN sessions still use end-to-end encryption to the instructor’s tab key.
@@ -445,16 +446,15 @@
               A local sync envelope export leaves a clean seam for cloud sync later.
             </p>
             <p>
-              The commercial gate for instructor capability is the hashed access code plus who
-              you hand a classroom-enabled build to.
+              The commercial gate for instructor capability is supervised account setup plus
+              who you hand a classroom-enabled build to.
             </p>
           </div>
 
           <p>
-            Students need no credential either, and that is deliberate. The 6-character class
-            code is a room name, not a secret. Anyone on the same network who knows the code can
-            join as a student. Nobody, including the relay server, can read what a student does
-            without the instructor's key.
+            Students sign in with their own classroom accounts, then join with the 6-character
+            class code. The class code is a room name, not a secret. Nobody, including the
+            relay server, can read what a student does without the instructor's key.
           </p>
         </section>
 

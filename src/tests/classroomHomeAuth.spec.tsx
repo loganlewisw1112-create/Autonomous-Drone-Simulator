@@ -2,7 +2,7 @@
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { ClassroomHome } from '@/components/classroom/ClassroomHome'
 import { useAuthStore } from '@/store/authStore'
 import { hashInstructorAccessCode } from '@/account/instructorAccess'
@@ -30,6 +30,17 @@ describe('ClassroomHome auth', () => {
     expect(screen.getByTestId('classroom-role-picker')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Student' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Instructor' })).toBeTruthy()
+  })
+
+  it('shows the one-time unlock section only for new instructor signup', async () => {
+    render(<ClassroomHome />)
+    // Fresh device defaults toward signup when no profiles exist.
+    const createBtn = screen.queryByRole('button', { name: 'Need an account? Create one' })
+    if (createBtn) fireEvent.click(createBtn)
+    fireEvent.click(screen.getByRole('button', { name: 'Instructor' }))
+    expect(screen.getByTestId('instructor-unlock-section')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Already have an account? Sign in' }))
+    expect(screen.queryByTestId('instructor-unlock-section')).toBeNull()
   })
 
   it('shows continue links after a classroom account is signed in', () => {
