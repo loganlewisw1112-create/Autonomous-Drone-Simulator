@@ -26,6 +26,8 @@ const RUN_SUBMISSION_V = 1
 // Console noise budget for integrity failures. The store counter is the UI's source of
 // truth; the console gets one aggregated line per window, never one per frame.
 const INTEGRITY_LOG_INTERVAL_MS = 10_000
+const GRID_PUBLISH_INTERVAL_MS = 250
+const FOCUS_PUBLISH_INTERVAL_MS = 250
 
 // The relay keeps a room alive across a dropped instructor socket, so a flaky classroom
 // AP should not end a class. Bounded so a relay that is genuinely gone still surfaces.
@@ -347,25 +349,31 @@ function sealOutgoing(cipher: SessionCipher, body: unknown, sequence?: number): 
 // while the sim is paused (exactly when the instructor most wants to know), and a
 // background browser tab honestly pauses rAF but still fires setInterval.
 
+function publishGridFrame(): void {
+  if (!studentCipher || !ws || ws.readyState !== WebSocket.OPEN || !classId) return
+  if (ws.bufferedAmount > GRID_BUFFER_LIMIT_BYTES) return // backpressure: skip, never queue a stale frame
+  const frame = buildGridFrame(currentGridInput())
+  send({ v: PROTOCOL_VERSION, type: 'student.grid', classId, sealed: sealOutgoing(studentCipher, frame) })
+}
+
 function startGridPublisher(): void {
   stopGridPublisher()
-  gridTimer = setInterval(() => {
-    if (!studentCipher || !ws || ws.readyState !== WebSocket.OPEN || !classId) return
-    if (ws.bufferedAmount > GRID_BUFFER_LIMIT_BYTES) return // backpressure: skip, never queue a stale frame
-    const frame = buildGridFrame(currentGridInput())
-    send({ v: PROTOCOL_VERSION, type: 'student.grid', classId, sealed: sealOutgoing(studentCipher, frame) })
-  }, 1000)
+  publishGridFrame()
+  gridTimer = setInterval(publishGridFrame, GRID_PUBLISH_INTERVAL_MS)
+}
+
+function publishFocusFrame(): void {
+  if (!studentCipher || !ws || ws.readyState !== WebSocket.OPEN || !classId) return
+  if (ws.bufferedAmount > GRID_BUFFER_LIMIT_BYTES) return
+  const focused = currentFocusFrame()
+  if (!focused) return
+  send({ v: PROTOCOL_VERSION, type: 'student.focus', classId, sealed: sealOutgoing(studentCipher, focused) })
 }
 
 function startFocusPublisher(): void {
   stopFocusPublisher()
-  focusTimer = setInterval(() => {
-    if (!studentCipher || !ws || ws.readyState !== WebSocket.OPEN || !classId) return
-    if (ws.bufferedAmount > GRID_BUFFER_LIMIT_BYTES) return
-    const focused = currentFocusFrame()
-    if (!focused) return
-    send({ v: PROTOCOL_VERSION, type: 'student.focus', classId, sealed: sealOutgoing(studentCipher, focused) })
-  }, 333)
+  publishFocusFrame()
+  focusTimer = setInterval(publishFocusFrame, FOCUS_PUBLISH_INTERVAL_MS)
 }
 
 function subscribeRunSubmission(): void {
@@ -566,22 +574,26 @@ function currentAssessment(
   })
 }
 
-// Tier-B frame: reuse the exact FullMissionFrame the sim loop already assembled
-// (what ArchivedReplay consumes) when present, else synthesize one from live state.
-function currentFullFrame(): FullMissionFrame {
+// Tier-B is the instructor's live focused view, not replay playback. It used to reuse
+// replayFrames when present, but those are recorded only every 40 ticks; the 3 Hz
+// publisher mostly re-sent stale snapshots, which made the focused map look frozen.
+function currentLiveFullFrame(): FullMissionFrame {
   const s = useDroneStore.getState()
-  const last = s.replayFrames[s.replayFrames.length - 1]
-  if (last) return last
   return {
-    tick: s.tick, elapsedSec: s.elapsedSec, drones: s.drones,
-    thermalContacts: s.thermalContacts, groundUnits: s.groundUnits, recoveryTeams: s.recoveryTeams,
-    weatherState: s.weatherState, activeEventIds: [],
+    tick: s.tick,
+    elapsedSec: s.elapsedSec,
+    drones: s.drones.map((d) => ({ ...d, position: { ...d.position } })),
+    thermalContacts: s.thermalContacts.map((contact) => ({ ...contact })),
+    groundUnits: s.groundUnits.map((unit) => ({ ...unit })),
+    recoveryTeams: s.recoveryTeams.map((team) => ({ ...team })),
+    weatherState: { ...s.weatherState, activeHazards: [...s.weatherState.activeHazards] },
+    activeEventIds: s.events.slice(-50).map((event) => event.hash),
   }
 }
 
 function currentFocusFrame(): ClassroomFocusFrame | null {
   const assessment = currentAssessment()
-  return assessment ? { frame: currentFullFrame(), assessment } : null
+  return assessment ? { frame: currentLiveFullFrame(), assessment } : null
 }
 
 // ── Teardown ────────────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { computeBbox, project, lerpDrones, stateColor } from '@/components/classroom/tileRenderer'
+import {
+  computeBbox, inverseMercatorY, lerpDrones, mercatorY, project, stateColor,
+} from '@/components/classroom/tileRenderer'
 import { MISSION_STATE_CODES, type GridDrone } from '@/classroom/gridFrame'
 
 // Pure math only — no canvas is instantiated here. The drawing functions are
@@ -51,10 +53,19 @@ describe('project', () => {
     expect(br.y).toBeCloseTo(H, 6)
   })
 
-  it('maps the center to (width/2, height/2)', () => {
+  it('centres longitude linearly and latitude in MERCATOR, not arithmetically', () => {
     const c = project(15, -90, bbox, W, H)
+    // Longitude is linear in Mercator, so the mid-meridian is exactly half way across.
     expect(c.x).toBeCloseTo(W / 2, 6)
-    expect(c.y).toBeCloseTo(H / 2, 6)
+
+    // Latitude is NOT. The tiles now project in Web Mercator so they line up with the basemap
+    // rendered underneath them, and in Mercator the arithmetic mean of two latitudes is not the
+    // vertical centre — spacing grows toward the poles. Over a 10° span that is a visible offset,
+    // and asserting H/2 here would be asserting the old flat-earth projection back into place.
+    const mid = inverseMercatorY((mercatorY(10) + mercatorY(20)) / 2)
+    expect(mid).toBeGreaterThan(15)          // the true centre sits north of the mean
+    expect(project(mid, -90, bbox, W, H).y).toBeCloseTo(H / 2, 6)
+    expect(c.y).toBeGreaterThan(H / 2)       // lat 15 therefore falls below centre
   })
 
   it('does not clamp points outside the bbox', () => {

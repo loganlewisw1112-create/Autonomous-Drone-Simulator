@@ -63,59 +63,81 @@ export function computeBbox(points: LatLng[], marginFrac = 0.12): Bbox {
 }
 
 /**
+ * Web Mercator Y, in the same radian-ish units as longitude. `y = ln(tan(π/4 + φ/2))`.
+ *
+ * The tiles used to project latitude LINEARLY, which was wrong twice over: it ignored that a
+ * degree of longitude is only `cos(lat)` as wide as a degree of latitude (~27% off at Bay Area
+ * latitudes), and it did not match what a real basemap draws. Now that the wall composites an
+ * actual MapLibre-rendered basemap underneath the mission geometry, "close enough" is no longer
+ * good enough — the drone glyphs have to land on the right streets, so the tiles project in
+ * exactly the projection the basemap was rendered in.
+ */
+export function mercatorY(latDeg: number): number {
+  const clamped = Math.max(-85.051129, Math.min(85.051129, latDeg))
+  return Math.log(Math.tan(Math.PI / 4 + (clamped * Math.PI) / 360))
+}
+
+/** Longitude in the same units as `mercatorY`. */
+export function mercatorX(lngDeg: number): number {
+  return (lngDeg * Math.PI) / 180
+}
+
+/** Inverse of `mercatorY` — needed to turn a fitted Mercator window back into latitudes. */
+export function inverseMercatorY(y: number): number {
+  return ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI
+}
+
+/**
  * Expand a bbox so it fills a canvas of `width`×`height` WITHOUT distorting geography.
  *
- * Two corrections, and the tiles were missing both:
- *
- *  1. **Longitude compression.** A degree of longitude is `cos(lat)` as wide as a degree of
- *     latitude — about 0.79 at the Bay Area latitudes these scenarios use. Projecting raw degrees
- *     linearly into a box stretches everything east-west by ~27%.
- *  2. **Aspect mismatch.** The scenario's own extents are whatever shape the mission happens to
- *     be. Stretching that independently on each axis to fill a 3:2 tile squashes or elongates the
- *     whole picture, which is what made the wall look "zoomed in and wrong" — the drones were in
- *     the right relative places, but nothing was the right SHAPE.
- *
- * Only ever grows the window, never crops, so every point that was visible stays visible.
+ * In Mercator, x and y are already in the same units and a square on the ground is a square on
+ * screen, so this is a straight aspect comparison — no `cos(lat)` correction needed, because the
+ * projection has already done it. Only ever grows the window, never crops, so every point that
+ * was visible stays visible.
  */
 export function fitBboxToAspect(bbox: Bbox, width: number, height: number): Bbox {
   if (!(width > 0) || !(height > 0)) return bbox
-
-  const midLat = (bbox.minLat + bbox.maxLat) / 2
-  const lngScale = Math.max(0.05, Math.cos((midLat * Math.PI) / 180))
 
   const latSpan = bbox.maxLat - bbox.minLat
   const lngSpan = bbox.maxLng - bbox.minLng
   if (!(latSpan > 0) || !(lngSpan > 0)) return bbox
 
-  // Work in equal-distance units: latitude degrees, with longitude scaled to match.
-  const targetAspect = width / height
-  const currentAspect = (lngSpan * lngScale) / latSpan
+  const yMin = mercatorY(bbox.minLat)
+  const yMax = mercatorY(bbox.maxLat)
+  const xMin = mercatorX(bbox.minLng)
+  const xMax = mercatorX(bbox.maxLng)
 
-  let nextLatSpan = latSpan
-  let nextLngSpan = lngSpan
-  if (currentAspect > targetAspect) {
-    // Too wide for the tile — add latitude (vertical) headroom.
-    nextLatSpan = (lngSpan * lngScale) / targetAspect
+  const ySpan = yMax - yMin
+  const xSpan = xMax - xMin
+  if (!(ySpan > 0) || !(xSpan > 0)) return bbox
+
+  const targetAspect = width / height
+  let nextXSpan = xSpan
+  let nextYSpan = ySpan
+  if (xSpan / ySpan > targetAspect) {
+    nextYSpan = xSpan / targetAspect   // too wide — add vertical headroom
   } else {
-    // Too tall — add longitude (horizontal) headroom.
-    nextLngSpan = (latSpan * targetAspect) / lngScale
+    nextXSpan = ySpan * targetAspect   // too tall — add horizontal headroom
   }
 
-  const midLng = (bbox.minLng + bbox.maxLng) / 2
+  const midY = (yMin + yMax) / 2
+  const midX = (xMin + xMax) / 2
   return {
-    minLat: midLat - nextLatSpan / 2,
-    maxLat: midLat + nextLatSpan / 2,
-    minLng: midLng - nextLngSpan / 2,
-    maxLng: midLng + nextLngSpan / 2,
+    minLat: inverseMercatorY(midY - nextYSpan / 2),
+    maxLat: inverseMercatorY(midY + nextYSpan / 2),
+    minLng: ((midX - nextXSpan / 2) * 180) / Math.PI,
+    maxLng: ((midX + nextXSpan / 2) * 180) / Math.PI,
   }
 }
 
-// Linear projection. lng grows left→right; lat is INVERTED so maxLat sits at the
-// top (y=0), matching screen coordinates. Intentionally NOT clamped — an off-map
-// point projects outside [0,width]×[0,height] so callers can cull it.
+// Web Mercator projection, matching the basemap the tiles composite over. lng grows left→right;
+// lat is INVERTED so maxLat sits at the top (y=0), matching screen coordinates. Intentionally NOT
+// clamped — an off-map point projects outside [0,width]×[0,height] so callers can cull it.
 export function project(lat: number, lng: number, bbox: Bbox, width: number, height: number): { x: number; y: number } {
+  const yTop = mercatorY(bbox.maxLat)
+  const ySpan = yTop - mercatorY(bbox.minLat)
   const x = ((lng - bbox.minLng) / (bbox.maxLng - bbox.minLng)) * width
-  const y = ((bbox.maxLat - lat) / (bbox.maxLat - bbox.minLat)) * height
+  const y = ySpan === 0 ? 0 : ((yTop - mercatorY(lat)) / ySpan) * height
   return { x, y }
 }
 
@@ -229,9 +251,26 @@ function drawReferenceFrame(ctx: CanvasRenderingContext2D, bbox: Bbox, width: nu
   ctx.textBaseline = 'alphabetic'
 }
 
-export function drawBackdrop(ctx: CanvasRenderingContext2D, geo: BackdropGeometry, bbox: Bbox, width: number, height: number): void {
-  ctx.fillStyle = '#0b0f17'
-  ctx.fillRect(0, 0, width, height)
+export interface DrawBackdropOptions {
+  /**
+   * Paint the dark field first. False when a basemap has already been composited underneath —
+   * filling over it would erase the very thing the wall is now able to show.
+   */
+  fillBackground?: boolean
+}
+
+export function drawBackdrop(
+  ctx: CanvasRenderingContext2D,
+  geo: BackdropGeometry,
+  bbox: Bbox,
+  width: number,
+  height: number,
+  options: DrawBackdropOptions = {},
+): void {
+  if (options.fillBackground !== false) {
+    ctx.fillStyle = '#0b0f17'
+    ctx.fillRect(0, 0, width, height)
+  }
 
   ctx.lineWidth = 1
   // Geofences — thin red outlines.
