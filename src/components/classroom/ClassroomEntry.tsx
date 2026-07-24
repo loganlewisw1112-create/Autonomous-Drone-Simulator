@@ -51,6 +51,7 @@ function InstructorFlow({
   const activeClassroomId = useClassroomStore((s) => s.activeClassroomId)
   const closedError = useClassroomStore((s) => s.error)
   const setActiveClassroomId = useClassroomStore((s) => s.setActiveClassroomId)
+  const instructorUnlocked = useAuthStore((s) => s.activeAccount?.instructorUnlocked === true)
   const [readyForSetup, setReadyForSetup] = useState(false)
 
   useEffect(() => {
@@ -84,7 +85,8 @@ function InstructorFlow({
     )
   }
 
-  if (!activeClassroomId || !readyForSetup) {
+  // Locked instructors always stay on the hub unlock screen — never ClassSetup.
+  if (!instructorUnlocked || !activeClassroomId || !readyForSetup) {
     return (
       <InstructorHub
         onStartLive={() => setReadyForSetup(true)}

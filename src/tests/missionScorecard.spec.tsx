@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
+import 'fake-indexeddb/auto'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { IDBFactory } from 'fake-indexeddb'
 import { ClassroomEntry } from '@/components/classroom/ClassroomEntry'
 import { MissionScorecard } from '@/components/classroom/MissionScorecard'
 import { useClassroomStore } from '@/classroom/classroomStore'
 import { getScenarioById } from '@/scenarios/registry'
+import { useAuthStore } from '@/store/authStore'
 import { useDroneStore } from '@/store/droneStore'
 import type { MissionAssessment } from '@/classroom/missionAssessment'
 
@@ -36,6 +39,16 @@ function assessment(patch: Partial<MissionAssessment> = {}): MissionAssessment {
     ...patch,
   }
 }
+
+beforeEach(() => {
+  globalThis.indexedDB = new IDBFactory()
+  localStorage.clear()
+  useAuthStore.setState({
+    activeAccount: null, sessionKey: null, authError: null, prefs: {},
+    showSignIn: false, showSettings: false, showAnalytics: false,
+    storageAvailable: true,
+  })
+})
 
 afterEach(() => {
   cleanup()
@@ -72,6 +85,12 @@ describe('<MissionScorecard />', () => {
     expect(scenario).toBeDefined()
     useDroneStore.setState({ scenario: scenario!.config })
     useClassroomStore.setState({ status: 'live', role: 'student', classId: '7KX3M2' })
+    useAuthStore.setState({
+      activeAccount: {
+        id: 's1', username: 'student1', displayName: 'Student', role: 'student',
+      },
+      sessionKey: new Uint8Array(32),
+    })
 
     render(<ClassroomEntry mode="student" />)
 
