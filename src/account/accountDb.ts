@@ -222,9 +222,12 @@ export async function deleteAccount(accountId: string): Promise<boolean> {
   if (!db) return false
   return new Promise((resolve) => {
     try {
-      const tx = db.transaction(['accounts', 'runs', 'runDetails', 'missions'], 'readwrite')
+      const tx = db.transaction(
+        ['accounts', 'runs', 'runDetails', 'missions', 'classrooms', 'classroomSessions'],
+        'readwrite',
+      )
       tx.objectStore('accounts').delete(accountId)
-      for (const name of ['runs', 'runDetails', 'missions'] as const) {
+      for (const name of ['runs', 'runDetails', 'missions', 'classrooms', 'classroomSessions'] as const) {
         const cursorReq = tx.objectStore(name).index('byAccount').openCursor(accountRange(accountId))
         cursorReq.onsuccess = () => {
           const cursor = cursorReq.result
@@ -519,11 +522,10 @@ export async function clearMissions(accountId: string): Promise<boolean> {
 // ── Atomic re-key (change password) ─────────────────────────────────────────────
 
 // Re-encrypts every account-owned blob under `newKey` in a SINGLE transaction
-// spanning all four stores. The caller passes a fully-rebuilt AccountRecord
+// spanning all stores. The caller passes a fully-rebuilt AccountRecord
 // (new kdfParams / checkBlob / prefsBlob already re-encrypted under newKey);
-// this function re-keys the runs / runDetails / missions blobs. Any failure —
-// a decrypt error, a store error — aborts the whole transaction, so the old
-// key's data is left completely intact (all-or-nothing).
+// this function re-keys runs / runDetails / missions / classrooms / classroomSessions.
+// Any failure aborts the whole transaction (all-or-nothing).
 export async function rekeyAllRecords(
   accountId: string,
   oldKey: Uint8Array,
@@ -537,7 +539,10 @@ export async function rekeyAllRecords(
   if (!db) return false
   return new Promise((resolve) => {
     try {
-      const tx = db.transaction(['accounts', 'runs', 'runDetails', 'missions'], 'readwrite')
+      const tx = db.transaction(
+        ['accounts', 'runs', 'runDetails', 'missions', 'classrooms', 'classroomSessions'],
+        'readwrite',
+      )
       let failed = false
       const fail = () => {
         if (failed) return
@@ -547,7 +552,7 @@ export async function rekeyAllRecords(
 
       tx.objectStore('accounts').put(newAccountRecord)
 
-      const rekeyStore = (name: 'runs' | 'runDetails' | 'missions') => {
+      const rekeyStore = (name: 'runs' | 'runDetails' | 'missions' | 'classrooms' | 'classroomSessions') => {
         const cursorReq = tx.objectStore(name).index('byAccount').openCursor(accountRange(accountId))
         cursorReq.onsuccess = () => {
           const cursor = cursorReq.result
@@ -568,6 +573,8 @@ export async function rekeyAllRecords(
       rekeyStore('runs')
       rekeyStore('runDetails')
       rekeyStore('missions')
+      rekeyStore('classrooms')
+      rekeyStore('classroomSessions')
 
       tx.oncomplete = () => { db.close(); resolve(true) }
       tx.onerror = () => { db.close(); resolve(false) }

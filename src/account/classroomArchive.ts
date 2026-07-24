@@ -129,7 +129,7 @@ export function buildSessionArchive(input: ArchiveBuildInput): ClassroomSessionA
       displayName: run.displayName,
       joinedAt: run.receivedAt,
       leftAt: run.receivedAt,
-      incomplete: false,
+      incomplete: Boolean(run.incomplete),
       summary: run.summary,
       assessment: run.assessment as unknown as StudentSessionArchiveEntry['assessment'],
       progressPercent: run.assessment.progressPercent,
@@ -161,7 +161,7 @@ function studentEntryFromLive(
       accountId: run.accountId ?? entry.accountId,
       displayName: run.displayName || entry.displayName,
       joinedAt: entry.joinedAt,
-      incomplete: false,
+      incomplete: Boolean(run.incomplete),
       summary: run.summary,
       assessment: run.assessment as unknown as StudentSessionArchiveEntry['assessment'],
       progressPercent: run.assessment.progressPercent,
@@ -229,7 +229,7 @@ export async function listDecryptedSessions(
   return out
 }
 
-/** Snapshot a departing student for later flush (incomplete unless a run exists). */
+/** Snapshot a departing student for later flush (incomplete unless a finalized run exists). */
 export function snapshotDepartedStudent(
   entry: RosterEntry,
   run: ClassRunResult | undefined,
@@ -237,5 +237,6 @@ export function snapshotDepartedStudent(
   interventionCount: number,
 ): StudentSessionArchiveEntry {
   const live = studentEntryFromLive(entry, run, frame, interventionCount)
-  return { ...live, leftAt: Date.now(), incomplete: !run }
+  const incomplete = !run || Boolean(run.incomplete)
+  return { ...live, leftAt: Date.now(), incomplete }
 }
