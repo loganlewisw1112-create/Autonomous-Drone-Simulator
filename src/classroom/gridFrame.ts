@@ -1,7 +1,7 @@
 import type { DroneState, MissionState } from '@/types'
 import type { AssessmentBand, MissionAssessment } from '@/classroom/missionAssessment'
 
-// Tier-A "grid frame": the ~400 B packed snapshot every student publishes at 1 Hz.
+// Tier-A "grid frame": the ~400 B packed snapshot every student publishes (~4 Hz).
 // Objects are flattened to fixed-length tuples and lat/lng to integers ×1e5 (~1.1 m,
 // far finer than a 200 px tile resolves) so 24 of these are noise on classroom wifi.
 // Pure functions only — no store, no network — so the whole thing is unit-testable.

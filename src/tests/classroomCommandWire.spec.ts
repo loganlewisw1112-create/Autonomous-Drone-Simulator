@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateKeyPair, SessionCipher } from '@/classroom/sessionCrypto'
 import { useClassroomStore } from '@/classroom/classroomStore'
-import type { ClassConfig, ClassId, Sealed } from '@/classroom/protocol'
+import { isSealedPayload } from '@/classroom/protocol'
+import { useDroneStore } from '@/store/droneStore'
+import { stopTicking } from '@/sim/SimulationLoop'
+import type { ClassConfig, ClassId, Sealed, SealedPayload } from '@/classroom/protocol'
+import type { ClassroomFocusFrame } from '@/classroom/classroomClient'
+import type { GridFrame } from '@/classroom/gridFrame'
 
 vi.mock('@/classroom/commandRegistry', () => ({
   validateInstructorCommand: (value: unknown) => {
@@ -73,8 +78,10 @@ beforeEach(async () => {
 
 afterEach(() => {
   client.teardown()
+  stopTicking()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
+  vi.useRealTimers()
 })
 
 function command(commandId: string) {
@@ -153,7 +160,7 @@ describe('classroom encrypted command wire', () => {
     const acks = socket.sent.filter((message) => message.type === 'student.ack')
     expect(acks).toHaveLength(1)
     expect(cipher.open(acks[0].sealed!)).toMatchObject({
-      seq: 1,
+      seq: 2,
       body: {
         commandId: 'cmd-1',
         actorId: 'classroom:instructor:B2CD3F',
@@ -204,5 +211,76 @@ describe('classroom encrypted command wire', () => {
     })
     expect(useClassroomStore.getState().commandRejects).toBe(1)
     expect(useClassroomStore.getState().interventions).toHaveLength(0)
+  })
+
+  it('publishes the current simulator store on every live grid interval', () => {
+    vi.useFakeTimers()
+    const { socket, cipher } = liveStudent()
+    stopTicking()
+
+    const gridMessages = () => socket.sent.filter((message) => message.type === 'student.grid')
+    expect(gridMessages()).toHaveLength(1)
+
+    const nextPosition = { lat: 37.81234, lng: -122.45678 }
+    useDroneStore.setState((state) => ({
+      elapsedSec: 42.2,
+      drones: state.drones.map((drone, index) => index === 0
+        ? { ...drone, position: nextPosition, headingDeg: 123, batteryPct: 66 }
+        : drone),
+    }))
+
+    vi.advanceTimersByTime(250)
+
+    const latest = gridMessages().at(-1)
+    expect(gridMessages().length).toBeGreaterThanOrEqual(2)
+    const opened = cipher.open<SealedPayload<GridFrame>>(latest!.sealed!)
+    expect(isSealedPayload(opened)).toBe(true)
+    expect(opened.body.t).toBe(42)
+    expect(opened.body.d[0].slice(0, 5)).toEqual([
+      'uav-01',
+      Math.round(nextPosition.lat * 1e5),
+      Math.round(nextPosition.lng * 1e5),
+      123,
+      66,
+    ])
+  })
+
+  it('publishes focused frames from live state, not the slow replay buffer', () => {
+    vi.useFakeTimers()
+    const { socket, cipher } = liveStudent()
+    stopTicking()
+
+    const staleReplayPosition = { lat: 37.7, lng: -122.4 }
+    const livePosition = { lat: 37.82345, lng: -122.46789 }
+    const state = useDroneStore.getState()
+    useDroneStore.setState({
+      elapsedSec: 61.4,
+      tick: 1228,
+      drones: state.drones.map((drone, index) => index === 0
+        ? { ...drone, position: livePosition, headingDeg: 210, batteryPct: 55 }
+        : drone),
+      replayFrames: [{
+        tick: 40,
+        elapsedSec: 2,
+        drones: state.drones.map((drone, index) => index === 0
+          ? { ...drone, position: staleReplayPosition }
+          : drone),
+        thermalContacts: [],
+        groundUnits: [],
+        recoveryTeams: [],
+        weatherState: { ...state.weatherState },
+        activeEventIds: ['stale-replay-frame'],
+      }],
+    })
+
+    socket.deliver({ v: 1, type: 'focus.on', classId: CLASS_ID })
+
+    const focus = socket.sent.filter((message) => message.type === 'student.focus').at(-1)
+    const opened = cipher.open<SealedPayload<ClassroomFocusFrame>>(focus!.sealed!)
+    expect(isSealedPayload(opened)).toBe(true)
+    expect(opened.body.frame.elapsedSec).toBe(61.4)
+    expect(opened.body.frame.tick).toBe(1228)
+    expect(opened.body.frame.activeEventIds).not.toContain('stale-replay-frame')
+    expect(opened.body.frame.drones[0].position).toEqual(livePosition)
   })
 })
