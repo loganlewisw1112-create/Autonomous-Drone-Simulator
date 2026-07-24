@@ -14,3 +14,7 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** Injected by vite.config `define` when an instructor unlock digest is configured. */
+declare const __INSTRUCTOR_ACCESS_HASH__: string | undefined
+

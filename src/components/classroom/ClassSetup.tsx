@@ -139,9 +139,12 @@ export function ClassSetup({
             )}
             <input
               className="cls-input"
-              type="password"
+              type="text"
               placeholder="Insert access code here"
               autoComplete="off"
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
               value={accessCode}
               onChange={(e) => setAccessCode(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !busy && void handleUnlock()}
