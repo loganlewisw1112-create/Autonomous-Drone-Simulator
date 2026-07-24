@@ -33,10 +33,18 @@ describe('instructorAccess', () => {
     const code = 'TEST-AGENCY-UNLOCK'
     const hash = hashInstructorAccessCode(code)
     expect(verifyInstructorAccessCode(code, hash)).toBe(true)
+    expect(verifyInstructorAccessCode(`  ${code}  `, hash)).toBe(true)
     expect(verifyInstructorAccessCode(hash, hash)).toBe(true)
     expect(verifyInstructorAccessCode(hash.toUpperCase(), hash)).toBe(true)
     expect(verifyInstructorAccessCode('wrong', hash)).toBe(false)
     expect(verifyInstructorAccessCode(code, undefined)).toBe(false)
     expect(verifyInstructorAccessCode('', hash)).toBe(false)
+  })
+
+  it('ignores surrounding whitespace when verifying pasted codes', () => {
+    const code = 'DRONE-CLASS-UNLOCK-2026'
+    const hash = hashInstructorAccessCode(code)
+    expect(verifyInstructorAccessCode('DRONE-CLASS-UNLOCK-2026', hash)).toBe(true)
+    expect(verifyInstructorAccessCode('\nDRONE-CLASS-UNLOCK-2026\r\n', hash)).toBe(true)
   })
 })
