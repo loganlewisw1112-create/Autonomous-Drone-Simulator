@@ -1,5 +1,8 @@
 import { useDroneStore } from '@/store/droneStore'
+import { useAuthStore } from '@/store/authStore'
 import { buildRunSummary } from '@/account/runRecorder'
+import { buildSessionArchive, persistSessionArchive, snapshotDepartedStudent } from '@/account/classroomArchive'
+import { setClassroomRunTag } from '@/account/runContext'
 import { useClassroomStore } from '@/classroom/classroomStore'
 import { loadClassMission } from '@/classroom/classroomMission'
 import { generateKeyPair, SessionCipher, type KeyPair } from '@/classroom/sessionCrypto'
@@ -23,6 +26,7 @@ import type { FullMissionFrame, MissionReplaySession } from '@/types'
 // runs per tab. All crypto keys live here, never in a store.
 
 const RUN_SUBMISSION_V = 1
+const SESSION_SNAPSHOT_V = 1
 // Console noise budget for integrity failures. The store counter is the UI's source of
 // truth; the console gets one aggregated line per window, never one per frame.
 const INTEGRITY_LOG_INTERVAL_MS = 10_000
@@ -43,7 +47,17 @@ export interface RunSubmission {
   v: 1
   summary: ReturnType<typeof buildRunSummary>
   assessment: MissionAssessment
-  student: { displayName: string }
+  student: { displayName: string; accountId?: string }
+}
+
+/** Incomplete leave / logout snapshot (sealed like a run). */
+export interface SessionSnapshot {
+  v: 1
+  incomplete: true
+  student: { displayName: string; accountId?: string }
+  assessment: MissionAssessment | null
+  progressPercent?: number
+  elapsedSec: number
 }
 
 export interface InstructorCommandAck {
@@ -77,6 +91,7 @@ let lastIntegrityLogAt = 0
 let studentKeys: KeyPair | null = null
 let studentCipher: SessionCipher | null = null
 let displayName = ''
+let studentAccountId: string | undefined
 // Monotonic across grid/focus/run for this student session. The instructor keeps ONE
 // high-water mark per student, so every message this tab sends must advance it.
 let outSeq = 0
@@ -84,6 +99,7 @@ let lastCommandSeq: number | undefined
 let gridTimer: ReturnType<typeof setInterval> | null = null
 let focusTimer: ReturnType<typeof setInterval> | null = null
 let unsubscribeRun: (() => void) | null = null
+let unloadBound = false
 
 function wsUrl(): string {
   const override = import.meta.env.VITE_CLASSROOM_WS_URL
@@ -104,7 +120,9 @@ export function startClass(config: ClassConfig): ClassId {
   classId = id
   instructorKeys = generateKeyPair()
   const store = useClassroomStore.getState()
+  const classroomId = store.activeClassroomId
   store.reset()
+  if (classroomId) store.setActiveClassroomId(classroomId)
   store.setStatus('connecting')
   openInstructorSocket(id, config)
   return id
@@ -237,9 +255,63 @@ function handleInstructorMessage(raw: string): void {
       if (sub) store.addRun({
         studentId: msg.from,
         displayName: sub.student.displayName,
+        accountId: sub.student.accountId,
         summary: sub.summary,
         assessment: sub.assessment,
         receivedAt: Date.now(),
+      })
+      break
+    }
+    case 'student.session': {
+      const cipher = msg.from ? studentCiphers.get(msg.from) : undefined
+      if (!cipher || !msg.from) return
+      const snap = openSealed<SessionSnapshot>(msg.from, cipher, msg.sealed)
+      if (!snap?.incomplete) return
+      if (store.runs.some((r) => r.studentId === msg.from && !r.incomplete)) break
+      const rosterEntry = store.roster.find((r) => r.studentId === msg.from)
+      if (!snap.assessment) {
+        // Early leave before assessment exists — keep progress for archive via departed.
+        if (rosterEntry) {
+          store.rememberDeparted({
+            studentId: msg.from,
+            accountId: snap.student.accountId ?? rosterEntry.accountId,
+            displayName: snap.student.displayName || rosterEntry.displayName,
+            joinedAt: rosterEntry.joinedAt,
+            leftAt: Date.now(),
+            incomplete: true,
+            progressPercent: snap.progressPercent,
+            interventionCount: store.commands.filter((c) => c.studentId === msg.from).length,
+          })
+        }
+        break
+      }
+      store.addRun({
+        studentId: msg.from,
+        displayName: snap.student.displayName,
+        accountId: snap.student.accountId,
+        summary: {
+          scenarioId: store.config?.kind === 'catalog' ? store.config.scenarioId : 'custom',
+          scenarioVariant: store.config?.variant ?? {
+            seed: 0, timeOfDay: 'day', season: 'summer',
+            weatherSeverity: 0, commsDegradation: 0, thermalDensity: 0, batteryPressure: 0, terrainDifficulty: 0,
+          },
+          completedAt: Date.now(),
+          completionReason: 'operator_ended',
+          durationSec: snap.elapsedSec,
+          metrics: {
+            totalFlightDistanceM: 0,
+            waypointsReached: 0, conflictsDetected: 0, geofenceBreaches: 0,
+            rtbTriggers: 0, thermalContacts: 0, recoveryDispatches: 0, groundUnitDispatch: 0,
+          },
+          eventCount: 0,
+          firstHash: null,
+          lastHash: null,
+          chainVerified: false,
+          droneOutcomes: [],
+        },
+        assessment: snap.assessment,
+        receivedAt: Date.now(),
+        incomplete: true,
       })
       break
     }
@@ -254,10 +326,17 @@ function handleInstructorMessage(raw: string): void {
       store.addCommandAck({ ...ack, studentId: msg.from, receivedAt: Date.now() })
       break
     }
-    case 'student.gone':
+    case 'student.gone': {
+      const entry = store.roster.find((r) => r.studentId === msg.from)
+      if (entry) {
+        const run = store.runs.find((r) => r.studentId === msg.from)
+        const cmds = store.commands.filter((c) => c.studentId === msg.from).length
+        store.rememberDeparted(snapshotDepartedStudent(entry, run, store.frames[msg.from], cmds))
+      }
       forgetStudent(msg.from)
       store.removeStudent(msg.from)
       break
+    }
   }
 }
 
@@ -267,15 +346,55 @@ export function focusStudent(studentId: StudentId | null): void {
   send({ v: PROTOCOL_VERSION, type: 'class.focus', classId, studentId })
 }
 
-export function closeClass(): void {
+export async function closeClass(): Promise<void> {
+  const archiveResult = await flushInstructorArchive()
   if (classId) send({ v: PROTOCOL_VERSION, type: 'class.close', classId })
   teardown()
-  useClassroomStore.getState().setStatus('closed')
+  useClassroomStore.getState().setStatus(
+    'closed',
+    archiveResult === false ? 'archive-failed' : null,
+  )
+}
+
+/** @returns true saved, false failed, null skipped (no durable classroom / not instructor). */
+async function flushInstructorArchive(): Promise<boolean | null> {
+  const auth = useAuthStore.getState()
+  const store = useClassroomStore.getState()
+  if (!auth.activeAccount || !auth.sessionKey || auth.activeAccount.role !== 'instructor') return null
+  if (!store.activeClassroomId || !store.classId || !store.config || !store.sessionStartedAt) return null
+
+  const commandCountsByStudent: Record<string, number> = {}
+  for (const cmd of store.commands) {
+    commandCountsByStudent[cmd.studentId] = (commandCountsByStudent[cmd.studentId] ?? 0) + 1
+  }
+  const archive = buildSessionArchive({
+    classroomId: store.activeClassroomId,
+    classId: store.classId,
+    instructorAccountId: auth.activeAccount.id,
+    startedAt: store.sessionStartedAt,
+    config: store.config,
+    roster: store.roster,
+    runs: store.runs,
+    frames: store.frames,
+    commandCountsByStudent,
+    departed: store.departedStudents,
+  })
+  const sessionId = await persistSessionArchive(auth.activeAccount.id, auth.sessionKey, archive)
+  if (!sessionId) {
+    console.warn('[classroom] session archive failed to persist to instructor account storage')
+    return false
+  }
+  return true
 }
 
 // ── Student ───────────────────────────────────────────────────────────────────
 
-export function joinClass(id: ClassId, name: string, remoteControlConsent: boolean): void {
+export function joinClass(
+  id: ClassId,
+  name: string,
+  remoteControlConsent: boolean,
+  accountId?: string,
+): void {
   teardown()
   if (!remoteControlConsent) {
     const store = useClassroomStore.getState()
@@ -285,6 +404,7 @@ export function joinClass(id: ClassId, name: string, remoteControlConsent: boole
   }
   classId = id
   displayName = name
+  studentAccountId = accountId
   outSeq = 0
   studentKeys = generateKeyPair()
   const store = useClassroomStore.getState()
@@ -292,7 +412,14 @@ export function joinClass(id: ClassId, name: string, remoteControlConsent: boole
   store.setStatus('connecting')
 
   ws = new WebSocket(wsUrl())
-  ws.onopen = () => send({ v: PROTOCOL_VERSION, type: 'student.join', classId: id, displayName: name, studentPubKey: studentKeys!.publicKey })
+  ws.onopen = () => send({
+    v: PROTOCOL_VERSION,
+    type: 'student.join',
+    classId: id,
+    displayName: name,
+    studentPubKey: studentKeys!.publicKey,
+    ...(accountId ? { accountId } : {}),
+  })
   ws.onmessage = (ev) => handleStudentMessage(String(ev.data))
   ws.onclose = () => { if (useClassroomStore.getState().status === 'live') useClassroomStore.getState().setStatus('closed') }
   ws.onerror = () => useClassroomStore.getState().setStatus('error', 'connection failed')
@@ -307,9 +434,11 @@ function handleStudentMessage(raw: string): void {
       if (!studentKeys || !classId) return
       studentCipher = SessionCipher.forStudent(studentKeys.secretKey, msg.classPubKey, classId)
       store.setStudentJoined(classId, msg.studentId, msg.config)
+      setClassroomRunTag({ classId })
       loadClassMission(msg.config)
       startGridPublisher()
       subscribeRunSubmission()
+      bindUnloadSnapshot()
       break
     }
     case 'join.err':
@@ -390,11 +519,44 @@ function subscribeRunSubmission(): void {
         v: RUN_SUBMISSION_V,
         summary,
         assessment,
-        student: { displayName },
+        student: { displayName, accountId: studentAccountId },
       }
       send({ v: PROTOCOL_VERSION, type: 'student.run', classId, sealed: sealOutgoing(studentCipher, submission) })
     },
   )
+}
+
+function sendSessionSnapshot(): void {
+  if (!studentCipher || !ws || ws.readyState !== WebSocket.OPEN || !classId) return
+  const s = useDroneStore.getState()
+  if (s.replaySession) return // finalized run already (or about to be) submitted
+  const assessment = currentAssessment(false)
+  const snap: SessionSnapshot = {
+    v: SESSION_SNAPSHOT_V,
+    incomplete: true,
+    student: { displayName, accountId: studentAccountId },
+    assessment,
+    progressPercent: assessment?.progressPercent,
+    elapsedSec: s.elapsedSec,
+  }
+  send({ v: PROTOCOL_VERSION, type: 'student.session', classId, sealed: sealOutgoing(studentCipher, snap) })
+}
+
+function onPageHide(): void {
+  sendSessionSnapshot()
+  if (classId) send({ v: PROTOCOL_VERSION, type: 'student.leave', classId })
+}
+
+function bindUnloadSnapshot(): void {
+  if (unloadBound || typeof window === 'undefined') return
+  window.addEventListener('pagehide', onPageHide)
+  unloadBound = true
+}
+
+function unbindUnloadSnapshot(): void {
+  if (!unloadBound || typeof window === 'undefined') return
+  window.removeEventListener('pagehide', onPageHide)
+  unloadBound = false
 }
 
 function statusFromStore(s: ReturnType<typeof useDroneStore.getState>): GridStatus {
@@ -602,6 +764,8 @@ function stopGridPublisher(): void { if (gridTimer) { clearInterval(gridTimer); 
 function stopFocusPublisher(): void { if (focusTimer) { clearInterval(focusTimer); focusTimer = null } }
 
 export function teardown(): void {
+  unbindUnloadSnapshot()
+  setClassroomRunTag(null)
   stopGridPublisher()
   stopFocusPublisher()
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
@@ -622,6 +786,8 @@ export function teardown(): void {
   instructorToken = null
   studentKeys = null
   classId = null
+  displayName = ''
+  studentAccountId = undefined
   outSeq = 0
   lastCommandSeq = undefined
 }

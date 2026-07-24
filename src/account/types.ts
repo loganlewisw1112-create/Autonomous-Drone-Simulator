@@ -32,6 +32,9 @@ export interface CipherBlob {
   ct: string            // base64 ciphertext (includes GCM auth tag)
 }
 
+/** Classroom roles. Absent on Mobile/Windows solo operator profiles (legacy). */
+export type AccountRole = 'instructor' | 'student'
+
 export interface AccountRecord {
   schemaVersion: 1
   id: string
@@ -42,6 +45,8 @@ export interface AccountRecord {
   kdfParams: KdfParams
   checkBlob: CipherBlob
   prefsBlob?: CipherBlob   // encrypted AccountPrefs
+  /** Set on classroom instructor/student sign-up. Omitted on solo operator accounts. */
+  role?: AccountRole
 }
 
 export interface AccountPrefs {
@@ -82,6 +87,10 @@ export interface StoredRunSummary {
   // alongside this summary. 'quota-limited' means the device rejected the heavier
   // detail write — the summary is intact and the UI can badge the missing detail.
   detailState?: 'saved' | 'quota-limited' | 'unavailable'
+  /** Classroom-attributed runs (optional; solo Mobile/Windows omit). */
+  source?: 'solo' | 'classroom'
+  classId?: string
+  classroomId?: string
 }
 
 export interface RunRecord {
