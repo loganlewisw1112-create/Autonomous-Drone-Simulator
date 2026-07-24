@@ -31,43 +31,83 @@ describe('authStore classroom roles', () => {
     expect(useAuthStore.getState().activeAccount?.role).toBe('student')
   }, 20000)
 
-  it('creates an instructor account when the access code matches the build hash', async () => {
+  it('creates an instructor account without unlock; unlock finishes later', async () => {
     const ok = await useAuthStore.getState().signUp(
       'teach1', 'Instructor', 'password123', false,
-      { role: 'instructor', accessCode: ACCESS_CODE },
+      { role: 'instructor' },
     )
     expect(ok).toBe(true)
     expect(useAuthStore.getState().activeAccount?.role).toBe('instructor')
+    expect(useAuthStore.getState().activeAccount?.instructorUnlocked).toBe(false)
   }, 20000)
 
-  it('rejects instructor signup with a wrong access code', async () => {
-    const ok = await useAuthStore.getState().signUp(
-      'teach2', 'Instructor', 'password123', false,
-      { role: 'instructor', accessCode: 'nope' },
+  it('treats legacy instructors without pending unlock as already unlocked', async () => {
+    await useAuthStore.getState().signUp(
+      'legacy-teach', 'Legacy', 'password123', false,
+      { role: 'instructor' },
     )
+    const { getAccountByUsername, putAccount } = await import('@/account/accountDb')
+    const record = await getAccountByUsername('legacy-teach')
+    expect(record).toBeTruthy()
+    delete record!.instructorUnlockPending
+    delete record!.instructorUnlockedAt
+    await putAccount(record!)
+    useAuthStore.setState({ activeAccount: null, sessionKey: null })
+    const ok = await useAuthStore.getState().signIn('legacy-teach', 'password123', false)
+    expect(ok).toBe(true)
+    expect(useAuthStore.getState().activeAccount?.instructorUnlocked).toBe(true)
+  }, 20000)
+
+  it('unlocks an instructor when the access code matches the build hash', async () => {
+    await useAuthStore.getState().signUp(
+      'teach1b', 'Instructor', 'password123', false,
+      { role: 'instructor' },
+    )
+    const ok = await useAuthStore.getState().unlockInstructor(ACCESS_CODE)
+    expect(ok).toBe(true)
+    expect(useAuthStore.getState().activeAccount?.instructorUnlocked).toBe(true)
+  }, 20000)
+
+  it('rejects unlock with a wrong access code', async () => {
+    await useAuthStore.getState().signUp(
+      'teach2', 'Instructor', 'password123', false,
+      { role: 'instructor' },
+    )
+    const ok = await useAuthStore.getState().unlockInstructor('nope')
     expect(ok).toBe(false)
     expect(useAuthStore.getState().authError).toMatch(/Invalid instructor access code/)
-    expect(useAuthStore.getState().activeAccount).toBeNull()
+    expect(useAuthStore.getState().activeAccount?.instructorUnlocked).toBe(false)
   }, 20000)
 
-  it('rejects instructor signup when the build has no access hash', async () => {
-    vi.stubEnv('VITE_INSTRUCTOR_ACCESS_HASH', '')
-    const ok = await useAuthStore.getState().signUp(
+  it('rejects unlock when the build has no access hash', async () => {
+    await useAuthStore.getState().signUp(
       'teach3', 'Instructor', 'password123', false,
-      { role: 'instructor', accessCode: ACCESS_CODE },
+      { role: 'instructor' },
     )
+    vi.stubEnv('VITE_INSTRUCTOR_ACCESS_HASH', '')
+    const ok = await useAuthStore.getState().unlockInstructor(ACCESS_CODE)
     expect(ok).toBe(false)
     expect(useAuthStore.getState().authError).toMatch(/not configured/)
   }, 20000)
 
-  it('restores role on remember-me session', async () => {
+  it('can still unlock at signup when an access code is supplied', async () => {
+    const ok = await useAuthStore.getState().signUp(
+      'teach4', 'Instructor', 'password123', false,
+      { role: 'instructor', accessCode: ACCESS_CODE },
+    )
+    expect(ok).toBe(true)
+    expect(useAuthStore.getState().activeAccount?.instructorUnlocked).toBe(true)
+  }, 20000)
+
+  it('restores unlock status on remember-me session', async () => {
     await useAuthStore.getState().signUp(
-      'teach4', 'Instructor', 'password123', true,
+      'teach5', 'Instructor', 'password123', true,
       { role: 'instructor', accessCode: ACCESS_CODE },
     )
     useAuthStore.setState({ activeAccount: null, sessionKey: null })
     await useAuthStore.getState().restoreRememberedSession()
     expect(useAuthStore.getState().activeAccount?.role).toBe('instructor')
+    expect(useAuthStore.getState().activeAccount?.instructorUnlocked).toBe(true)
   }, 20000)
 
   it('keeps solo signUp without a role for Mobile/Windows compatibility', async () => {

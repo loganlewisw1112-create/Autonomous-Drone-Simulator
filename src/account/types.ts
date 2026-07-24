@@ -47,6 +47,18 @@ export interface AccountRecord {
   prefsBlob?: CipherBlob   // encrypted AccountPrefs
   /** Set on classroom instructor/student sign-up. Omitted on solo operator accounts. */
   role?: AccountRole
+  /**
+   * Set after the supervised access code is accepted on the instructor
+   * "Start a training class" page. Absent until that one-time unlock finishes
+   * for accounts created under the deferred-unlock flow.
+   */
+  instructorUnlockedAt?: number
+  /**
+   * True when this instructor still owes the one-time Start a training class
+   * unlock. Absent on legacy instructors (already gated at old signup) and on
+   * accounts unlocked at signup via accessCode.
+   */
+  instructorUnlockPending?: boolean
 }
 
 export interface AccountPrefs {
