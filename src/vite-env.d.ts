@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_WINDOWS_APP_URL?: string
   readonly VITE_CLASSROOM_ENABLED?: string
   readonly VITE_CLASSROOM_WS_URL?: string
+  /** SHA-256 hex of the instructor signup access code. Never the plaintext. */
+  readonly VITE_INSTRUCTOR_ACCESS_HASH?: string
 }
 
 interface ImportMeta {

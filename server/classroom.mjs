@@ -151,12 +151,18 @@ function onCreate(sock, msg) {
 }
 
 function onJoin(sock, msg) {
-  const { classId, displayName, studentPubKey } = msg
+  const { classId, displayName, studentPubKey, accountId } = msg
   const cls = classes.get(classId)
   if (!cls) return send(sock, { v: 1, type: 'join.err', classId, reason: 'no-such-class' })
   if (cls.students.size >= MAX_STUDENTS) return send(sock, { v: 1, type: 'join.err', classId, reason: 'class-full' })
   const studentId = crypto.randomUUID().slice(0, 8)
-  const entry = { studentId, displayName, joinedAt: Date.now(), studentPubKey }
+  const entry = {
+    studentId,
+    displayName,
+    joinedAt: Date.now(),
+    studentPubKey,
+    ...(typeof accountId === 'string' && accountId ? { accountId } : {}),
+  }
   cls.students.set(studentId, { sock, entry })
   sock.role = 'student'
   sock.classId = classId
@@ -194,7 +200,7 @@ function onStudentMsg(sock, msg) {
   const from = sock.studentId
   const student = from && cls.students.get(from)
   if (!student || student.sock !== sock) return
-  if (msg.type === 'student.run') persistRun(sock.classId, from, msg)
+  if (msg.type === 'student.run' || msg.type === 'student.session') persistRun(sock.classId, from, msg)
   const type = msg.type === 'student.ack' ? 'student.ack' : msg.type
   send(cls.instructorSock, { v: 1, type, classId: sock.classId, from, sealed: msg.sealed })
 }
@@ -296,6 +302,7 @@ export function handle(sock, msg) {
     case 'student.grid':
     case 'student.focus':
     case 'student.run':
+    case 'student.session':
     case 'student.ack': return onStudentMsg(sock, msg)
     case 'student.leave': return removeStudent(sock)
   }

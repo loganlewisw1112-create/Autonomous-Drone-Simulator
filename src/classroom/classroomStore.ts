@@ -19,9 +19,12 @@ export type ClassroomStatus = 'idle' | 'connecting' | 'live' | 'closed' | 'error
 export interface ClassRunResult {
   studentId: StudentId
   displayName: string
+  accountId?: string
   summary: StoredRunSummary
   assessment: MissionAssessment
   receivedAt: number
+  /** True when this came from a mid-session snapshot, not a finalized mission. */
+  incomplete?: boolean
 }
 
 // Aggregate integrity signal for the instructor. Every decrypt site used to swallow
@@ -75,6 +78,9 @@ interface ClassroomStore {
   error: string | null
   classId: ClassId | null
   config: ClassConfig | null
+  /** Durable instructor classroom (Phase 2). Live classId is separate. */
+  activeClassroomId: string | null
+  sessionStartedAt: number | null
 
   // Instructor view
   roster: RosterEntry[]
@@ -83,6 +89,8 @@ interface ClassroomStore {
   focusFrame: FullMissionFrame | null
   focusAssessment: MissionAssessment | null
   runs: ClassRunResult[]
+  /** Students who left mid-session — retained for end-of-class archive. */
+  departedStudents: import('@/account/classroomTypes').StudentSessionArchiveEntry[]
   integrity: IntegrityCounters
   commands: ClassroomCommandRecord[]
   commandAcks: ClassroomCommandAck[]
@@ -95,11 +103,13 @@ interface ClassroomStore {
   commandRejects: number
 
   setStatus: (status: ClassroomStatus, error?: string | null) => void
+  setActiveClassroomId: (classroomId: string | null) => void
   setInstructorClass: (classId: ClassId, config: ClassConfig) => void
   setStudentJoined: (classId: ClassId, studentId: StudentId, config: ClassConfig) => void
   setRoster: (roster: RosterEntry[]) => void
   setFrame: (studentId: StudentId, frame: GridFrame) => void
   removeStudent: (studentId: StudentId) => void
+  rememberDeparted: (entry: import('@/account/classroomTypes').StudentSessionArchiveEntry) => void
   setFocused: (studentId: StudentId | null) => void
   setFocusFrame: (frame: FullMissionFrame | null, assessment?: MissionAssessment | null) => void
   setBeingFocused: (focused: boolean) => void
@@ -120,12 +130,15 @@ const initial = {
   error: null,
   classId: null,
   config: null,
+  activeClassroomId: null as string | null,
+  sessionStartedAt: null as number | null,
   roster: [] as RosterEntry[],
   frames: {} as Record<StudentId, GridFrame>,
   focusedStudentId: null,
   focusFrame: null,
   focusAssessment: null,
   runs: [] as ClassRunResult[],
+  departedStudents: [] as import('@/account/classroomTypes').StudentSessionArchiveEntry[],
   integrity: { decryptFailures: 0, replayRejects: 0, lastAt: null } as IntegrityCounters,
   commands: [] as ClassroomCommandRecord[],
   commandAcks: [] as ClassroomCommandAck[],
@@ -136,12 +149,16 @@ const initial = {
   commandRejects: 0,
 }
 
-export const useClassroomStore = create<ClassroomStore>((set) => ({
+export const useClassroomStore = create<ClassroomStore>((set, get) => ({
   ...initial,
 
   setStatus: (status, error = null) => set({ status, error }),
 
-  setInstructorClass: (classId, config) => set({ role: 'instructor', status: 'live', classId, config }),
+  setActiveClassroomId: (classroomId) => set({ activeClassroomId: classroomId }),
+
+  setInstructorClass: (classId, config) => set({
+    role: 'instructor', status: 'live', classId, config, sessionStartedAt: Date.now(),
+  }),
 
   setStudentJoined: (classId, studentId, config) =>
     set({ role: 'student', status: 'live', classId, studentId, config }),
@@ -167,6 +184,10 @@ export const useClassroomStore = create<ClassroomStore>((set) => ({
       frames, focusedStudentId, focusFrame, focusAssessment,
     }
   }),
+
+  rememberDeparted: (entry) => set((s) => ({
+    departedStudents: [...s.departedStudents.filter((d) => d.studentId !== entry.studentId), entry],
+  })),
 
   setFocused: (studentId) => set((s) => ({
     focusedStudentId: studentId,
@@ -215,5 +236,8 @@ export const useClassroomStore = create<ClassroomStore>((set) => ({
 
   noteCommandReject: () => set((s) => ({ commandRejects: s.commandRejects + 1 })),
 
-  reset: () => set({ ...initial }),
+  reset: () => {
+    const classroomId = get().activeClassroomId
+    set({ ...initial, activeClassroomId: classroomId })
+  },
 }))

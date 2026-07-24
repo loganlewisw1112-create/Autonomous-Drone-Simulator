@@ -10,6 +10,7 @@ import type {
   RunRecord,
   RunRecordV2,
 } from '@/account/types'
+import type { ClassroomRecord, ClassroomSessionRecord } from '@/account/classroomTypes'
 
 // Guarded IndexedDB access, mirroring the resolveStorage() pattern in
 // sim/mission/waypointPersistence.ts: in private mode / jsdom without a shim
@@ -21,11 +22,14 @@ import type {
 // existing `accounts`/`runs` stores are untouched, so a v1 device upgrades in
 // place — legacy runs with no matching runDetails row stay valid and render as
 // "Legacy summary only".
+//
+// v3 (additive): `classrooms` + `classroomSessions` for instructor-owned
+// classroom meta and end-of-session archives (encrypted per-account).
 
 const DB_NAME = 'drone-sim-accounts'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
-type StoreName = 'accounts' | 'runs' | 'runDetails' | 'missions'
+type StoreName = 'accounts' | 'runs' | 'runDetails' | 'missions' | 'classrooms' | 'classroomSessions'
 
 function resolveIndexedDb(): IDBFactory | null {
   try {
@@ -64,6 +68,15 @@ function openDb(): Promise<IDBDatabase | null> {
       if (!db.objectStoreNames.contains('missions')) {
         const missions = db.createObjectStore('missions', { keyPath: 'id' })
         missions.createIndex('byAccount', ['accountId', 'updatedAt'])
+      }
+      if (!db.objectStoreNames.contains('classrooms')) {
+        const classrooms = db.createObjectStore('classrooms', { keyPath: 'id' })
+        classrooms.createIndex('byAccount', ['accountId', 'updatedAt'])
+      }
+      if (!db.objectStoreNames.contains('classroomSessions')) {
+        const sessions = db.createObjectStore('classroomSessions', { keyPath: 'id' })
+        sessions.createIndex('byAccount', ['accountId', 'endedAt'])
+        sessions.createIndex('byClassroom', ['classroomId', 'endedAt'])
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -209,9 +222,12 @@ export async function deleteAccount(accountId: string): Promise<boolean> {
   if (!db) return false
   return new Promise((resolve) => {
     try {
-      const tx = db.transaction(['accounts', 'runs', 'runDetails', 'missions'], 'readwrite')
+      const tx = db.transaction(
+        ['accounts', 'runs', 'runDetails', 'missions', 'classrooms', 'classroomSessions'],
+        'readwrite',
+      )
       tx.objectStore('accounts').delete(accountId)
-      for (const name of ['runs', 'runDetails', 'missions'] as const) {
+      for (const name of ['runs', 'runDetails', 'missions', 'classrooms', 'classroomSessions'] as const) {
         const cursorReq = tx.objectStore(name).index('byAccount').openCursor(accountRange(accountId))
         cursorReq.onsuccess = () => {
           const cursor = cursorReq.result
@@ -506,11 +522,10 @@ export async function clearMissions(accountId: string): Promise<boolean> {
 // ── Atomic re-key (change password) ─────────────────────────────────────────────
 
 // Re-encrypts every account-owned blob under `newKey` in a SINGLE transaction
-// spanning all four stores. The caller passes a fully-rebuilt AccountRecord
+// spanning all stores. The caller passes a fully-rebuilt AccountRecord
 // (new kdfParams / checkBlob / prefsBlob already re-encrypted under newKey);
-// this function re-keys the runs / runDetails / missions blobs. Any failure —
-// a decrypt error, a store error — aborts the whole transaction, so the old
-// key's data is left completely intact (all-or-nothing).
+// this function re-keys runs / runDetails / missions / classrooms / classroomSessions.
+// Any failure aborts the whole transaction (all-or-nothing).
 export async function rekeyAllRecords(
   accountId: string,
   oldKey: Uint8Array,
@@ -524,7 +539,10 @@ export async function rekeyAllRecords(
   if (!db) return false
   return new Promise((resolve) => {
     try {
-      const tx = db.transaction(['accounts', 'runs', 'runDetails', 'missions'], 'readwrite')
+      const tx = db.transaction(
+        ['accounts', 'runs', 'runDetails', 'missions', 'classrooms', 'classroomSessions'],
+        'readwrite',
+      )
       let failed = false
       const fail = () => {
         if (failed) return
@@ -534,7 +552,7 @@ export async function rekeyAllRecords(
 
       tx.objectStore('accounts').put(newAccountRecord)
 
-      const rekeyStore = (name: 'runs' | 'runDetails' | 'missions') => {
+      const rekeyStore = (name: 'runs' | 'runDetails' | 'missions' | 'classrooms' | 'classroomSessions') => {
         const cursorReq = tx.objectStore(name).index('byAccount').openCursor(accountRange(accountId))
         cursorReq.onsuccess = () => {
           const cursor = cursorReq.result
@@ -555,6 +573,8 @@ export async function rekeyAllRecords(
       rekeyStore('runs')
       rekeyStore('runDetails')
       rekeyStore('missions')
+      rekeyStore('classrooms')
+      rekeyStore('classroomSessions')
 
       tx.oncomplete = () => { db.close(); resolve(true) }
       tx.onerror = () => { db.close(); resolve(false) }
@@ -679,3 +699,88 @@ export async function importBackup(envelope: unknown): Promise<{ ok: boolean; re
 
 // Retained for potential callers that still reference the v1 envelope type.
 export type { BackupEnvelope }
+
+// ── v3: instructor classrooms + session archives ─────────────────────────────
+
+function isClassroomRecord(v: unknown): v is ClassroomRecord {
+  if (typeof v !== 'object' || v === null) return false
+  const r = v as Partial<ClassroomRecord>
+  return r.schemaVersion === 1
+    && isNonEmptyString(r.id)
+    && isNonEmptyString(r.accountId)
+    && isTimestamp(r.updatedAt)
+    && isCipherBlob(r.blob)
+}
+
+function isClassroomSessionRecord(v: unknown): v is ClassroomSessionRecord {
+  if (typeof v !== 'object' || v === null) return false
+  const r = v as Partial<ClassroomSessionRecord>
+  return r.schemaVersion === 1
+    && isNonEmptyString(r.id)
+    && isNonEmptyString(r.accountId)
+    && isNonEmptyString(r.classroomId)
+    && isNonEmptyString(r.classId)
+    && isTimestamp(r.endedAt)
+    && isCipherBlob(r.blob)
+}
+
+export async function putClassroom(record: ClassroomRecord): Promise<boolean> {
+  if (!isClassroomRecord(record)) return false
+  const result = await withStore('classrooms', 'readwrite', async (store) => {
+    store.put(record)
+    return true
+  })
+  return result === true
+}
+
+export async function listClassrooms(accountId: string): Promise<ClassroomRecord[]> {
+  const rows = await withStore('classrooms', 'readonly', async (store) => {
+    const req = store.index('byAccount').getAll(accountRange(accountId))
+    return requestToPromise(req)
+  })
+  return (rows ?? []).filter(isClassroomRecord)
+}
+
+export async function getClassroom(id: string): Promise<ClassroomRecord | null> {
+  const row = await withStore('classrooms', 'readonly', async (store) => requestToPromise(store.get(id)))
+  return row && isClassroomRecord(row) ? row : null
+}
+
+export async function deleteClassroom(id: string): Promise<boolean> {
+  const result = await withStore('classrooms', 'readwrite', async (store) => {
+    store.delete(id)
+    return true
+  })
+  return result === true
+}
+
+export async function putClassroomSession(record: ClassroomSessionRecord): Promise<boolean> {
+  if (!isClassroomSessionRecord(record)) return false
+  const result = await withStore('classroomSessions', 'readwrite', async (store) => {
+    store.put(record)
+    return true
+  })
+  return result === true
+}
+
+export async function listClassroomSessions(accountId: string): Promise<ClassroomSessionRecord[]> {
+  const rows = await withStore('classroomSessions', 'readonly', async (store) => {
+    const req = store.index('byAccount').getAll(accountRange(accountId))
+    return requestToPromise(req)
+  })
+  return (rows ?? []).filter(isClassroomSessionRecord).sort((a, b) => b.endedAt - a.endedAt)
+}
+
+export async function listClassroomSessionsForClassroom(classroomId: string): Promise<ClassroomSessionRecord[]> {
+  const rows = await withStore('classroomSessions', 'readonly', async (store) => {
+    const range = IDBKeyRange.bound([classroomId, 0], [classroomId, Number.MAX_SAFE_INTEGER])
+    const req = store.index('byClassroom').getAll(range)
+    return requestToPromise(req)
+  })
+  return (rows ?? []).filter(isClassroomSessionRecord).sort((a, b) => b.endedAt - a.endedAt)
+}
+
+export async function getClassroomSession(id: string): Promise<ClassroomSessionRecord | null> {
+  const row = await withStore('classroomSessions', 'readonly', async (store) => requestToPromise(store.get(id)))
+  return row && isClassroomSessionRecord(row) ? row : null
+}

@@ -17,7 +17,7 @@ function defaultVariant(seed: number): ScenarioVariantConfig {
 // class. A locked seed is the graded contract — every student flies byte-identical
 // conditions, which only determinism makes honest. On create, the parent swaps in
 // the live console.
-export function ClassSetup() {
+export function ClassSetup({ onBack }: { onBack?: () => void }) {
   const options = useMemo(() => getScenarioOptions(), [])
   const [scenarioId, setScenarioId] = useState(options[0]?.id ?? '')
   const scenario = options.find((o) => o.id === scenarioId)?.config
@@ -58,7 +58,9 @@ export function ClassSetup() {
           <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Seed</div>
           <code style={{ fontFamily: 'var(--font-mono)', fontSize: 14 }}>{seed}</code>
           <button className="cls-btn ghost" style={{ padding: '4px 10px', fontSize: 12 }}
-            onClick={() => setSeed(Math.floor(Math.random() * 1_000_000_000))}>
+            onClick={() => setSeed(Math.floor(Math.random() * 1_000_000_000))}
+            disabled={graded}
+          >
             Reroll
           </button>
           <label style={{ fontSize: 12, marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -71,6 +73,12 @@ export function ClassSetup() {
           {status === 'connecting' ? 'Creating…' : 'Create class'}
         </button>
 
+        {onBack && (
+          <button type="button" className="cls-btn ghost" onClick={onBack}>
+            Back to classrooms
+          </button>
+        )}
+
         {status === 'error' && (
           <div style={{ color: '#ff8080', fontSize: 12 }}>
             {error === 'not-instructor' ? 'That code is already running on this relay. Reroll and create again.'
@@ -81,6 +89,7 @@ export function ClassSetup() {
         <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
           End-to-end encrypted to a key only this browser holds. If you lose this tab’s session,
           the class’s data is unrecoverable — that is real E2EE, not a defect.
+          Ending the class archives results to your instructor account.
         </div>
       </div>
     </div>

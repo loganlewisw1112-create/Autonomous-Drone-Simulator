@@ -98,8 +98,10 @@ describe('accountDb v1→v2 migration', () => {
     await getAccountByUsername('logan')
 
     const schema = await inspectSchema()
-    expect(schema.version).toBe(2)
-    expect(schema.stores).toEqual(expect.arrayContaining(['accounts', 'runs', 'runDetails', 'missions']))
+    expect(schema.version).toBe(3)
+    expect(schema.stores).toEqual(expect.arrayContaining([
+      'accounts', 'runs', 'runDetails', 'missions', 'classrooms', 'classroomSessions',
+    ]))
     expect(schema.runDetailIndexes).toContain('byAccount')
     expect(schema.missionIndexes).toContain('byAccount')
   })

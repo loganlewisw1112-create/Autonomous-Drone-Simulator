@@ -3,12 +3,15 @@ import { useShallow } from 'zustand/react/shallow'
 import { joinClass } from '@/classroom/classroomClient'
 import { isValidClassId, CLASS_ID_LENGTH } from '@/classroom/protocol'
 import { useClassroomStore } from '@/classroom/classroomStore'
+import { useAuthStore } from '@/store/authStore'
 
 // Student entry: 6-char class code + display name → join. On success the parent
 // swaps in the live simulator; the publisher then streams from the background.
+// Auth is enforced by ClassroomAuthGate; display name prefills from the student account.
 export function JoinGate({ initialClassId = '' }: { initialClassId?: string }) {
+  const accountName = useAuthStore((s) => s.activeAccount?.displayName ?? '')
   const [code, setCode] = useState(initialClassId.toUpperCase())
-  const [name, setName] = useState('')
+  const [name, setName] = useState(accountName)
   const [remoteControlConsent, setRemoteControlConsent] = useState(false)
   const { status, error } = useClassroomStore(useShallow((s) => ({ status: s.status, error: s.error })))
 
@@ -17,7 +20,10 @@ export function JoinGate({ initialClassId = '' }: { initialClassId?: string }) {
   const connecting = status === 'connecting'
 
   function submit() {
-    if (codeOk && nameOk && remoteControlConsent && !connecting) joinClass(code, name.trim(), true)
+    if (codeOk && nameOk && remoteControlConsent && !connecting) {
+      const accountId = useAuthStore.getState().activeAccount?.id
+      joinClass(code, name.trim(), true, accountId)
+    }
   }
 
   return (

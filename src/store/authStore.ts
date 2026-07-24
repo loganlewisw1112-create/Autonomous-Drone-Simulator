@@ -6,7 +6,8 @@ import {
 import {
   accountStorageAvailable, deleteAccount, getAccountByUsername, listAccounts, putAccount,
 } from '@/account/accountDb'
-import type { AccountPrefs, AccountRecord } from '@/account/types'
+import { configuredInstructorAccessHash, verifyInstructorAccessCode } from '@/account/instructorAccess'
+import type { AccountPrefs, AccountRecord, AccountRole } from '@/account/types'
 
 // Local-only auth. The derived AES key lives in memory for the session; with
 // remember-me it is additionally kept in localStorage so a reload stays signed
@@ -27,6 +28,14 @@ export interface ActiveAccount {
   id: string
   username: string
   displayName: string
+  /** Present for classroom instructor/student profiles; absent on solo operators. */
+  role?: AccountRole
+}
+
+export interface SignUpOptions {
+  role?: AccountRole
+  /** Required when role is `instructor` — checked against VITE_INSTRUCTOR_ACCESS_HASH. */
+  accessCode?: string
 }
 
 interface AuthState {
@@ -44,11 +53,26 @@ interface AuthState {
   setShowAnalytics: (show: boolean) => void
   clearAuthError: () => void
 
-  signUp: (username: string, displayName: string, password: string, rememberMe: boolean) => Promise<boolean>
+  signUp: (
+    username: string,
+    displayName: string,
+    password: string,
+    rememberMe: boolean,
+    options?: SignUpOptions,
+  ) => Promise<boolean>
   signIn: (username: string, password: string, rememberMe: boolean) => Promise<boolean>
   signOut: () => void
   restoreRememberedSession: () => Promise<void>
   savePrefs: (prefs: AccountPrefs) => Promise<void>
+}
+
+function toActive(account: AccountRecord): ActiveAccount {
+  return {
+    id: account.id,
+    username: account.username,
+    displayName: account.displayName,
+    role: account.role,
+  }
 }
 
 function persistSession(account: AccountRecord, key: Uint8Array, rememberMe: boolean) {
@@ -95,11 +119,24 @@ export const useAuthStore = create<AuthState>()(
       }),
       clearAuthError: () => set({ authError: null }),
 
-      signUp: async (username, displayName, password, rememberMe) => {
+      signUp: async (username, displayName, password, rememberMe, options) => {
         const name = username.trim()
         if (name.length < 2) { set({ authError: 'Username must be at least 2 characters' }); return false }
         if (password.length < 8) { set({ authError: 'Password must be at least 8 characters' }); return false }
         if (!accountStorageAvailable()) { set({ authError: 'Device storage unavailable — accounts need IndexedDB' }); return false }
+
+        const role = options?.role
+        if (role === 'instructor') {
+          if (!configuredInstructorAccessHash()) {
+            set({ authError: 'Instructor signup is not configured on this build (missing access hash)' })
+            return false
+          }
+          if (!verifyInstructorAccessCode(options?.accessCode ?? '')) {
+            set({ authError: 'Invalid instructor access code' })
+            return false
+          }
+        }
+
         const existing = await getAccountByUsername(name)
         if (existing) { set({ authError: 'That username already exists on this device' }); return false }
 
@@ -114,13 +151,14 @@ export const useAuthStore = create<AuthState>()(
           createdAt: Date.now(),
           kdfParams,
           checkBlob: makeCheckBlob(key),
+          ...(role ? { role } : {}),
         }
         const ok = await putAccount(record)
         if (!ok) { set({ authError: 'Could not save the profile to device storage' }); return false }
 
         persistSession(record, key, rememberMe)
         set({
-          activeAccount: { id: record.id, username: record.username, displayName: record.displayName },
+          activeAccount: toActive(record),
           sessionKey: key, prefs: {}, authError: null, showSignIn: false,
         })
         return true
@@ -136,7 +174,7 @@ export const useAuthStore = create<AuthState>()(
         }
         persistSession(record, key, rememberMe)
         set({
-          activeAccount: { id: record.id, username: record.username, displayName: record.displayName },
+          activeAccount: toActive(record),
           sessionKey: key, prefs: loadPrefs(record, key), authError: null, showSignIn: false,
         })
         return true
@@ -163,7 +201,7 @@ export const useAuthStore = create<AuthState>()(
         const key = fromBase64(stored.key)
         if (!verifyCheckBlob(key, record.checkBlob)) return
         set({
-          activeAccount: { id: record.id, username: record.username, displayName: record.displayName },
+          activeAccount: toActive(record),
           sessionKey: key, prefs: loadPrefs(record, key),
         })
       },

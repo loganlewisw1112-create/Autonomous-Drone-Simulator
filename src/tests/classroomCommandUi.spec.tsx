@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClassroomEntry } from '@/components/classroom/ClassroomEntry'
 import { JoinGate } from '@/components/classroom/JoinGate'
 import { useClassroomStore } from '@/classroom/classroomStore'
+import { useAuthStore } from '@/store/authStore'
 
 const { joinClassMock } = vi.hoisted(() => ({ joinClassMock: vi.fn() }))
 
@@ -13,6 +14,11 @@ vi.mock('@/App', () => ({ default: () => <main>Simulator</main> }))
 beforeEach(() => {
   joinClassMock.mockReset()
   useClassroomStore.getState().reset()
+  useAuthStore.setState({
+    activeAccount: null, sessionKey: null, authError: null, prefs: {},
+    showSignIn: false, showSettings: false, showAnalytics: false,
+    storageAvailable: true,
+  })
 })
 
 afterEach(() => {
@@ -33,13 +39,20 @@ describe('classroom remote-control disclosure', () => {
     expect(join).toBeEnabled()
     fireEvent.click(join)
 
-    expect(joinClassMock).toHaveBeenCalledWith('B2CD3F', 'Ada', true)
+    expect(joinClassMock).toHaveBeenCalledWith('B2CD3F', 'Ada', true, undefined)
   })
 
   it('shows command and actor in a takeover alert for at least three seconds', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-22T12:00:00Z'))
     const now = Date.now()
+    useAuthStore.setState({
+      activeAccount: {
+        id: 'stu-1', username: 'ada', displayName: 'Ada', role: 'student',
+      },
+      sessionKey: new Uint8Array(32),
+      storageAvailable: true,
+    })
     useClassroomStore.setState({
       status: 'live',
       role: 'student',
