@@ -433,7 +433,7 @@ describe('classroom relay class id validation', () => {
   it('validates the class id on every websocket entry point, not just the two that key the map', () => {
     const types = [
       'class.create', 'class.command', 'class.focus', 'class.close',
-      'student.join', 'student.grid', 'student.focus', 'student.run', 'student.ack', 'student.leave',
+      'student.join', 'student.grid', 'student.focus', 'student.run', 'student.session', 'student.ack', 'student.leave',
     ]
     for (const type of types) {
       const sock = new FakeSocket()

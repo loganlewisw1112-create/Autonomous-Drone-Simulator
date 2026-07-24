@@ -27,6 +27,7 @@ const COLUMNS: Array<{ key: string; label: string; get: (r: ClassRunResult) => s
 ]
 
 function outcome(r: ClassRunResult): string {
+  if (r.incomplete) return 'incomplete'
   return r.summary.completionReason === 'all_drones_complete' ? 'complete'
     : r.summary.completionReason === 'operator_ended' ? 'ended' : '—'
 }
@@ -49,9 +50,8 @@ function toCsv(runs: ClassRunResult[]): string {
   return [head, ...rows].join('\n')
 }
 
-export function ClassResults({ classId }: { classId: string }) {
-  const runs = useClassroomStore((s) => s.runs)
-
+/** Presentational table — used live and for historical archives. */
+export function ClassResultsTable({ classId, runs }: { classId: string; runs: ClassRunResult[] }) {
   function exportCsv() {
     const blob = new Blob([toCsv(runs)], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -89,4 +89,9 @@ export function ClassResults({ classId }: { classId: string }) {
       )}
     </div>
   )
+}
+
+export function ClassResults({ classId }: { classId: string }) {
+  const runs = useClassroomStore((s) => s.runs)
+  return <ClassResultsTable classId={classId} runs={runs} />
 }

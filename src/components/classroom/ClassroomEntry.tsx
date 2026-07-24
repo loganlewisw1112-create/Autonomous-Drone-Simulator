@@ -1,17 +1,21 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import App from '@/App'
 import { useClassroomStore } from '@/classroom/classroomStore'
+import { useAuthStore } from '@/store/authStore'
 import { JoinGate } from '@/components/classroom/JoinGate'
 import { ClassSetup } from '@/components/classroom/ClassSetup'
 import { ClassroomHome } from '@/components/classroom/ClassroomHome'
+import { ClassroomAuthGate } from '@/components/classroom/ClassroomAuthGate'
+import { InstructorHub } from '@/components/classroom/InstructorHub'
 import { CoordinatorConsole } from '@/components/classroom/CoordinatorConsole'
 import { MissionScorecard } from '@/components/classroom/MissionScorecard'
 import './classroom.css'
 
 // Single lazy entry for the whole classroom feature. main.tsx renders this ONLY
 // when the build flag is set, so the module (and its networking) never ships in the
-// mobile/Windows bundles. Bare `/` opens ClassroomHome; role params open setup/join.
+// mobile/Windows bundles. Bare `/` opens ClassroomHome; role params open setup/join
+// behind ClassroomAuthGate so the live ClassSetup / JoinGate / console stay intact.
 export function ClassroomEntry({
   mode, initialClassId,
 }: {
@@ -23,11 +27,87 @@ export function ClassroomEntry({
   if (mode === 'home') return <ClassroomHome />
 
   if (mode === 'instructor') {
-    return status === 'live' && role === 'instructor' ? <CoordinatorConsole /> : <ClassSetup />
+    return (
+      <ClassroomAuthGate requiredRole="instructor">
+        <InstructorFlow status={status} role={role} />
+      </ClassroomAuthGate>
+    )
   }
 
-  // Student: join → then hand off to the normal simulator; the publisher streams
-  // from the background while they fly the assigned mission.
+  return (
+    <ClassroomAuthGate requiredRole="student">
+      <StudentFlow initialClassId={initialClassId} status={status} role={role} />
+    </ClassroomAuthGate>
+  )
+}
+
+function InstructorFlow({
+  status,
+  role,
+}: {
+  status: ReturnType<typeof useClassroomStore.getState>['status']
+  role: ReturnType<typeof useClassroomStore.getState>['role']
+}) {
+  const activeClassroomId = useClassroomStore((s) => s.activeClassroomId)
+  const setActiveClassroomId = useClassroomStore((s) => s.setActiveClassroomId)
+  const [readyForSetup, setReadyForSetup] = useState(false)
+
+  useEffect(() => {
+    if (!activeClassroomId) setReadyForSetup(false)
+  }, [activeClassroomId])
+
+  if (status === 'live' && role === 'instructor') return <CoordinatorConsole />
+
+  if (status === 'closed') {
+    return (
+      <div className="cls-center">
+        <div className="cls-card">
+          <div style={{ fontWeight: 700 }}>Class ended</div>
+          <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+            Session archive saved to this instructor account when a classroom was selected.
+          </div>
+          <button
+            type="button"
+            className="cls-btn"
+            onClick={() => {
+              setReadyForSetup(false)
+              useClassroomStore.getState().setStatus('idle')
+            }}
+          >
+            Back to classrooms
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!activeClassroomId || !readyForSetup) {
+    return (
+      <InstructorHub
+        onStartLive={() => setReadyForSetup(true)}
+      />
+    )
+  }
+
+  return (
+    <ClassSetup
+      onBack={() => {
+        setReadyForSetup(false)
+        setActiveClassroomId(activeClassroomId)
+      }}
+    />
+  )
+}
+
+function StudentFlow({
+  initialClassId,
+  status,
+  role,
+}: {
+  initialClassId?: string
+  status: ReturnType<typeof useClassroomStore.getState>['status']
+  role: ReturnType<typeof useClassroomStore.getState>['role']
+}) {
   if (status === 'closed') {
     return (
       <div className="cls-center">
@@ -49,6 +129,7 @@ function StudentLive() {
     takeoverNotice: s.takeoverNotice,
     clearTakeover: s.clearTakeover,
   })))
+  const displayName = useAuthStore((s) => s.activeAccount?.displayName)
 
   useEffect(() => {
     if (!takeoverNotice) return
@@ -65,6 +146,7 @@ function StudentLive() {
         aria-live="assertive"
       >
         CLASS {classId} · streaming
+        {displayName ? ` · ${displayName}` : ''}
         {takeoverNotice
           ? ` · ● INSTRUCTOR CONTROL — "${takeoverNotice.label}" · ${takeoverNotice.actorId}`
           : beingFocused ? ' · instructor watching' : ''}

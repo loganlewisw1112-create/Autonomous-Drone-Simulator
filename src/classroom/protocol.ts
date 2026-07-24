@@ -60,6 +60,8 @@ export interface RosterEntry {
   displayName: string
   joinedAt: number
   studentPubKey: string // base64 x25519 public key — instructor derives the shared key from this
+  /** Stable student account id when the joiner is signed in (optional, additive). */
+  accountId?: string
 }
 
 // Every sealed payload carries the sender's counter INSIDE the ciphertext. Build plan
@@ -92,7 +94,7 @@ export function acceptsSeq(lastSeq: number | undefined, seq: number): boolean {
 
 export type MsgType =
   | 'class.create' | 'class.focus' | 'class.command' | 'class.close'
-  | 'student.join' | 'student.grid' | 'student.focus' | 'student.run' | 'student.ack' | 'student.leave'
+  | 'student.join' | 'student.grid' | 'student.focus' | 'student.run' | 'student.session' | 'student.ack' | 'student.leave'
   | 'join.ok' | 'join.err' | 'focus.on' | 'focus.off' | 'command' | 'class.closed'
   | 'roster.update' | 'student.gone' | 'class.ok' | 'class.err'
 
@@ -106,10 +108,12 @@ export interface ClassCommandMsg { v: 1; type: 'class.command'; classId: ClassId
 export interface ClassCloseMsg { v: 1; type: 'class.close'; classId: ClassId }
 
 // ── Student → server (server re-emits grid/focus/run to the instructor with `from`) ──
-export interface StudentJoinMsg { v: 1; type: 'student.join'; classId: ClassId; displayName: string; studentPubKey: string }
+export interface StudentJoinMsg { v: 1; type: 'student.join'; classId: ClassId; displayName: string; studentPubKey: string; accountId?: string }
 export interface StudentGridMsg { v: 1; type: 'student.grid'; classId: ClassId; from?: StudentId; sealed: Sealed }
 export interface StudentFocusMsg { v: 1; type: 'student.focus'; classId: ClassId; from?: StudentId; sealed: Sealed }
 export interface StudentRunMsg { v: 1; type: 'student.run'; classId: ClassId; from?: StudentId; sealed: Sealed }
+/** Final/incomplete progress snapshot when a student leaves before mission end. */
+export interface StudentSessionMsg { v: 1; type: 'student.session'; classId: ClassId; from?: StudentId; sealed: Sealed }
 export interface StudentAckMsg { v: 1; type: 'student.ack'; classId: ClassId; from?: StudentId; sealed: Sealed }
 export interface StudentLeaveMsg { v: 1; type: 'student.leave'; classId: ClassId }
 
@@ -132,13 +136,13 @@ export interface StudentGoneMsg { v: 1; type: 'student.gone'; classId: ClassId; 
 
 export type Envelope =
   | ClassCreateMsg | ClassFocusMsg | ClassCommandMsg | ClassCloseMsg
-  | StudentJoinMsg | StudentGridMsg | StudentFocusMsg | StudentRunMsg | StudentAckMsg | StudentLeaveMsg
+  | StudentJoinMsg | StudentGridMsg | StudentFocusMsg | StudentRunMsg | StudentSessionMsg | StudentAckMsg | StudentLeaveMsg
   | JoinOkMsg | JoinErrMsg | FocusOnMsg | FocusOffMsg | CommandMsg | ClassClosedMsg
   | ClassOkMsg | ClassErrMsg | RosterUpdateMsg | StudentGoneMsg
 
 const MSG_TYPES: ReadonlySet<string> = new Set<MsgType>([
   'class.create', 'class.focus', 'class.command', 'class.close',
-  'student.join', 'student.grid', 'student.focus', 'student.run', 'student.ack', 'student.leave',
+  'student.join', 'student.grid', 'student.focus', 'student.run', 'student.session', 'student.ack', 'student.leave',
   'join.ok', 'join.err', 'focus.on', 'focus.off', 'command', 'class.closed',
   'roster.update', 'student.gone', 'class.ok', 'class.err',
 ])

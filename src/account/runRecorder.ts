@@ -2,6 +2,7 @@ import { useDroneStore } from '@/store/droneStore'
 import { useAuthStore } from '@/store/authStore'
 import { encryptJson, makeId } from '@/account/crypto'
 import { putRunBundle } from '@/account/accountDb'
+import { getClassroomRunTag } from '@/account/runContext'
 import { buildAfterActionPackage } from '@/sim/demo/missionReport'
 import { verifyChain } from '@/utils/chainOfCustody'
 import type { EventType, FullMissionFrame, LatLng, MissionEvent, MissionReplaySession, ScenarioConfig, TelemetryPoint, Waypoint } from '@/types'
@@ -28,6 +29,7 @@ const MAX_DETAIL_FRAMES = 300
 
 export function buildRunSummary(session: MissionReplaySession): StoredRunSummary {
   const lastFrame = session.frames[session.frames.length - 1]
+  const tag = getClassroomRunTag()
   return {
     scenarioId: session.scenarioId,
     scenarioVariant: session.scenarioVariant,
@@ -46,6 +48,7 @@ export function buildRunSummary(session: MissionReplaySession): StoredRunSummary
       platformId: d.platformId,
     })),
     eventTypeCounts: countEventTypes(session.events),
+    ...(tag ? { source: 'classroom' as const, classId: tag.classId, classroomId: tag.classroomId } : {}),
   }
 }
 
