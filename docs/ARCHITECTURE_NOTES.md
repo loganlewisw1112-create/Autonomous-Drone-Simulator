@@ -121,8 +121,10 @@ Derived, expensive state (`buildMissionOutcomeSummary`, `buildComplianceState`,
   development-only flags and cannot create a graded class.
 - Electron verifies the exact certificate fingerprint of its owned loopback relay. It does not
   install CA trust on student Windows profiles; that remains a managed school deployment action.
-- Relay-owned instructor sessions authorize room creation. Protocol-v2 application encryption
-  binds class, direction, message type, version, and both session keys.
+- Relay-owned instructor sessions and a fresh signed evaluator entitlement authorize room
+  creation. Protocol v3 uses two-minute single-use join capabilities, authoritative class
+  timing, reconnect tokens, and atomic 40-recipient command batches. Version-2 application
+  encryption binds class, direction, message type, version, and both session keys.
 - The coordinator renders a QR and copyable join URL with the instructor-key fingerprint in the
   URL fragment. Student clients reject a mismatched instructor key.
 

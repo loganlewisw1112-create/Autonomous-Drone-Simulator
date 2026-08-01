@@ -56,7 +56,8 @@ npm run classroom:desktop</code></pre>
   </ol>
 
   <h2>Security boundary</h2>
-  <p>Protocol-v2 application payloads are authenticated and encrypted.
+  <p>Protocol-v3 classroom messages use single-use join capabilities,
+  relay-authoritative timing, and authenticated encrypted application payloads.
   Approved TLS protects LAN transport. The relay and host still handle
   connection/routing metadata, and encryption cannot protect a compromised or
   unlocked endpoint.</p>

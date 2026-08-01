@@ -10,7 +10,7 @@ import type { CustomMissionDefinition, ScenarioVariantConfig } from '@/types'
 // `sealed`, so no metric is ever readable off-device. The server is plain JS and
 // re-derives the same envelope contract without importing this file.
 
-export const PROTOCOL_VERSION = 2 as const
+export const PROTOCOL_VERSION = 3 as const
 
 // Relay guardrails and the class-code alphabet live in limits.json because
 // server/classroom.mjs needs the identical values and, being plain ESM JS, cannot
@@ -28,6 +28,14 @@ export const GRID_BUFFER_LIMIT_BYTES = 64 * 1024 // publisher backpressure thres
 export type ClassId = string // 6 chars from CLASS_ID_ALPHABET
 export type StudentId = string // server-assigned, ephemeral, not an account id
 export type Sealed = CipherBlob // { iv, ct } base64 — identical shape to account blobs
+export type ClassPhase = 'active' | 'debrief' | 'closed'
+
+export interface RelayClassTiming {
+  serverNow: number
+  activeUntil: number
+  debriefUntil: number
+  phase: ClassPhase
+}
 
 // Digits + consonants (vowels A E I O U removed so a code never spells a word).
 export const CLASS_ID_ALPHABET = limits.CLASS_ID_ALPHABET
@@ -93,10 +101,11 @@ export function acceptsSeq(lastSeq: number | undefined, seq: number): boolean {
 }
 
 export type MsgType =
-  | 'class.create' | 'class.focus' | 'class.command' | 'class.close'
+  | 'class.create' | 'class.focus' | 'class.command.batch' | 'class.close'
   | 'student.join' | 'student.grid' | 'student.focus' | 'student.run' | 'student.session' | 'student.ack' | 'student.leave'
   | 'join.ok' | 'join.err' | 'focus.on' | 'focus.off' | 'command' | 'class.closed'
-  | 'roster.update' | 'student.gone' | 'class.ok' | 'class.err' | 'backup.warn'
+  | 'roster.update' | 'student.gone' | 'class.ok' | 'class.err' | 'class.state'
+  | 'class.command.result' | 'backup.warn'
 
 export type SealedDirection = 'instructor-to-student' | 'student-to-instructor'
 export type SealedMsgType =
@@ -112,7 +121,7 @@ export type SealedMsgType =
 // in class.ok) and required on every later create for a live classId — that is what
 // stops a LAN client who overheard the code from re-pointing the room at its own key.
 export interface ClassCreateMsg {
-  v: 2
+  v: 3
   type: 'class.create'
   classId: ClassId
   classPubKey: string
@@ -121,49 +130,58 @@ export interface ClassCreateMsg {
   graded?: boolean
   instructorToken?: string
 }
-export interface ClassFocusMsg { v: 2; type: 'class.focus'; classId: ClassId; studentId: StudentId | null }
-export interface ClassCommandMsg { v: 2; type: 'class.command'; classId: ClassId; studentId: StudentId | null; instructorToken: string; sealed: Sealed }
-export interface ClassCloseMsg { v: 2; type: 'class.close'; classId: ClassId }
+export interface ClassFocusMsg { v: 3; type: 'class.focus'; classId: ClassId; studentId: StudentId | null }
+export interface ClassCommandBatchMsg {
+  v: 3
+  type: 'class.command.batch'
+  classId: ClassId
+  instructorToken: string
+  commandKind: string
+  items: Array<{ studentId: StudentId; sealed: Sealed }>
+}
+export interface ClassCloseMsg { v: 3; type: 'class.close'; classId: ClassId }
 
 // ── Student → server (server re-emits grid/focus/run to the instructor with `from`) ──
-export interface StudentJoinMsg { v: 2; type: 'student.join'; classId: ClassId; displayName: string; studentPubKey: string; accountId?: string }
-export interface StudentGridMsg { v: 2; type: 'student.grid'; classId: ClassId; from?: StudentId; sealed: Sealed }
-export interface StudentFocusMsg { v: 2; type: 'student.focus'; classId: ClassId; from?: StudentId; sealed: Sealed }
-export interface StudentRunMsg { v: 2; type: 'student.run'; classId: ClassId; from?: StudentId; sealed: Sealed }
+export interface StudentJoinMsg { v: 3; type: 'student.join'; classId: ClassId; displayName: string; studentPubKey: string; capability: string; resumeToken?: string; accountId?: string }
+export interface StudentGridMsg { v: 3; type: 'student.grid'; classId: ClassId; from?: StudentId; sealed: Sealed }
+export interface StudentFocusMsg { v: 3; type: 'student.focus'; classId: ClassId; from?: StudentId; sealed: Sealed }
+export interface StudentRunMsg { v: 3; type: 'student.run'; classId: ClassId; from?: StudentId; sealed: Sealed }
 /** Final/incomplete progress snapshot when a student leaves before mission end. */
-export interface StudentSessionMsg { v: 2; type: 'student.session'; classId: ClassId; from?: StudentId; sealed: Sealed }
-export interface StudentAckMsg { v: 2; type: 'student.ack'; classId: ClassId; from?: StudentId; sealed: Sealed }
-export interface StudentLeaveMsg { v: 2; type: 'student.leave'; classId: ClassId }
+export interface StudentSessionMsg { v: 3; type: 'student.session'; classId: ClassId; from?: StudentId; sealed: Sealed }
+export interface StudentAckMsg { v: 3; type: 'student.ack'; classId: ClassId; from?: StudentId; sealed: Sealed }
+export interface StudentLeaveMsg { v: 3; type: 'student.leave'; classId: ClassId }
 
 // ── Server → student ─────────────────────────────────────────────────────────
-export interface JoinOkMsg { v: 2; type: 'join.ok'; classId: ClassId; studentId: StudentId; classPubKey: string; classKeyFingerprint: string; config: ClassConfig }
-export interface JoinErrMsg { v: 2; type: 'join.err'; classId: ClassId; reason: string }
-export interface FocusOnMsg { v: 2; type: 'focus.on'; classId: ClassId }
-export interface FocusOffMsg { v: 2; type: 'focus.off'; classId: ClassId }
-export interface CommandMsg { v: 2; type: 'command'; classId: ClassId; sealed: Sealed }
-export interface ClassClosedMsg { v: 2; type: 'class.closed'; classId: ClassId }
+export interface JoinOkMsg extends RelayClassTiming { v: 3; type: 'join.ok'; classId: ClassId; studentId: StudentId; classPubKey: string; classKeyFingerprint: string; config: ClassConfig; resumeToken: string }
+export interface JoinErrMsg { v: 3; type: 'join.err'; classId: ClassId; reason: string }
+export interface FocusOnMsg { v: 3; type: 'focus.on'; classId: ClassId }
+export interface FocusOffMsg { v: 3; type: 'focus.off'; classId: ClassId }
+export interface CommandMsg { v: 3; type: 'command'; classId: ClassId; commandKind: string; sealed: Sealed }
+export interface ClassClosedMsg { v: 3; type: 'class.closed'; classId: ClassId }
 
 // ── Server → instructor ──────────────────────────────────────────────────────
-// class.ok carries the room-scoped rebind token. Relay-v2 also authenticates the
+// class.ok carries the room-scoped rebind token. Protocol v3 also authenticates the
 // instructor WebSocket upgrade with the HttpOnly instructor session; both proofs
 // are required before an existing room can be rebound.
-export interface ClassOkMsg { v: 2; type: 'class.ok'; classId: ClassId; instructorToken: string }
-export interface ClassErrMsg { v: 2; type: 'class.err'; classId: ClassId; reason: string }
-export interface RosterUpdateMsg { v: 2; type: 'roster.update'; classId: ClassId; students: RosterEntry[] }
-export interface StudentGoneMsg { v: 2; type: 'student.gone'; classId: ClassId; from: StudentId }
-export interface BackupWarnMsg { v: 2; type: 'backup.warn'; classId: ClassId; reason: 'rate-limited' | 'quota-limited' | 'write-failed' }
+export interface ClassOkMsg extends RelayClassTiming { v: 3; type: 'class.ok'; classId: ClassId; instructorToken: string }
+export interface ClassErrMsg { v: 3; type: 'class.err'; classId: ClassId; reason: string }
+export interface ClassStateMsg extends RelayClassTiming { v: 3; type: 'class.state'; classId: ClassId; reason?: string }
+export interface ClassCommandResultMsg { v: 3; type: 'class.command.result'; classId: ClassId; commandKind: string; queued: number; unavailable: number }
+export interface RosterUpdateMsg { v: 3; type: 'roster.update'; classId: ClassId; students: RosterEntry[] }
+export interface StudentGoneMsg { v: 3; type: 'student.gone'; classId: ClassId; from: StudentId }
+export interface BackupWarnMsg { v: 3; type: 'backup.warn'; classId: ClassId; reason: 'rate-limited' | 'quota-limited' | 'write-failed' }
 
 export type Envelope =
-  | ClassCreateMsg | ClassFocusMsg | ClassCommandMsg | ClassCloseMsg
+  | ClassCreateMsg | ClassFocusMsg | ClassCommandBatchMsg | ClassCloseMsg
   | StudentJoinMsg | StudentGridMsg | StudentFocusMsg | StudentRunMsg | StudentSessionMsg | StudentAckMsg | StudentLeaveMsg
   | JoinOkMsg | JoinErrMsg | FocusOnMsg | FocusOffMsg | CommandMsg | ClassClosedMsg
-  | ClassOkMsg | ClassErrMsg | RosterUpdateMsg | StudentGoneMsg | BackupWarnMsg
+  | ClassOkMsg | ClassErrMsg | ClassStateMsg | ClassCommandResultMsg | RosterUpdateMsg | StudentGoneMsg | BackupWarnMsg
 
 const MSG_TYPES: ReadonlySet<string> = new Set<MsgType>([
-  'class.create', 'class.focus', 'class.command', 'class.close',
+  'class.create', 'class.focus', 'class.command.batch', 'class.close',
   'student.join', 'student.grid', 'student.focus', 'student.run', 'student.session', 'student.ack', 'student.leave',
   'join.ok', 'join.err', 'focus.on', 'focus.off', 'command', 'class.closed',
-  'roster.update', 'student.gone', 'class.ok', 'class.err', 'backup.warn',
+  'roster.update', 'student.gone', 'class.ok', 'class.err', 'class.state', 'class.command.result', 'backup.warn',
 ])
 
 export function isMsgType(value: unknown): value is MsgType {

@@ -18,6 +18,39 @@ env:
   VITE_GIT_SHA: ${{ github.sha }}
 
 jobs:
+  licensing:
+    name: Verify licensing service and PostgreSQL transactions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: licensing_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d licensing_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/licensing/package-lock.json
+      - run: npm install --global npm@11.12.1
+      - run: npm ci --prefix services/licensing
+      - run: npm --prefix services/licensing run verify
+      - run: npm --prefix services/licensing run test:integration
+        env:
+          LICENSING_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/licensing_test
+      - run: npm audit --omit=dev --audit-level=high --prefix services/licensing
+
   verify:
     name: Verify and qualify
     runs-on: ubuntu-latest
@@ -72,6 +105,9 @@ jobs:
       - name: Assert deterministic target parity
         run: npm run assert:target-parity
 
+      - name: Qualify 40-seat TLS/WSS classroom for ten minutes
+        run: npm run qualify:classroom:40 -- --output outputs/qualification/classroom-40-ci.json
+
       - name: Audit production and development dependencies
         run: npm audit --audit-level=high
 
@@ -89,3 +125,13 @@ jobs:
           path: coverage/
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Upload classroom qualification evidence
+        uses: actions/upload-artifact@v7
+        if: always()
+        continue-on-error: true
+        with:
+          name: classroom-40-qualification-${{ github.sha }}
+          path: outputs/qualification/classroom-40-ci.json
+          if-no-files-found: ignore
+          retention-days: 30

@@ -21,6 +21,7 @@ checkout is not release evidence.
 $releaseSha = git rev-parse HEAD
 npm ci
 npm run verify:ci
+npm run verify:licensing
 npm run build:windows
 npm run build:info -- --target windows --sha $releaseSha
 npm run build:mobile
@@ -63,17 +64,29 @@ npm audit --audit-level=high
   release notes accompany the package.
 - [ ] A clean Windows instructor machine installs, provisions, rotates, resets,
   and uninstalls successfully.
+- [ ] The independent licence API reports the approved SHA, database schema,
+  issuer, and signing `kid`; challenge/redeem/refresh pass against production.
+- [ ] One code activates one Windows device/account, a second fresh device is
+  rejected, browser-data clearing cannot reset the term, and the audited
+  replacement preserves the original expiry.
+- [ ] Shutdown, sleep, timezone/DST, backward-clock detection, 72-hour offline
+  expiry, revocation, and licence-service outage/recovery are verified.
 - [ ] A second Windows machine trusts only the generated public school-local
   CA certificate and connects over HTTPS/WSS.
 - [ ] A real two-machine class passes join, reconnect, command, archive,
   shutdown, and restart checks.
-- [ ] Synthetic testing covers 40 students, connection/message limits, storage
-  quota, retention pruning, and warning behavior.
+- [ ] The attested synthetic 40-seat test sustains encrypted traffic for ten
+  minutes, delivers/acknowledges 40-recipient batches, reconnects all clients
+  within 60 seconds, and verifies connection/message/storage limits.
+- [ ] A real instructor plus 40 representative student devices passes on the
+  declared school-style Wi-Fi reference network.
 - [ ] No graded class can start over insecure LAN transport.
 - [ ] Public demo proves 30-minute wall, 10-minute idle, and 15-minute
   read-only debrief behavior without interrupting active recovery/export.
 - [ ] Classroom config enforces 30-180 minutes (60 default), rejects late
   joins, and preserves instructor monitoring and archives after expiry.
+- [ ] A class cannot start unless its duration plus 15-minute debrief fits
+  before both licence expiry and the current offline-lease boundary.
 - [ ] Guest attempts to create, import, load, or start a custom mission fail at
   both UI and mission-control boundaries.
 - [ ] Classroom rosters use pseudonyms and seven-day browser/relay retention

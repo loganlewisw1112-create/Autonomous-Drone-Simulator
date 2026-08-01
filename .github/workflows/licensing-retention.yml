@@ -1,0 +1,32 @@
+name: Enforce licensing retention
+
+on:
+  schedule:
+    - cron: '23 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: licensing-retention
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production-licensing
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/licensing/package-lock.json
+      - run: npm install --global npm@11.12.1
+      - run: npm ci --prefix services/licensing
+      - name: Apply licensing retention transaction
+        run: npm --prefix services/licensing run purge-retention
+        env:
+          DATABASE_URL: ${{ secrets.LICENSING_DATABASE_URL_UNPOOLED }}

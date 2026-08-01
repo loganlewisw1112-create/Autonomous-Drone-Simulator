@@ -5,7 +5,7 @@ import { buildSessionArchive, persistSessionArchive, snapshotDepartedStudent } f
 import { setClassroomRunTag } from '@/account/runContext'
 import { useClassroomStore } from '@/classroom/classroomStore'
 import { loadClassMission } from '@/classroom/classroomMission'
-import { getClassroomDesktopBridge } from '@/classroom/desktopBridge'
+import { getClassroomDesktopBridge } from '@/licensing/desktopBridge'
 import {
   generateKeyPair,
   publicKeyFingerprint,
@@ -93,7 +93,7 @@ const studentCiphers = new Map<StudentId, SessionCipher>()
 // and is dropped with them, so a rejoining student (new studentId, new key) starts clean.
 const lastSeqByStudent = new Map<StudentId, number>()
 const outCommandSeqByStudent = new Map<StudentId, number>()
-// Server-minted room proof held only in memory. Relay-v2 also requires the HttpOnly
+// Server-minted room proof held only in memory. Protocol v3 also requires the HttpOnly
 // instructor session attached during the WebSocket upgrade before class.create is
 // accepted, so a stolen room token alone cannot rebind the class.
 let instructorToken: string | null = null
@@ -111,6 +111,9 @@ let expectedInstructorFingerprint: string | null = null
 // high-water mark per student, so every message this tab sends must advance it.
 let outSeq = 0
 let lastCommandSeq: number | undefined
+let studentResumeToken: string | null = null
+let studentReconnectTimer: ReturnType<typeof setTimeout> | null = null
+let studentReconnectEnabled = false
 let gridTimer: ReturnType<typeof setInterval> | null = null
 let focusTimer: ReturnType<typeof setInterval> | null = null
 let unsubscribeRun: (() => void) | null = null
@@ -121,6 +124,15 @@ function wsUrl(): string {
   if (typeof override === 'string' && override) return override
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   return `${proto}://${location.host}`
+}
+
+function classroomHttpUrl(path: string): string {
+  const url = new URL(wsUrl())
+  url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
+  url.pathname = path
+  url.search = ''
+  url.hash = ''
+  return url.toString()
 }
 
 function send(msg: Envelope): void {
@@ -257,6 +269,7 @@ function handleInstructorMessage(raw: string): void {
     case 'class.ok':
       instructorToken = msg.instructorToken
       reconnectTries = 0
+      store.setClassTiming(msg)
       store.setStatus('live')
       break
     case 'class.err':
@@ -276,6 +289,16 @@ function handleInstructorMessage(raw: string): void {
       }
       break
     }
+    case 'class.state':
+      store.setClassTiming(msg)
+      break
+    case 'class.command.result':
+      store.setCommandDelivery({
+        commandKind: msg.commandKind,
+        queued: msg.queued,
+        unavailable: msg.unavailable,
+      })
+      break
     case 'student.grid': {
       const cipher = msg.from ? studentCiphers.get(msg.from) : undefined
       if (!cipher || !msg.from) return
@@ -457,23 +480,72 @@ export function joinClass(
       ? null
       : new URLSearchParams(location.hash.replace(/^#/, '')).get('ik'))
   outSeq = 0
+  studentResumeToken = null
+  studentReconnectEnabled = true
   studentKeys = generateKeyPair()
   const store = useClassroomStore.getState()
   store.reset()
   store.setStatus('connecting')
 
-  ws = new WebSocket(wsUrl())
+  if (import.meta.env.MODE === 'test') openStudentSocketWithCapability('test-capability')
+  else void openStudentSocket()
+}
+
+async function requestJoinCapability(): Promise<string> {
+  if (!classId || !studentKeys) throw new Error('join-state-unavailable')
+  if (import.meta.env.MODE === 'test') return 'test-capability'
+  const response = await fetch(classroomHttpUrl('/api/classroom/join-capability'), {
+    method: 'POST',
+    credentials: 'omit',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      classId,
+      studentPubKey: studentKeys.publicKey,
+      ...(studentResumeToken ? { resumeToken: studentResumeToken } : {}),
+    }),
+  })
+  const body = await response.json().catch(() => null) as { capability?: unknown; error?: unknown } | null
+  if (!response.ok || typeof body?.capability !== 'string') {
+    throw new Error(typeof body?.error === 'string' ? body.error : 'join-capability-unavailable')
+  }
+  return body.capability
+}
+
+async function openStudentSocket(): Promise<void> {
+  if (!classId || !studentKeys || !studentReconnectEnabled) return
+  let capability: string
+  try {
+    capability = await requestJoinCapability()
+  } catch (error) {
+    useClassroomStore.getState().setStatus('error', error instanceof Error ? error.message : 'join-capability-unavailable')
+    return
+  }
+  if (!classId || !studentKeys || !studentReconnectEnabled) return
+  openStudentSocketWithCapability(capability)
+}
+
+function openStudentSocketWithCapability(capability: string): void {
+  if (!classId || !studentKeys || !studentReconnectEnabled) return
+  ws = new WebSocket(wsUrl(), ['adms-classroom-v3', capability])
   ws.onopen = () => send({
     v: PROTOCOL_VERSION,
     type: 'student.join',
-    classId: id,
-    displayName: name,
+    classId: classId!,
+    displayName,
     studentPubKey: studentKeys!.publicKey,
-    ...(accountId ? { accountId } : {}),
+    capability,
+    ...(studentResumeToken ? { resumeToken: studentResumeToken } : {}),
+    ...(studentAccountId ? { accountId: studentAccountId } : {}),
   })
   ws.onmessage = (ev) => { void handleStudentMessage(String(ev.data)) }
-  ws.onclose = () => { if (useClassroomStore.getState().status === 'live') useClassroomStore.getState().setStatus('closed') }
-  ws.onerror = () => useClassroomStore.getState().setStatus('error', 'connection failed')
+  ws.onclose = () => {
+    if (!studentReconnectEnabled || !studentResumeToken) return
+    if (studentReconnectTimer) clearTimeout(studentReconnectTimer)
+    studentReconnectTimer = setTimeout(() => { void openStudentSocket() }, INSTRUCTOR_RECONNECT_MS)
+  }
+  ws.onerror = () => {
+    if (!studentResumeToken) useClassroomStore.getState().setStatus('error', 'connection failed')
+  }
 }
 
 async function handleStudentMessage(raw: string): Promise<void> {
@@ -495,6 +567,8 @@ async function handleStudentMessage(raw: string): Promise<void> {
       const joiningSocket = ws
       const joiningClassId = classId
       studentCipher = SessionCipher.forStudent(studentKeys.secretKey, msg.classPubKey, classId)
+      studentResumeToken = msg.resumeToken
+      store.setClassTiming(msg)
       setClassroomRunTag({ classId })
       const loaded = await loadClassMission(msg.config, {
         isCurrent: () => ws === joiningSocket && classId === joiningClassId && classId === msg.classId,
@@ -524,7 +598,10 @@ async function handleStudentMessage(raw: string): Promise<void> {
       stopFocusPublisher()
       break
     case 'command':
-      handleStudentCommand(msg.sealed)
+      handleStudentCommand(msg.sealed, msg.commandKind)
+      break
+    case 'class.state':
+      store.setClassTiming(msg)
       break
     case 'class.closed':
       store.setStatus('closed')
@@ -657,7 +734,7 @@ function currentGridInput(): GridFrameInput {
 
 // The single instructor-command decrypt door. Unknown plaintext is rejected only
 // after authentication and sequence enforcement, then acknowledged as a failure.
-function handleStudentCommand(sealed: Sealed): void {
+function handleStudentCommand(sealed: Sealed, commandKind: string): void {
   if (!studentCipher || !classId) return
   const store = useClassroomStore.getState()
   let payload: SealedPayload<unknown>
@@ -677,14 +754,14 @@ function handleStudentCommand(sealed: Sealed): void {
   lastCommandSeq = payload.seq
 
   const checked = validateInstructorCommand(payload.body)
-  if (!checked.ok) {
+  if (!checked.ok || checked.command.kind !== commandKind) {
     store.noteCommandReject()
     sendCommandAck({
       commandId: commandIdFrom(payload.body),
       actorId: `${CLASSROOM_INTERVENTION_ACTOR_PREFIX}${classId}`,
       ok: false,
-      code: checked.code,
-      message: checked.message,
+      code: checked.ok ? 'malformed' : checked.code,
+      message: checked.ok ? 'Authenticated command kind did not match its relay envelope.' : checked.message,
       affectedDroneIds: [],
     })
     return
@@ -773,14 +850,15 @@ function isInstructorCommandAck(value: unknown): value is InstructorCommandAck {
     && (ack.message === undefined || typeof ack.message === 'string')
 }
 
-// Each recipient has a distinct E2EE key, so a class-wide command is expanded into
-// one sealed envelope per roster member instead of broadcasting one unusable blob.
+// Each recipient still receives distinct E2EE ciphertext, but protocol-v3 carries all
+// envelopes in one relay action so a 40-seat command cannot exhaust socket burst limits.
 export function sendCommand(studentId: StudentId | null, command: InstructorCommand): StudentId[] {
   if (!classId || !instructorToken || !ws || ws.readyState !== WebSocket.OPEN) return []
   const recipients = studentId === null
     ? useClassroomStore.getState().roster.map((entry) => entry.studentId)
     : [studentId]
   const sent: StudentId[] = []
+  const items: Array<{ studentId: StudentId; sealed: Sealed }> = []
   const issuedAt = Date.now()
   const actorId = `${CLASSROOM_INTERVENTION_ACTOR_PREFIX}${classId}`
 
@@ -788,12 +866,8 @@ export function sendCommand(studentId: StudentId | null, command: InstructorComm
     const cipher = studentCiphers.get(recipient)
     if (!cipher) continue
     const seq = (outCommandSeqByStudent.get(recipient) ?? 0) + 1
-    send({
-      v: PROTOCOL_VERSION,
-      type: 'class.command',
-      classId,
+    items.push({
       studentId: recipient,
-      instructorToken,
       sealed: sealOutgoing(cipher, command, 'class.command', seq),
     })
     outCommandSeqByStudent.set(recipient, seq)
@@ -806,6 +880,16 @@ export function sendCommand(studentId: StudentId | null, command: InstructorComm
       status: 'pending',
     })
     sent.push(recipient)
+  }
+  if (items.length > 0) {
+    send({
+      v: PROTOCOL_VERSION,
+      type: 'class.command.batch',
+      classId,
+      instructorToken,
+      commandKind: command.kind,
+      items,
+    })
   }
   return sent
 }
@@ -863,6 +947,8 @@ function stopGridPublisher(): void { if (gridTimer) { clearInterval(gridTimer); 
 function stopFocusPublisher(): void { if (focusTimer) { clearInterval(focusTimer); focusTimer = null } }
 
 export function teardown(): void {
+  studentReconnectEnabled = false
+  if (studentReconnectTimer) { clearTimeout(studentReconnectTimer); studentReconnectTimer = null }
   unbindUnloadSnapshot()
   setClassroomRunTag(null)
   stopGridPublisher()
@@ -890,4 +976,5 @@ export function teardown(): void {
   expectedInstructorFingerprint = null
   outSeq = 0
   lastCommandSeq = undefined
+  studentResumeToken = null
 }

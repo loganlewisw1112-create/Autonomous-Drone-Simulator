@@ -82,18 +82,21 @@ Use the explicit build scripts to qualify a shipping target.
 The hosted Classroom URL demonstrates account, instructor, student, and
 coordinator interfaces. It cannot provide the long-lived LAN relay.
 
-For local engineering evaluation:
+For licensed Windows-host development:
 
 ```bash
 npm ci
 npm run classroom:desktop
 ```
 
-The Windows host owns the local relay and shutdown lifecycle. It generates a
+The Windows host requires the independent licensing-service public configuration
+and an issued evaluator code; see
+[`docs/EVALUATOR_LICENSING_RUNBOOK.md`](docs/EVALUATOR_LICENSING_RUNBOOK.md).
+The host owns the local relay and shutdown lifecycle. It generates a
 persistent 3072-bit RSA school-local CA plus a renewable LAN leaf certificate,
 serves HTTPS/WSS, and fingerprint-pins its owned loopback relay. Relay-owned
-instructor sessions and protocol-v2 fingerprint-pinned join links/QR are also
-implemented.
+instructor sessions, protocol-v3 single-use join capabilities, reconnect grace,
+and fingerprint-pinned join links/QR are also implemented.
 
 The relay rejects insecure non-loopback create/join traffic by default. An
 explicit insecure development override must never be used for a school pilot.

@@ -20,6 +20,9 @@ Treat these as high priority:
 - a deployment serving an unexpected SHA/target;
 - a broken evidence chain or cross-target deterministic mismatch;
 - malware, unsigned release substitution, or a high/critical dependency issue.
+- exposed redemption codes, licence-signing/HMAC/database credentials,
+  unexpected entitlement issuance, or a licence API serving the wrong SHA or
+  signing-key identifier.
 
 ## Contain
 
@@ -34,6 +37,9 @@ Treat these as high priority:
    issue a new CA and leaf certificate before the next class.
 6. Do not delete logs or backups until the incident owner confirms what must be
    preserved.
+7. For a licence-service incident, disable redemption, revoke affected
+   entitlements, rotate the exposed key/secret in the documented order, and
+   preserve the redacted audit trail. Do not publish raw codes or private keys.
 
 ## Investigate
 
@@ -47,6 +53,9 @@ Treat these as high priority:
 - Reproduce against a copy or synthetic data. Do not use the live classroom as
   a diagnostic environment.
 - Document proven facts separately from assumptions.
+- Compare licence API health revision/schema/`kid`, database migrations,
+  entitlement audit events, and packaged public-key ring. Confirm that no
+  student, mission, telemetry, or coordinate data entered the service.
 
 ## Recover
 
@@ -54,6 +63,9 @@ Restore only from a reviewed commit that passes the complete
 `RELEASE_CHECKLIST.md` gate. Replace compromised credentials/keys, remove
 untrusted CA certificates, apply approved retention/deletion decisions, and
 run a two-machine classroom smoke before reopening.
+For licence-service recovery, restore PostgreSQL from the approved PITR point,
+reconcile issued/revoked entitlements, deploy the reviewed service SHA, verify
+challenge/redeem/refresh with synthetic codes, and then reopen issuance.
 
 ## Notify and learn
 

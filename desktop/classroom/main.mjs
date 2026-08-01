@@ -9,14 +9,16 @@
  * Browser / Vercel builds never load this file.
  */
 
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { randomBytes } from 'node:crypto'
+import { app, BrowserWindow, dialog, ipcMain, net, powerMonitor, safeStorage, shell } from 'electron'
+import { createPublicKey, randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { readFile, writeFile } from 'node:fs/promises'
 import https from 'node:https'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ensureClassroomCertificates } from '../../server/classroomTls.mjs'
+import { EntitlementManager, loadEntitlementConfig } from '../licensing/entitlement.mjs'
 import {
   buildServerEnv,
   classroomBaseUrl,
@@ -38,6 +40,12 @@ let ownedServer = null
 let weStartedServer = false
 const administratorToken = randomBytes(32).toString('base64url')
 let relayCertificates = null
+let entitlementManager = null
+let entitlementHeartbeatTimer = null
+let lastNetworkOnline = null
+let entitlementEvaluationTimer = null
+let entitlementRefreshTimer = null
+let entitlementSequence = 0
 
 /** @type {{ promptHandled: boolean, serverStarted: boolean, serverOwned: boolean, relayBaseUrl: string | null, relayJoinBaseUrl: string | null }} */
 let desktopState = {
@@ -48,6 +56,31 @@ let desktopState = {
   relayJoinBaseUrl: null,
 }
 const desktopWindowSenderIds = new Set()
+
+function publicEntitlementState() {
+  return entitlementManager?.getState() ?? {
+    status: 'activation_required',
+    tier: null,
+    activatedAt: null,
+    expiresAt: null,
+    offlineUntil: null,
+    remainingMs: null,
+    canBeginNewActivity: false,
+    maxStudentsPerClass: 0,
+    maxConcurrentClasses: 0,
+    lastTrustedAt: null,
+    lastError: 'initializing',
+  }
+}
+
+function broadcastEntitlementState() {
+  const state = publicEntitlementState()
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (desktopWindowSenderIds.has(win.webContents.id) && !win.isDestroyed()) {
+      win.webContents.send('classroom-desktop:entitlement-state', state)
+    }
+  }
+}
 
 function lanHostnames() {
   const hosts = new Set()
@@ -84,6 +117,49 @@ ipcMain.on('classroom-desktop:get-state', (event) => {
     return
   }
   event.returnValue = publicDesktopState()
+})
+
+ipcMain.on('classroom-desktop:get-entitlement-state', (event) => {
+  event.returnValue = desktopWindowSenderIds.has(event.sender.id) ? publicEntitlementState() : null
+})
+
+ipcMain.handle('classroom-desktop:activate-entitlement', async (event, code) => {
+  if (!desktopWindowSenderIds.has(event.sender.id)) return { ok: false, error: 'unauthorized-renderer' }
+  if (!entitlementManager || typeof code !== 'string' || code.length > 80) {
+    return { ok: false, error: 'invalid-code-format' }
+  }
+  const result = await entitlementManager.activate(code)
+  if (result.ok) await syncRelayEntitlement()
+  return result
+})
+
+ipcMain.handle('classroom-desktop:refresh-entitlement', async (event) => {
+  if (!desktopWindowSenderIds.has(event.sender.id)) return { ok: false, error: 'unauthorized-renderer' }
+  if (!entitlementManager) return { ok: false, error: 'activation-required' }
+  const result = await entitlementManager.refresh()
+  if (result.ok) await syncRelayEntitlement()
+  return result
+})
+
+ipcMain.handle('classroom-desktop:export-entitlement-diagnostics', async (event) => {
+  if (!desktopWindowSenderIds.has(event.sender.id) || !entitlementManager) {
+    return { ok: false, error: 'unauthorized-renderer' }
+  }
+  const selected = await dialog.showSaveDialog({
+    title: 'Export evaluator licence diagnostics',
+    defaultPath: `adms-licence-diagnostics-${new Date().toISOString().slice(0, 10)}.json`,
+    filters: [{ name: 'JSON diagnostics', extensions: ['json'] }],
+  })
+  if (selected.canceled || !selected.filePath) return { ok: false, error: 'cancelled' }
+  try {
+    await writeFile(selected.filePath, `${JSON.stringify(entitlementManager.diagnostics(), null, 2)}\n`, {
+      encoding: 'utf8',
+      mode: 0o600,
+    })
+    return { ok: true, filePath: selected.filePath }
+  } catch {
+    return { ok: false, error: 'export-failed' }
+  }
 })
 
 ipcMain.handle('classroom-desktop:provision-instructor-access', async (event, code) => {
@@ -139,6 +215,35 @@ function postOwnedRelayAdmin(pathname, body) {
     request.on('error', reject)
     request.end(encoded)
   })
+}
+
+async function syncRelayEntitlement() {
+  const leaseJws = entitlementManager?.getRelayLease()
+  if (!leaseJws || !weStartedServer || !ownedServer) return false
+  entitlementSequence += 1
+  try {
+    const status = await postOwnedRelayAdmin('/api/entitlement/sync', {
+      leaseJws,
+      sequence: entitlementSequence,
+    })
+    return status >= 200 && status < 300
+  } catch {
+    return false
+  }
+}
+
+function relayEntitlementPublicKeys(config) {
+  const keys = {}
+  for (const [keyId, encodedSpki] of Object.entries(config.publicKeys || {})) {
+    try {
+      keys[keyId] = createPublicKey({
+        key: Buffer.from(encodedSpki, 'base64url'),
+        format: 'der',
+        type: 'spki',
+      }).export({ format: 'jwk' })
+    } catch { /* invalid public configuration leaves the relay fail-closed */ }
+  }
+  return JSON.stringify(keys)
 }
 
 function scriptPath() {
@@ -255,6 +360,10 @@ async function startOwnedServer() {
     env: {
       ...buildServerEnv(process.env, { electronAsNode: true }),
       CLASSROOM_ADMIN_TOKEN: administratorToken,
+      CLASSROOM_ENTITLEMENT_REQUIRED: '1',
+      CLASSROOM_ENTITLEMENT_PUBLIC_KEYS_JSON: relayEntitlementPublicKeys(entitlementManager?.config ?? {}),
+      CLASSROOM_ENTITLEMENT_ISSUER: entitlementManager?.config?.issuer ?? '',
+      CLASSROOM_ENTITLEMENT_AUDIENCE: entitlementManager?.config?.audience ?? 'adms-windows-classroom',
       CLASSROOM_TLS_DIR: tlsDirectory,
       CLASSROOM_SECRETS_DIR: secretsDirectory,
       CLASSROOM_RUNS_DIR: runsDirectory,
@@ -305,6 +414,82 @@ function cleanupOwnedServer() {
   }
 }
 
+async function initializeEntitlement() {
+  const config = await packagedEntitlementConfig()
+  entitlementManager = new EntitlementManager({
+    safeStorage,
+    userDataPath: app.getPath('userData'),
+    config,
+    appVersion: app.getVersion(),
+  })
+  entitlementManager.subscribe(() => {
+    broadcastEntitlementState()
+    void syncRelayEntitlement()
+  })
+  await entitlementManager.initialize()
+  lastNetworkOnline = net.isOnline()
+  if (lastNetworkOnline && entitlementManager.getRelayLease()) void entitlementManager.refresh()
+  entitlementEvaluationTimer = setInterval(() => {
+    void entitlementManager?.reevaluate()
+    const online = net.isOnline()
+    if (online && lastNetworkOnline === false) void entitlementManager?.refresh()
+    lastNetworkOnline = online
+  }, 15_000)
+  entitlementRefreshTimer = setInterval(() => {
+    void entitlementManager?.refresh()
+  }, 24 * 60 * 60 * 1_000)
+  entitlementHeartbeatTimer = setInterval(() => {
+    void syncRelayEntitlement()
+  }, 30_000)
+  powerMonitor.on('resume', () => {
+    void entitlementManager?.reevaluate().then(() => entitlementManager?.refresh())
+  })
+}
+
+async function packagedEntitlementConfig() {
+  const generatedPath = path.join(appRoot, 'desktop', 'licensing', 'public-config.generated.json')
+  try {
+    const parsed = JSON.parse(await readFile(generatedPath, 'utf8'))
+    const apiUrl = new URL(parsed.apiUrl)
+    const issuer = new URL(parsed.issuer)
+    const publicKeys = parsed.publicKeys && typeof parsed.publicKeys === 'object'
+      && !Array.isArray(parsed.publicKeys)
+      ? Object.fromEntries(Object.entries(parsed.publicKeys).filter(([keyId, key]) => (
+        /^[A-Za-z0-9._-]{1,80}$/.test(keyId)
+        && typeof key === 'string'
+        && /^[A-Za-z0-9_-]{40,}$/.test(key)
+      )))
+      : {}
+    if (parsed.schemaVersion !== 1
+      || apiUrl.protocol !== 'https:'
+      || issuer.protocol !== 'https:'
+      || parsed.audience !== 'adms-windows-classroom'
+      || Object.keys(publicKeys).length === 0) throw new Error('invalid-packaged-licence-config')
+    return {
+      apiUrl: apiUrl.toString().replace(/\/$/, ''),
+      issuer: issuer.toString().replace(/\/$/, ''),
+      audience: parsed.audience,
+      publicKeys,
+      configured: true,
+    }
+  } catch (error) {
+    if (app.isPackaged) {
+      console.error(`Packaged licence configuration is unavailable: ${error?.message ?? 'invalid'}`)
+      return { apiUrl: null, issuer: null, audience: 'adms-windows-classroom', publicKeys: {}, configured: false }
+    }
+    return loadEntitlementConfig(process.env)
+  }
+}
+
+function cleanupEntitlement() {
+  if (entitlementEvaluationTimer) clearInterval(entitlementEvaluationTimer)
+  if (entitlementRefreshTimer) clearInterval(entitlementRefreshTimer)
+  if (entitlementHeartbeatTimer) clearInterval(entitlementHeartbeatTimer)
+  entitlementEvaluationTimer = null
+  entitlementRefreshTimer = null
+  entitlementHeartbeatTimer = null
+}
+
 async function boot() {
   const choice = await dialog.showMessageBox({
     type: 'question',
@@ -349,6 +534,7 @@ async function boot() {
     desktopState.relayBaseUrl = started.baseUrl
     desktopState.relayJoinBaseUrl = started.joinBaseUrl
     createWindow(`${started.baseUrl}/`)
+    await syncRelayEntitlement()
     return
   }
   app.quit()
@@ -366,8 +552,10 @@ if (!gotLock) {
     }
   })
 
-  app.whenReady().then(() => {
-    void boot()
+  app.whenReady().then(async () => {
+    await initializeEntitlement()
+    await boot()
+    if (entitlementManager?.getRelayLease()) void entitlementManager.refresh()
   })
 
   app.on('window-all-closed', () => {
@@ -376,6 +564,7 @@ if (!gotLock) {
   })
 
   app.on('before-quit', () => {
+    cleanupEntitlement()
     cleanupOwnedServer()
   })
 }

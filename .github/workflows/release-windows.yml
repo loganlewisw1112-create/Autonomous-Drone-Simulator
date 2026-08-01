@@ -44,6 +44,7 @@ jobs:
       - run: npm run assert:bundles
       - run: npm run assert:fixtures
       - run: npm run assert:target-parity
+      - run: npm run qualify:classroom:40 -- --output outputs/qualification/classroom-40-release.json
       - run: npm audit --audit-level=high
       - name: Require a clean tracked worktree
         run: |
@@ -55,11 +56,16 @@ jobs:
     needs: verify
     runs-on: windows-latest
     timeout-minutes: 40
+    environment: windows-release
     env:
       CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
       CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
       WINDOWS_SIGNER_SUBJECT: ${{ secrets.WINDOWS_SIGNER_SUBJECT }}
-      VITE_DISTRIBUTION_CHANNEL: classroom_pilot
+      VITE_DISTRIBUTION_CHANNEL: licensed_windows
+      LICENSING_API_URL: ${{ vars.LICENSING_API_URL }}
+      LICENSING_ISSUER: ${{ vars.LICENSING_ISSUER }}
+      LICENSING_JWS_KEY_ID: ${{ vars.LICENSING_JWS_KEY_ID }}
+      LICENSING_JWS_PUBLIC_KEY_SPKI_BASE64: ${{ vars.LICENSING_JWS_PUBLIC_KEY_SPKI_BASE64 }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -71,11 +77,19 @@ jobs:
       - run: npm install --global npm@11.12.1
       - run: npm ci
 
-      - name: Set 90-day pilot expiry
+      - name: Generate packaged public licence configuration
+        shell: pwsh
+        run: npm run licensing:public-config
+
+      - name: Verify production licence service
         shell: pwsh
         run: |
-          $expiry = (Get-Date).ToUniversalTime().AddDays(90).ToString('o')
-          "VITE_LICENSE_EXPIRES_AT=$expiry" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $health = Invoke-RestMethod -Method Get -Uri "$env:LICENSING_API_URL/v1/health" -TimeoutSec 20
+          if ($health.status -ne 'ok') { throw 'Licence service health is not ok.' }
+          if ($health.schemaVersion -ne 1) { throw "Unexpected licence schema: $($health.schemaVersion)" }
+          if ($health.signingKeyId -ne $env:LICENSING_JWS_KEY_ID) {
+            throw "Licence signing kid mismatch: $($health.signingKeyId)"
+          }
 
       - name: Require signing credentials
         shell: pwsh
@@ -91,6 +105,16 @@ jobs:
           $packageVersion = node -p "require('./package.json').version"
           if ("v$packageVersion" -ne "${{ github.ref_name }}") {
             throw "Tag ${{ github.ref_name }} does not match package version v$packageVersion."
+          }
+
+      - name: Require tagged revision to be merged to main
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Tagged release revision is not merged to origin/main.'
           }
 
       - name: Package classroom host

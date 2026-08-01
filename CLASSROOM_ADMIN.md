@@ -34,6 +34,21 @@ Never use `CLASSROOM_ALLOW_INSECURE_LAN=1` or
 - Confirm the school’s authorization, notice/consent, naming convention,
   retention period, export destination, and incident contact.
 - Use pseudonymous display names when legal identity is unnecessary.
+- Confirm the instructor entitlement is active and has enough verified offline
+  time for the selected class duration plus its 15-minute debrief.
+
+## Product activation
+
+The publisher redemption code unlocks one Windows device/account; it is not the
+school instructor access code and must never be shared with students. The
+Windows host requires internet for activation and at least once every 72 hours.
+After successful refresh, classroom traffic stays on the approved LAN during
+the signed offline window.
+
+If activation or refresh fails, use the in-app redacted diagnostics and the
+publisher process in `docs/EVALUATOR_LICENSING_RUNBOOK.md`. Never send the
+publisher a redemption code, private key, student roster, mission, coordinates,
+or decrypted classroom data in a support bundle.
 
 ## Start an engineering host
 
@@ -173,7 +188,7 @@ recorded, this implementation is not an RC-qualified school deployment.
 7. Recreate the class if its code or join link escaped the supervised group.
 
 The class code identifies a room; it is not external identity proof.
-Protocol-v2 messages protect their authenticated payloads, not a compromised
+Protocol-v3 messages protect their authenticated payloads, not a compromised
 endpoint or every piece of relay/network metadata.
 
 ## Capacity and storage controls
@@ -181,11 +196,14 @@ endpoint or every piece of relay/network metadata.
 The relay enforces:
 
 - 262,144-byte maximum WebSocket payload;
-- 96 total sockets and 12 per IP;
+- 96 total sockets and 12 per IP for unidentified connections; a valid
+  single-use class join/resume capability may bypass only the per-IP cap;
 - 30 upgrades per IP per minute;
 - 10-second role handshake;
 - 16 messages/second with burst 24 per socket;
 - the separate 10 instructor commands/second limit;
+- one validated whole-class command batch counts as one instructor action and
+  may contain at most 40 unique per-student ciphertexts;
 - four backup writes per minute per student/class;
 - one current atomic ciphertext snapshot per student/class;
 - seven-day closed-class retention and 256 MiB global quota.

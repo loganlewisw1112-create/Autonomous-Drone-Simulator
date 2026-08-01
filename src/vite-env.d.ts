@@ -9,7 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_WINDOWS_APP_URL?: string
   readonly VITE_CLASSROOM_ENABLED?: string
   readonly VITE_CLASSROOM_WS_URL?: string
-  readonly VITE_DISTRIBUTION_CHANNEL?: 'development' | 'public_demo' | 'windows_evaluation' | 'classroom_pilot' | 'agency_training_pilot'
+  readonly VITE_DISTRIBUTION_CHANNEL?: 'development' | 'public_demo' | 'licensed_windows' | 'windows_evaluation' | 'classroom_pilot' | 'agency_training_pilot'
   readonly VITE_LICENSE_EXPIRES_AT?: string
 }
 

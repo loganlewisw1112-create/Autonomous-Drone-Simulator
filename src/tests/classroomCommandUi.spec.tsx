@@ -10,7 +10,7 @@ const { joinClassMock } = vi.hoisted(() => ({ joinClassMock: vi.fn() }))
 
 vi.mock('@/classroom/classroomClient', () => ({ joinClass: joinClassMock }))
 vi.mock('@/App', () => ({ default: () => <main>Simulator</main> }))
-vi.mock('@/classroom/desktopBridge', () => ({
+vi.mock('@/licensing/desktopBridge', () => ({
   desktopPromptAlreadyHandled: () => true,
   getClassroomDesktopBridge: () => null,
 }))

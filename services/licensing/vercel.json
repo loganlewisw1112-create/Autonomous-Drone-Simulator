@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "nodejs24.x",
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    { "source": "/v1/challenges", "destination": "/api/v1/challenges" },
+    { "source": "/v1/activations/redeem", "destination": "/api/v1/activations/redeem" },
+    { "source": "/v1/leases/refresh", "destination": "/api/v1/leases/refresh" },
+    { "source": "/v1/health", "destination": "/api/v1/health" }
+  ]
+}

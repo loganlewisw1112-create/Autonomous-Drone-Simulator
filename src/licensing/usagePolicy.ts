@@ -1,6 +1,7 @@
 export type DistributionChannel =
   | 'development'
   | 'public_demo'
+  | 'licensed_windows'
   | 'windows_evaluation'
   | 'classroom_pilot'
   | 'agency_training_pilot'
@@ -29,6 +30,7 @@ const DAY = 24 * 60 * MINUTE
 export function resolveDistributionChannel(value: unknown): DistributionChannel {
   return value === 'public_demo'
     || value === 'windows_evaluation'
+    || value === 'licensed_windows'
     || value === 'classroom_pilot'
     || value === 'agency_training_pilot'
     ? value
@@ -46,6 +48,8 @@ export function buildUsagePolicy(
       return { channel, wallClockMs: 30 * MINUTE, idleMs: 10 * MINUTE, debriefMs: 15 * MINUTE, buildExpiresAt, defaultClassDurationMin: 60, classDurationRangeMin: [30, 180] }
     case 'windows_evaluation':
       return { channel, wallClockMs: 14 * DAY, idleMs: null, debriefMs: 15 * MINUTE, buildExpiresAt, defaultClassDurationMin: 60, classDurationRangeMin: [30, 180] }
+    case 'licensed_windows':
+      return { channel, wallClockMs: null, idleMs: null, debriefMs: 15 * MINUTE, buildExpiresAt: null, defaultClassDurationMin: 60, classDurationRangeMin: [30, 180] }
     case 'classroom_pilot':
     case 'agency_training_pilot':
       return { channel, wallClockMs: 90 * DAY, idleMs: null, debriefMs: 15 * MINUTE, buildExpiresAt, defaultClassDurationMin: 60, classDurationRangeMin: [30, 180] }

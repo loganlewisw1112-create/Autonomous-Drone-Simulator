@@ -20,10 +20,13 @@ to data-subject requests.
 | Host process memory/terminal | Electron administrator token exists only in main-process memory; the CLI-generated token is printed once for the local maintainer | Never expose it to renderer state, logs, screenshots, chat, or shell history |
 | User downloads | Backups, JSON/JSONL, KML, GeoJSON, reports, CSV, certificates, or sync envelopes | Managed outside the app; some are plaintext |
 | Third-party services | Map/style/tile requests and ordinary hosting logs | Providers may receive IP, user agent, URL, timing, and service metadata under their own policies |
+| Publisher licence service | HMAC code digest, pseudonymous recipient reference, entitlement/licence ID, installation public-key thumbprint, tier, app version/build SHA, trusted timestamps, status, replacement count, and redacted audit events | Independent Vercel/Neon boundary; never receives students, missions, classroom results, telemetry, coordinates, redemption plaintext, or private installation keys |
 
-The application has no custom advertising SDK or active cloud account-sync
-backend. Local “Analytics” screens calculate mission summaries on the device.
-Hosting and map providers may still produce normal service logs.
+The application has no custom advertising SDK or cloud account-sync backend.
+Local “Analytics” screens calculate mission summaries on the device. The
+Windows host contacts the publisher licence service only for activation and
+signed entitlement refresh. Hosting, database, and map providers may still
+produce normal service logs.
 
 ## Defaults
 
@@ -37,6 +40,9 @@ Hosting and map providers may still produce normal service logs.
 - Relay snapshots share a 256 MiB global quota; oldest closed classes are
   pruned first.
 - Classroom snapshot writes are limited to four per minute per student/class.
+- Licence entitlement/audit records expire 90 days after entitlement
+  expiry/revocation; licence service request logs expire within 30 days and
+  HMAC-pseudonymized rate-limit records within 24 hours.
 
 Downloaded exports do not receive automatic application retention. They must
 be deleted from their destination and backups under institutional policy.
@@ -54,6 +60,8 @@ Before use, name the data owner and technical administrator and record:
 - incident and access/deletion request contacts;
 - applicable Vercel, map-provider, browser-management, and school-network
   policies.
+- licence-service purpose, publisher contact, 72-hour verification requirement,
+  and approved evaluator support/replacement process.
 
 Do not enter sensitive incident, medical, biometric, disciplinary, or real
 flight data into this simulator.

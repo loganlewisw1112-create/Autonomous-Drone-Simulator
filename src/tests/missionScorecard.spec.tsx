@@ -12,7 +12,7 @@ import { useDroneStore } from '@/store/droneStore'
 import type { MissionAssessment } from '@/classroom/missionAssessment'
 
 vi.mock('@/App', () => ({ default: () => <main data-testid="student-app">Simulator</main> }))
-vi.mock('@/classroom/desktopBridge', () => ({
+vi.mock('@/licensing/desktopBridge', () => ({
   desktopPromptAlreadyHandled: () => true,
   getClassroomDesktopBridge: () => null,
 }))

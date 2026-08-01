@@ -155,7 +155,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 3_000): Promise<voi
 function openClassWithStudent(classId = 'RVN999') {
   const instructor = new FakeSocket()
   relay.handle(instructor, {
-    v: 2,
+    v: 3,
     type: 'class.create',
     classId,
     classPubKey: 'INSTRUCTOR-PUBLIC-KEY',
@@ -163,7 +163,7 @@ function openClassWithStudent(classId = 'RVN999') {
   })
   const student = new FakeSocket()
   relay.handle(student, {
-    v: 2,
+    v: 3,
     type: 'student.join',
     classId,
     displayName: 'Boundary Student',
@@ -176,7 +176,7 @@ function openClassWithStudent(classId = 'RVN999') {
 
 function submitRun(student: FakeSocket, classId: string): void {
   relay.handle(student, {
-    v: 2,
+    v: 3,
     type: 'student.run',
     classId,
     sealed: { iv: 'BOUNDARY-IV', ct: 'BOUNDARY-CIPHERTEXT' },
@@ -444,7 +444,7 @@ describe('live relay WebSocket limits', () => {
     const live = await startLiveRelay()
     try {
       const socket = await connect(live.url, live.origin)
-      const message = JSON.stringify({ v: 2, type: 'unknown' })
+      const message = JSON.stringify({ v: 3, type: 'unknown' })
       for (let index = 0; index < relay.RELAY_BOUNDARIES.MESSAGE_BURST; index++) {
         socket.send(message)
       }
@@ -518,7 +518,7 @@ describe('filesystem backup pruning acceptance', () => {
     await utimes(closedDirectory, expired, expired)
     const closedAt = Date.now()
     relay.handle(closedClass.instructor, {
-      v: 2,
+      v: 3,
       type: 'class.close',
       classId: closedClass.classId,
     })

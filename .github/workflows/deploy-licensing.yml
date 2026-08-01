@@ -1,0 +1,82 @@
+name: Promote verified licensing service
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: licensing-production
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production-licensing
+    env:
+      VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+      DEPLOY_HOOK_URL: ${{ secrets.VERCEL_LICENSING_DEPLOY_HOOK }}
+      DATABASE_URL: ${{ secrets.LICENSING_DATABASE_URL_UNPOOLED }}
+      EXPECTED_URL: ${{ vars.LICENSING_API_URL }}
+      EXPECTED_KID: ${{ vars.LICENSING_JWS_KEY_ID }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.VERIFIED_SHA }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/licensing/package-lock.json
+      - run: npm install --global npm@11.12.1
+      - run: npm ci --prefix services/licensing
+
+      - name: Refuse stale or advanced main
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$VERIFIED_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$VERIFIED_SHA"
+          test -n "$DEPLOY_HOOK_URL"
+          test -n "$DATABASE_URL"
+          test -n "$EXPECTED_URL"
+          test -n "$EXPECTED_KID"
+
+      - name: Apply additive licensing migrations
+        run: npm --prefix services/licensing run migrate
+
+      - name: Trigger protected licensing deployment
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --request POST "$DEPLOY_HOOK_URL" > deploy-response.json
+          node -e "
+            const body = require('./deploy-response.json');
+            if (!body.job?.id) throw new Error('Vercel deploy hook returned no job id');
+          "
+
+      - name: Verify exact service revision and signing key
+        shell: bash
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error --max-time 10 \
+              "$EXPECTED_URL/v1/health" > health.json; then
+              if node -e "
+                const health = require('./health.json');
+                if (health.status !== 'ok') process.exit(1);
+                if (health.schemaVersion !== 1) process.exit(1);
+                if (health.revision !== process.env.VERIFIED_SHA) process.exit(1);
+                if (health.signingKeyId !== process.env.EXPECTED_KID) process.exit(1);
+              "; then exit 0; fi
+            fi
+            sleep 5
+          done
+          cat health.json 2>/dev/null || true
+          exit 1

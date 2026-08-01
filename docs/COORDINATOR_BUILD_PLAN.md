@@ -2,7 +2,7 @@
 
 > **Archived implementation plan.** This document records the original
 > coordinator design and is not the current classroom security or operating
-> contract. Protocol v2, relay-owned instructor sessions, trusted HTTPS/WSS,
+> contract. Protocol v3, signed-entitlement enforcement, relay-owned instructor sessions, trusted HTTPS/WSS,
 > and current limits are documented in
 > [`../SECURITY_THREAT_MODEL.md`](../SECURITY_THREAT_MODEL.md) and
 > [`../CLASSROOM_ADMIN.md`](../CLASSROOM_ADMIN.md).

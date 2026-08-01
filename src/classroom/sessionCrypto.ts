@@ -12,7 +12,7 @@ import {
   type SealedMsgType,
 } from '@/classroom/protocol'
 
-// Protocol-v2 session encryption. The shared key is bound to the class and both
+// Version-2 session encryption carried by classroom protocol v3. The shared key is bound to the class and both
 // X25519 public keys. Every AES-GCM frame additionally authenticates its protocol
 // version, class, direction and semantic message type as AAD, so ciphertext cannot
 // be replayed into another room, reversed, or relabelled by the relay.

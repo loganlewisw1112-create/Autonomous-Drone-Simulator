@@ -1,4 +1,4 @@
-// Classroom protocol-v2 relay. Mission data remains opaque ciphertext; the relay
+// Classroom protocol-v3 relay. Mission data remains opaque ciphertext; the relay
 // owns instructor authorization, transport admission, routing and bounded backups.
 
 import http from 'node:http'
@@ -32,12 +32,13 @@ import { WebSocketServer, WebSocket } from 'ws'
  *   messageTokenAt: number,
  *   role?: string,
  *   classId?: string,
- *   studentId?: string
+ *   studentId?: string,
+ *   joinCapabilityToken?: string
  * }} ClassroomSocket
  */
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8080)
-const PROTOCOL_VERSION = 2
+const PROTOCOL_VERSION = 3
 const SESSION_COOKIE = 'dsim_instructor_session'
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000
 const VERIFY_WINDOW_MS = 15 * 60 * 1000
@@ -49,6 +50,11 @@ const MAX_UPGRADES_PER_IP_PER_MIN = 30
 const HANDSHAKE_TIMEOUT_MS = 10_000
 const MESSAGE_RATE_PER_SEC = 16
 const MESSAGE_BURST = 24
+const ENTITLEMENT_HEARTBEAT_MAX_AGE_MS = 90_000
+const CLASS_DEBRIEF_MS = 15 * 60_000
+const JOIN_CAPABILITY_TTL_MS = 2 * 60_000
+const STUDENT_RESUME_TTL_MS = 2 * 60_000
+const MAX_PENDING_STUDENT_SOCKETS = 48
 const BACKUP_WRITES_PER_MIN = 4
 const BACKUP_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 const BACKUP_QUOTA_BYTES = 256 * 1024 * 1024
@@ -142,6 +148,8 @@ const instructorSessions = new Map()
 const failedVerificationsByIp = new Map()
 let failedVerificationsGlobal = []
 const backupWriteTimes = new Map()
+const joinCapabilities = new Map()
+let relayEntitlement = null
 let credentialMigrationDeletionFailureForTests = null
 
 export function isValidClassId(value) {
@@ -180,6 +188,105 @@ function tokenMatches(expected, given) {
   return a.length === b.length && crypto.timingSafeEqual(a, b)
 }
 
+function decodeBase64UrlJson(value) {
+  try {
+    return JSON.parse(Buffer.from(String(value), 'base64url').toString('utf8'))
+  } catch {
+    return null
+  }
+}
+
+function entitlementKeyRing() {
+  try {
+    const parsed = JSON.parse(process.env.CLASSROOM_ENTITLEMENT_PUBLIC_KEYS_JSON || '{}')
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function validateEntitlementClaims(claims, now = Date.now()) {
+  const nowSec = Math.floor(now / 1000)
+  if (!claims || typeof claims !== 'object') return 'invalid-claims'
+  if (claims.schemaVersion !== 1
+    || claims.aud !== 'adms-windows-classroom'
+    || typeof claims.iss !== 'string'
+    || typeof claims.sub !== 'string'
+    || typeof claims.installationKeyThumbprint !== 'string') return 'invalid-claims'
+  if (!Number.isSafeInteger(claims.exp) || !Number.isSafeInteger(claims.offlineUntil)
+    || claims.exp <= nowSec || claims.offlineUntil <= nowSec) return 'inactive-entitlement'
+  if (!Array.isArray(claims.features) || !claims.features.includes('classroom-host')) return 'feature-not-authorized'
+  if (claims.maxStudentsPerClass !== MAX_STUDENTS || claims.maxConcurrentClasses !== 1) return 'invalid-classroom-limits'
+  return null
+}
+
+export function verifyEntitlementJws(jws, now = Date.now()) {
+  if (typeof jws !== 'string') return { ok: false, reason: 'invalid-jws' }
+  const parts = jws.split('.')
+  if (parts.length !== 3) return { ok: false, reason: 'invalid-jws' }
+  const header = decodeBase64UrlJson(parts[0])
+  const claims = decodeBase64UrlJson(parts[1])
+  if (!header || header.alg !== 'EdDSA' || typeof header.kid !== 'string') {
+    return { ok: false, reason: 'invalid-jws-header' }
+  }
+  const jwk = entitlementKeyRing()[header.kid]
+  if (!jwk) return { ok: false, reason: 'unknown-signing-key' }
+  let verified
+  try {
+    const publicKey = crypto.createPublicKey({ key: jwk, format: 'jwk' })
+    verified = crypto.verify(
+      null,
+      Buffer.from(`${parts[0]}.${parts[1]}`, 'utf8'),
+      publicKey,
+      Buffer.from(parts[2], 'base64url'),
+    )
+  } catch {
+    return { ok: false, reason: 'invalid-signing-key' }
+  }
+  if (!verified) return { ok: false, reason: 'invalid-signature' }
+  const reason = validateEntitlementClaims(claims, now)
+  return reason ? { ok: false, reason } : { ok: true, claims, kid: header.kid }
+}
+
+function entitlementAuthority(now = Date.now()) {
+  if (!relayEntitlement) return null
+  if (now - relayEntitlement.receivedAt > ENTITLEMENT_HEARTBEAT_MAX_AGE_MS) return null
+  if (relayEntitlement.expMs <= now || relayEntitlement.offlineUntilMs <= now) return null
+  return relayEntitlement
+}
+
+// Test-only seam: production must synchronize a cryptographically verified JWS over
+// the loopback administrator endpoint.
+export function setRelayEntitlementForTests(claims, now = Date.now(), sequence = 1) {
+  if (process.env.NODE_ENV !== 'test') throw new Error('test-only')
+  relayEntitlement = {
+    claims,
+    licenceId: claims.sub,
+    expMs: Number(claims.exp) * 1000,
+    offlineUntilMs: Number(claims.offlineUntil) * 1000,
+    receivedAt: now,
+    sequence,
+    kid: 'test',
+  }
+}
+
+function defaultTestEntitlement(now = Date.now()) {
+  if (process.env.NODE_ENV !== 'test') return null
+  return {
+    claims: { sub: 'test-licence', maxConcurrentClasses: MAX_CLASSES },
+    licenceId: 'test-licence',
+    expMs: now + 24 * 60 * 60_000,
+    offlineUntilMs: now + 24 * 60 * 60_000,
+    receivedAt: now,
+    sequence: 1,
+    kid: 'test',
+  }
+}
+
+function currentEntitlement(now = Date.now()) {
+  return entitlementAuthority(now) || (!relayEntitlement ? defaultTestEntitlement(now) : null)
+}
+
 function send(sock, msg) {
   if (sock && sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify(msg))
 }
@@ -200,6 +307,47 @@ function sendRoster(cls, classId) {
   })
 }
 
+function classTiming(cls, now = Date.now()) {
+  return {
+    serverNow: now,
+    activeUntil: cls.expiresAt,
+    debriefUntil: cls.debriefUntil,
+    phase: cls.phase,
+  }
+}
+
+function broadcastClassState(cls, classId, reason) {
+  const message = {
+    v: PROTOCOL_VERSION,
+    type: 'class.state',
+    classId,
+    ...classTiming(cls),
+    ...(reason ? { reason } : {}),
+  }
+  send(cls.instructorSock, message)
+  for (const student of cls.students.values()) send(student.sock, message)
+}
+
+function enterDebrief(cls, classId, reason, now = Date.now()) {
+  if (cls.phase !== 'active') return
+  cls.phase = 'debrief'
+  cls.debriefUntil = now + CLASS_DEBRIEF_MS
+  broadcastClassState(cls, classId, reason)
+}
+
+function refreshClassStates(now = Date.now()) {
+  const authority = currentEntitlement(now)
+  for (const [classId, cls] of [...classes]) {
+    if (cls.phase === 'active') {
+      if (now >= cls.expiresAt) enterDebrief(cls, classId, 'scheduled-end', now)
+      else if (!authority || authority.licenceId !== cls.licenceId) {
+        enterDebrief(cls, classId, 'entitlement-unavailable', now)
+      }
+    }
+    if (cls.phase === 'debrief' && now >= cls.debriefUntil) closeClass(classId)
+  }
+}
+
 function bindInstructor(sock, cls, classId) {
   if (cls.cleanupTimer) clearTimeout(cls.cleanupTimer)
   cls.cleanupTimer = null
@@ -210,11 +358,14 @@ function bindInstructor(sock, cls, classId) {
     type: 'class.ok',
     classId,
     instructorToken: cls.instructorToken,
+    ...classTiming(cls),
   })
   sendRoster(cls, classId)
 }
 
 function onCreate(sock, msg) {
+  const now = Date.now()
+  refreshClassStates(now)
   const { classId, classPubKey, config } = msg
   if (!activeInstructorSocketSession(sock)) {
     return send(sock, {
@@ -235,8 +386,26 @@ function onCreate(sock, msg) {
     })
   }
 
+  const authority = currentEntitlement(now)
+  if (!authority) {
+    return send(sock, {
+      v: PROTOCOL_VERSION,
+      type: 'class.err',
+      classId,
+      reason: relayEntitlement ? 'entitlement-verification-required' : 'activation-required',
+    })
+  }
+
   const cls = classes.get(classId)
   if (cls) {
+    if (cls.licenceId !== authority.licenceId) {
+      return send(sock, {
+        v: PROTOCOL_VERSION,
+        type: 'class.err',
+        classId,
+        reason: 'licence-class-mismatch',
+      })
+    }
     if (!tokenMatches(cls.instructorToken, msg.instructorToken)) {
       return send(sock, {
         v: PROTOCOL_VERSION,
@@ -254,12 +423,14 @@ function onCreate(sock, msg) {
     return bindInstructor(sock, cls, classId)
   }
 
-  if (classes.size >= MAX_CLASSES) {
+  const activeForLicence = [...classes.values()].filter(existing => existing.licenceId === authority.licenceId).length
+  const licenceClassLimit = Number(authority.claims.maxConcurrentClasses) || 1
+  if (classes.size >= MAX_CLASSES || activeForLicence >= licenceClassLimit) {
     return send(sock, {
       v: PROTOCOL_VERSION,
       type: 'class.err',
       classId,
-      reason: 'server-full',
+      reason: classes.size >= MAX_CLASSES ? 'server-full' : 'licence-class-limit',
     })
   }
 
@@ -270,6 +441,16 @@ function onCreate(sock, msg) {
       type: 'class.err',
       classId,
       reason: 'invalid-class-duration',
+    })
+  }
+
+  const activeUntil = now + durationMinutes * 60_000
+  if (activeUntil + CLASS_DEBRIEF_MS > Math.min(authority.expMs, authority.offlineUntilMs)) {
+    return send(sock, {
+      v: PROTOCOL_VERSION,
+      type: 'class.err',
+      classId,
+      reason: 'insufficient-entitlement-time',
     })
   }
 
@@ -284,15 +465,69 @@ function onCreate(sock, msg) {
     students: new Map(),
     commandTimestamps: [],
     cleanupTimer: null,
-    createdAt: Date.now(),
-    expiresAt: Date.now() + durationMinutes * 60_000,
+    createdAt: now,
+    expiresAt: activeUntil,
+    debriefUntil: activeUntil + CLASS_DEBRIEF_MS,
+    phase: 'active',
+    licenceId: authority.licenceId,
   }
   classes.set(classId, created)
   bindInstructor(sock, created, classId)
 }
 
+function validDisplayName(value) {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  const codePoints = [...trimmed]
+  return trimmed === value && codePoints.length >= 1 && codePoints.length <= 64
+    && codePoints.every((character) => {
+      const codePoint = character.codePointAt(0)
+      return codePoint >= 0x20 && !(codePoint >= 0x7f && codePoint <= 0x9f)
+    })
+}
+
+function validStudentPublicKey(value) {
+  if (process.env.NODE_ENV === 'test' && typeof value === 'string' && value.length > 0) return true
+  if (typeof value !== 'string' || value.length > 128) return false
+  try { return Buffer.from(value, 'base64').length === 32 } catch { return false }
+}
+
+function capabilityDigest(value) {
+  return crypto.createHash('sha256').update(String(value), 'utf8').digest('base64url')
+}
+
+function mintJoinCapability(classId, studentPubKey, ip, now = Date.now()) {
+  const token = crypto.randomBytes(24).toString('base64url')
+  joinCapabilities.set(capabilityDigest(token), {
+    classId,
+    studentKeyFingerprint: fingerprintPublicKey(studentPubKey),
+    ip,
+    expiresAt: now + JOIN_CAPABILITY_TTL_MS,
+    used: false,
+  })
+  return token
+}
+
+function consumeJoinCapability(sock, classId, studentPubKey, capability, now = Date.now()) {
+  if (process.env.NODE_ENV === 'test' && !capability && !sock.joinCapabilityToken) return true
+  if (typeof capability !== 'string' || capability !== sock.joinCapabilityToken) return false
+  const digest = capabilityDigest(capability)
+  const record = joinCapabilities.get(digest)
+  if (!record || record.used || record.expiresAt <= now || record.classId !== classId
+    || record.studentKeyFingerprint !== fingerprintPublicKey(studentPubKey)) return false
+  record.used = true
+  joinCapabilities.delete(digest)
+  return true
+}
+
+function mintResumeToken() {
+  return crypto.randomBytes(24).toString('base64url')
+}
+
 function onJoin(sock, msg) {
-  const { classId, displayName, studentPubKey, accountId } = msg
+  const { classId, displayName, studentPubKey, accountId, resumeToken } = msg
+  const now = Date.now()
+  refreshClassStates(now)
   const cls = classes.get(classId)
   if (!cls) {
     return send(sock, {
@@ -302,12 +537,20 @@ function onJoin(sock, msg) {
       reason: 'no-such-class',
     })
   }
-  if (Date.now() >= cls.expiresAt) {
+  if (cls.phase !== 'active' && !resumeToken) {
     return send(sock, {
       v: PROTOCOL_VERSION,
       type: 'join.err',
       classId,
-      reason: 'class-time-limit-reached',
+      reason: 'class-not-accepting-new-students',
+    })
+  }
+  if (!validDisplayName(displayName) || !validStudentPublicKey(studentPubKey)) {
+    return send(sock, {
+      v: PROTOCOL_VERSION,
+      type: 'join.err',
+      classId,
+      reason: 'invalid-student-profile',
     })
   }
   if (sock.transportTrusted === false && process.env.CLASSROOM_ALLOW_INSECURE_LAN !== '1') {
@@ -318,6 +561,35 @@ function onJoin(sock, msg) {
       reason: 'secure-transport-required',
     })
   }
+  const resumable = typeof resumeToken === 'string'
+    ? [...cls.students.values()].find(student => student.resumeTokenHash === capabilityDigest(resumeToken)
+      && student.resumeUntil > now && student.entry.studentPubKey === studentPubKey)
+    : null
+  if (resumable) {
+    if (!consumeJoinCapability(sock, classId, studentPubKey, msg.capability, now)) {
+      return send(sock, { v: PROTOCOL_VERSION, type: 'join.err', classId, reason: 'invalid-join-capability' })
+    }
+    const rotatedResumeToken = mintResumeToken()
+    resumable.sock = sock
+    resumable.resumeTokenHash = capabilityDigest(rotatedResumeToken)
+    resumable.resumeUntil = now + STUDENT_RESUME_TTL_MS
+    sock.role = 'student'
+    sock.classId = classId
+    sock.studentId = resumable.entry.studentId
+    send(sock, {
+      v: PROTOCOL_VERSION, type: 'join.ok', classId, studentId: resumable.entry.studentId,
+      classPubKey: cls.classPubKey, classKeyFingerprint: cls.classKeyFingerprint,
+      config: cls.config, resumeToken: rotatedResumeToken, ...classTiming(cls, now),
+    })
+    sendRoster(cls, classId)
+    return
+  }
+  if (resumeToken) {
+    return send(sock, { v: PROTOCOL_VERSION, type: 'join.err', classId, reason: 'resume-unavailable' })
+  }
+  if (!consumeJoinCapability(sock, classId, studentPubKey, msg.capability, now)) {
+    return send(sock, { v: PROTOCOL_VERSION, type: 'join.err', classId, reason: 'invalid-join-capability' })
+  }
   if (cls.students.size >= MAX_STUDENTS) {
     return send(sock, {
       v: PROTOCOL_VERSION,
@@ -327,6 +599,7 @@ function onJoin(sock, msg) {
     })
   }
   const studentId = crypto.randomUUID().slice(0, 8)
+  const issuedResumeToken = mintResumeToken()
   const entry = {
     studentId,
     displayName,
@@ -334,7 +607,13 @@ function onJoin(sock, msg) {
     studentPubKey,
     ...(typeof accountId === 'string' && accountId ? { accountId } : {}),
   }
-  cls.students.set(studentId, { sock, entry })
+  cls.students.set(studentId, {
+    sock,
+    entry,
+    resumeTokenHash: capabilityDigest(issuedResumeToken),
+    resumeUntil: now + STUDENT_RESUME_TTL_MS,
+    disconnectTimer: null,
+  })
   sock.role = 'student'
   sock.classId = classId
   sock.studentId = studentId
@@ -346,6 +625,8 @@ function onJoin(sock, msg) {
     classPubKey: cls.classPubKey,
     classKeyFingerprint: cls.classKeyFingerprint,
     config: cls.config,
+    resumeToken: issuedResumeToken,
+    ...classTiming(cls, now),
   })
   sendRoster(cls, classId)
 }
@@ -475,18 +756,61 @@ function consumeCommandCapacity(cls, now = Date.now()) {
   return true
 }
 
-function onClassCommand(sock, msg) {
+const DEBRIEF_COMMAND_KINDS = new Set([
+  'pause', 'end_mission', 'rtb_all', 'hold_all', 'rtb', 'hover',
+  'remote_land', 'abort_recovery',
+])
+
+function validSealed(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && typeof value.iv === 'string' && typeof value.ct === 'string'
+    && value.iv.length > 0 && value.ct.length > 0
+}
+
+function onClassCommandBatch(sock, msg) {
+  refreshClassStates()
   const cls = classes.get(msg.classId)
   if (!cls || cls.instructorSock !== sock || sock.role !== 'instructor') return
   if (!tokenMatches(cls.instructorToken, msg.instructorToken)) return
-  if (typeof msg.studentId !== 'string') return
-  const target = cls.students.get(msg.studentId)
-  if (!target || !consumeCommandCapacity(cls)) return
-  send(target.sock, {
+  if (cls.phase === 'closed' || (cls.phase === 'debrief' && !DEBRIEF_COMMAND_KINDS.has(msg.commandKind))) {
+    return send(sock, {
+      v: PROTOCOL_VERSION, type: 'class.err', classId: msg.classId,
+      reason: cls.phase === 'debrief' ? 'command-not-allowed-during-debrief' : 'class-closed',
+    })
+  }
+  if (typeof msg.commandKind !== 'string' || msg.commandKind.length < 1 || msg.commandKind.length > 64
+    || !Array.isArray(msg.items) || msg.items.length < 1 || msg.items.length > MAX_STUDENTS) return
+  const seen = new Set()
+  for (const item of msg.items) {
+    if (!item || typeof item !== 'object' || typeof item.studentId !== 'string'
+      || seen.has(item.studentId) || !validSealed(item.sealed)) return
+    seen.add(item.studentId)
+  }
+  if (!consumeCommandCapacity(cls)) return
+  let queued = 0
+  let unavailable = 0
+  for (const item of msg.items) {
+    const target = cls.students.get(item.studentId)
+    if (!target?.sock || target.sock.readyState !== WebSocket.OPEN) {
+      unavailable++
+      continue
+    }
+    send(target.sock, {
+      v: PROTOCOL_VERSION,
+      type: 'command',
+      classId: msg.classId,
+      commandKind: msg.commandKind,
+      sealed: item.sealed,
+    })
+    queued++
+  }
+  send(sock, {
     v: PROTOCOL_VERSION,
-    type: 'command',
+    type: 'class.command.result',
     classId: msg.classId,
-    sealed: msg.sealed,
+    commandKind: msg.commandKind,
+    queued,
+    unavailable,
   })
 }
 
@@ -519,6 +843,9 @@ function removeStudent(sock) {
   const cls = classes.get(sock.classId)
   const studentId = sock.studentId
   if (!cls || !studentId || !cls.students.has(studentId)) return
+  const student = cls.students.get(studentId)
+  if (student?.sock && student.sock !== sock) return
+  if (student?.disconnectTimer) clearTimeout(student.disconnectTimer)
   cls.students.delete(studentId)
   backupWriteTimes.delete(`${sock.classId}:${studentId}`)
   if (cls.focusedStudentId === studentId) cls.focusedStudentId = null
@@ -531,11 +858,31 @@ function removeStudent(sock) {
   sendRoster(cls, sock.classId)
 }
 
+function reserveDisconnectedStudent(sock, now = Date.now()) {
+  const cls = classes.get(sock.classId)
+  const studentId = sock.studentId
+  const student = studentId && cls?.students.get(studentId)
+  if (!cls || !studentId || !student || student.sock !== sock) return
+  student.sock = null
+  if (cls.focusedStudentId === studentId) cls.focusedStudentId = null
+  student.resumeUntil = now + STUDENT_RESUME_TTL_MS
+  if (student.disconnectTimer) clearTimeout(student.disconnectTimer)
+  student.disconnectTimer = setTimeout(() => {
+    const current = classes.get(sock.classId)?.students.get(studentId)
+    if (current === student && current.sock === null) removeStudent(sock)
+  }, STUDENT_RESUME_TTL_MS)
+  student.disconnectTimer.unref?.()
+  sendRoster(cls, sock.classId)
+}
+
 function closeClass(classId) {
   const cls = classes.get(classId)
   if (!cls) return
   if (cls.cleanupTimer) clearTimeout(cls.cleanupTimer)
-  for (const { sock } of cls.students.values()) {
+  cls.phase = 'closed'
+  broadcastClassState(cls, classId, 'closed')
+  for (const { sock, disconnectTimer } of cls.students.values()) {
+    if (disconnectTimer) clearTimeout(disconnectTimer)
     send(sock, { v: PROTOCOL_VERSION, type: 'class.closed', classId })
   }
   classes.delete(classId)
@@ -559,7 +906,7 @@ function onClassClose(sock) {
 
 export function onClose(sock) {
   if (sock.role === 'student') {
-    removeStudent(sock)
+    reserveDisconnectedStudent(sock)
     return
   }
   if (sock.role !== 'instructor') return
@@ -577,13 +924,13 @@ export function onClose(sock) {
 
 export function handle(sock, msg) {
   if (!msg || msg.v !== PROTOCOL_VERSION || typeof msg.type !== 'string') {
-    if (msg?.v === 1) sock.close?.(4001, 'refresh-required')
+    if (msg?.v === 1 || msg?.v === 2) sock.close?.(4001, 'refresh-required')
     return
   }
   if (msg.classId !== undefined && !isValidClassId(msg.classId)) return
   switch (msg.type) {
     case 'class.create': return onCreate(sock, msg)
-    case 'class.command': return onClassCommand(sock, msg)
+    case 'class.command.batch': return onClassCommandBatch(sock, msg)
     case 'class.focus': return onFocus(sock, msg)
     case 'class.close': return onClassClose(sock)
     case 'student.join': return onJoin(sock, msg)
@@ -990,6 +1337,107 @@ export async function handleHealthHttp(req, res) {
   return true
 }
 
+export async function handleEntitlementHttp(req, res) {
+  const url = new URL(req.url || '/', 'http://localhost')
+  if (!url.pathname.startsWith('/api/entitlement')) return false
+  if (!isLoopbackAddress(requestIp(req))) {
+    sendJson(req, res, 403, { ok: false, error: 'loopback-only' })
+    return true
+  }
+  if (!adminAuthorized(req)) {
+    sendJson(req, res, 401, { ok: false, error: 'administrator-token-required' })
+    return true
+  }
+  if (url.pathname === '/api/entitlement/status' && req.method === 'GET') {
+    const active = entitlementAuthority()
+    sendJson(req, res, 200, active ? {
+      ok: true,
+      state: active.expMs - Date.now() <= 24 * 60 * 60_000 ? 'warning' : 'active',
+      expiresAt: active.expMs,
+      offlineUntil: active.offlineUntilMs,
+      sequence: active.sequence,
+      licenceIdSuffix: active.licenceId.slice(-8),
+      kid: active.kid,
+    } : { ok: true, state: relayEntitlement ? 'verification-required' : 'activation-required' })
+    return true
+  }
+  if (url.pathname === '/api/entitlement/sync' && req.method === 'POST') {
+    const body = await readJsonBody(req, res)
+    if (!body) return true
+    if (!Number.isSafeInteger(body.sequence) || body.sequence <= 0 || typeof body.leaseJws !== 'string') {
+      sendJson(req, res, 400, { ok: false, error: 'invalid-entitlement-sync' })
+      return true
+    }
+    if (relayEntitlement && body.sequence <= relayEntitlement.sequence) {
+      sendJson(req, res, 409, { ok: false, error: 'stale-sequence' })
+      return true
+    }
+    const verified = verifyEntitlementJws(body.leaseJws)
+    if (!verified.ok) {
+      const status = verified.reason === 'inactive-entitlement' ? 422 : 400
+      sendJson(req, res, status, { ok: false, error: verified.reason })
+      return true
+    }
+    relayEntitlement = {
+      claims: verified.claims,
+      licenceId: verified.claims.sub,
+      expMs: verified.claims.exp * 1000,
+      offlineUntilMs: verified.claims.offlineUntil * 1000,
+      receivedAt: Date.now(),
+      sequence: body.sequence,
+      kid: verified.kid,
+    }
+    refreshClassStates()
+    sendJson(req, res, 200, {
+      ok: true,
+      state: relayEntitlement.expMs - Date.now() <= 24 * 60 * 60_000 ? 'warning' : 'active',
+      expiresAt: relayEntitlement.expMs,
+      offlineUntil: relayEntitlement.offlineUntilMs,
+      sequence: relayEntitlement.sequence,
+    })
+    return true
+  }
+  sendJson(req, res, 404, { ok: false, error: 'not-found' })
+  return true
+}
+
+export async function handleJoinCapabilityHttp(req, res) {
+  const url = new URL(req.url || '/', 'http://localhost')
+  if (url.pathname !== '/api/classroom/join-capability') return false
+  if (req.method !== 'POST') {
+    sendJson(req, res, 405, { ok: false, error: 'method-not-allowed' })
+    return true
+  }
+  if (req.socket?.encrypted !== true && process.env.CLASSROOM_ALLOW_INSECURE_LAN !== '1') {
+    sendJson(req, res, 400, { ok: false, error: 'secure-transport-required' })
+    return true
+  }
+  const body = await readJsonBody(req, res)
+  if (!body) return true
+  refreshClassStates()
+  const cls = isValidClassId(body.classId) ? classes.get(body.classId) : null
+  if (!cls || !validStudentPublicKey(body.studentPubKey)
+    || (cls.phase !== 'active' && typeof body.resumeToken !== 'string')) {
+    sendJson(req, res, 404, { ok: false, error: 'join-unavailable' })
+    return true
+  }
+  const now = Date.now()
+  for (const [digest, capability] of joinCapabilities) {
+    if (capability.expiresAt <= now || capability.used) joinCapabilities.delete(digest)
+  }
+  const connectedStudents = [...classes.values()].reduce(
+    (sum, item) => sum + [...item.students.values()].filter(student => student.sock?.readyState === WebSocket.OPEN).length,
+    0,
+  )
+  if (joinCapabilities.size + connectedStudents >= MAX_PENDING_STUDENT_SOCKETS) {
+    sendJson(req, res, 429, { ok: false, error: 'student-admission-busy' })
+    return true
+  }
+  const capability = mintJoinCapability(body.classId, body.studentPubKey, requestIp(req), now)
+  sendJson(req, res, 200, { ok: true, capability, expiresAt: now + JOIN_CAPABILITY_TTL_MS })
+  return true
+}
+
 export async function handleInstructorAccessHttp(req, res) {
   const url = new URL(req.url || '/', 'http://localhost')
   if (!url.pathname.startsWith('/api/instructor-access')) return false
@@ -1139,6 +1587,8 @@ export async function handleInstructorAccessHttp(req, res) {
 
 async function handleHttp(req, res) {
   if (await handleHealthHttp(req, res)) return
+  if (await handleEntitlementHttp(req, res)) return
+  if (await handleJoinCapabilityHttp(req, res)) return
   if (await handleInstructorAccessHttp(req, res)) return
   return serveStatic(req, res)
 }
@@ -1185,6 +1635,18 @@ export function validateUpgradeRequest(req, allowed = allowedHostnames()) {
   return { ok: true }
 }
 
+function upgradeJoinCapability(req, now = Date.now()) {
+  const offered = String(req?.headers?.['sec-websocket-protocol'] || '')
+    .split(',').map(value => value.trim()).filter(Boolean)
+  const token = offered.find(value => value !== 'adms-classroom-v3')
+  if (!token) return null
+  const record = joinCapabilities.get(capabilityDigest(token))
+  if (!record || record.used || record.claimed || record.expiresAt <= now) return null
+  record.claimed = true
+  req.joinCapabilityToken = token
+  return record
+}
+
 function consumeMessageToken(sock, now = Date.now()) {
   const elapsedSeconds = Math.max(0, now - sock.messageTokenAt) / 1000
   sock.messageTokens = Math.min(
@@ -1219,17 +1681,22 @@ export function startRelay(port = PORT, options = {}) {
       if (!admission.ok) return callback(false, 403, admission.reason)
       const ip = requestIp(info.req)
       const now = Date.now()
+      const joinCapability = upgradeJoinCapability(info.req, now)
       const cutoff = now - 60_000
       const upgrades = (upgradesByIp.get(ip) || []).filter(stamp => stamp > cutoff)
       if (
         wss.clients.size >= MAX_SOCKETS
-        || (activeByIp.get(ip) || 0) >= MAX_SOCKETS_PER_IP
-        || upgrades.length >= MAX_UPGRADES_PER_IP_PER_MIN
+        || (!joinCapability && (
+          (activeByIp.get(ip) || 0) >= MAX_SOCKETS_PER_IP
+          || upgrades.length >= MAX_UPGRADES_PER_IP_PER_MIN
+        ))
       ) {
         return callback(false, 429, 'connection-limit')
       }
-      upgrades.push(now)
-      upgradesByIp.set(ip, upgrades)
+      if (!joinCapability) {
+        upgrades.push(now)
+        upgradesByIp.set(ip, upgrades)
+      }
       callback(true)
     },
   })
@@ -1244,6 +1711,8 @@ export function startRelay(port = PORT, options = {}) {
       /** @type {unknown} */ (req.socket)
     ).encrypted === true
     client.transportTrusted = encrypted
+    const upgradeRequest = /** @type {import('node:http').IncomingMessage & { joinCapabilityToken?: string }} */ (req)
+    client.joinCapabilityToken = upgradeRequest.joinCapabilityToken
     client.isAlive = true
     client.lastPong = Date.now()
     client.messageTokens = MESSAGE_BURST
@@ -1285,6 +1754,7 @@ export function startRelay(port = PORT, options = {}) {
 
   const beat = setInterval(() => {
     const now = Date.now()
+    refreshClassStates(now)
     for (const rawSocket of wss.clients) {
       /** @type {ClassroomSocket} */
       const sock = /** @type {ClassroomSocket} */ (
@@ -1326,6 +1796,8 @@ export function resetRelayState() {
   failedVerificationsByIp.clear()
   failedVerificationsGlobal = []
   backupWriteTimes.clear()
+  joinCapabilities.clear()
+  relayEntitlement = null
   credentialMigrationDeletionFailureForTests = null
 }
 

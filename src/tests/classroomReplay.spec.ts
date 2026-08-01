@@ -70,7 +70,7 @@ function fullFrameAt(elapsedSec: number): FullMissionFrame {
   }
 }
 
-interface WireEnvelope { v: 2; type: string; classId: ClassId; from?: string; sealed?: Sealed; [k: string]: unknown }
+interface WireEnvelope { v: 3; type: string; classId: ClassId; from?: string; sealed?: Sealed; [k: string]: unknown }
 
 // Minimal stand-in for the browser WebSocket: the client only touches readyState,
 // bufferedAmount, send, close and the four handlers.
@@ -119,11 +119,11 @@ function liveClassWithStudent() {
   const sock = sockets[0]
   sock.onopen!()
   const classPubKey = sock.sent[0].classPubKey as string
-  sock.deliver({ v: 2, type: 'class.ok', classId, instructorToken: 'TOKEN' })
+  sock.deliver({ v: 3, type: 'class.ok', classId, instructorToken: 'TOKEN' })
 
   const student = generateKeyPair()
   sock.deliver({
-    v: 2, type: 'roster.update', classId,
+    v: 3, type: 'roster.update', classId,
     students: [{ studentId: STUDENT_ID, displayName: 'Ada', joinedAt: 1, studentPubKey: student.publicKey }],
   })
   return { classId, sock, classPubKey, student, cipher: SessionCipher.forStudent(student.secretKey, classPubKey, classId) }
@@ -131,7 +131,7 @@ function liveClassWithStudent() {
 
 function sealedEnvelope(type: SealedMsgType, classId: ClassId, cipher: SessionCipher, seq: number, body: unknown) {
   return {
-    v: 2,
+    v: 3,
     type,
     classId,
     from: STUDENT_ID,
@@ -143,7 +143,7 @@ function sealedEnvelope(type: SealedMsgType, classId: ClassId, cipher: SessionCi
 }
 
 function runBody(displayName: string, durationSec: number) {
-  return { v: 2, summary: { durationSec }, assessment: assessment(durationSec >= 900 ? 92 : 68), student: { displayName } }
+  return { v: 3, summary: { durationSec }, assessment: assessment(durationSec >= 900 ? 92 : 68), student: { displayName } }
 }
 
 describe('classroom anti-replay', () => {
@@ -211,7 +211,7 @@ describe('classroom anti-replay', () => {
     expect(focused.focusFrame?.elapsedSec).toBe(45)
     expect(focused.focusAssessment).toMatchObject({ total: 78, band: 'C' })
 
-    sock.deliver({ v: 2, type: 'student.gone', classId, from: STUDENT_ID })
+    sock.deliver({ v: 3, type: 'student.gone', classId, from: STUDENT_ID })
     expect(useClassroomStore.getState().focusFrame).toBeNull()
     expect(useClassroomStore.getState().focusAssessment).toBeNull()
   })
@@ -222,7 +222,7 @@ describe('classroom anti-replay', () => {
     // pre-fix client sent, and exactly what a forged cleartext seq would have to fall
     // back to. The counter is only trustworthy under the auth tag.
     sock.deliver({
-      v: 2,
+      v: 3,
       type: 'student.grid',
       classId,
       from: STUDENT_ID,
@@ -239,7 +239,7 @@ describe('classroom anti-replay', () => {
     const { classId, sock, cipher, classPubKey, student } = liveClassWithStudent()
     const bo = generateKeyPair()
     sock.deliver({
-      v: 2, type: 'roster.update', classId,
+      v: 3, type: 'roster.update', classId,
       students: [
         { studentId: STUDENT_ID, displayName: 'Ada', joinedAt: 1, studentPubKey: student.publicKey },
         { studentId: 'stu-bo', displayName: 'Bo', joinedAt: 2, studentPubKey: bo.publicKey },
@@ -305,13 +305,13 @@ describe('classroom decrypt integrity reporting', () => {
     sock.deliver(sealedEnvelope('student.grid', classId, cipher, 5, frameAt(10)))
     expect(useClassroomStore.getState().frames[STUDENT_ID]?.t).toBe(10)
 
-    sock.deliver({ v: 2, type: 'student.gone', classId, from: STUDENT_ID })
+    sock.deliver({ v: 3, type: 'student.gone', classId, from: STUDENT_ID })
     expect(useClassroomStore.getState().frames[STUDENT_ID]).toBeUndefined()
 
     // Same id, fresh session key, counter restarted at 1 — must not read as a replay.
     const rejoined = generateKeyPair()
     sock.deliver({
-      v: 2, type: 'roster.update', classId,
+      v: 3, type: 'roster.update', classId,
       students: [{ studentId: STUDENT_ID, displayName: 'Ada', joinedAt: 2, studentPubKey: rejoined.publicKey }],
     })
     const fresh = SessionCipher.forStudent(rejoined.secretKey, classPubKey, classId)
@@ -334,7 +334,7 @@ describe('classroom instructor re-bind', () => {
       sock.onopen!()
       expect(sock.sent[0]).not.toHaveProperty('instructorToken')
 
-      sock.deliver({ v: 2, type: 'class.ok', classId, instructorToken: 'TOKEN-XYZ' })
+      sock.deliver({ v: 3, type: 'class.ok', classId, instructorToken: 'TOKEN-XYZ' })
       sock.onclose!()
       vi.advanceTimersByTime(5_000)
 
@@ -366,7 +366,7 @@ describe('classroom instructor re-bind', () => {
   it('stands down when the relay refuses the class', () => {
     const classId = client.startClass(CONFIG)
     sockets[0].onopen!()
-    sockets[0].deliver({ v: 2, type: 'class.err', classId, reason: 'not-instructor' })
+    sockets[0].deliver({ v: 3, type: 'class.err', classId, reason: 'not-instructor' })
 
     const { status, error } = useClassroomStore.getState()
     expect(status).toBe('error')

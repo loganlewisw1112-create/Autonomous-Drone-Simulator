@@ -29,7 +29,8 @@ Primary boundaries:
 3. Electron renderer ↔ schema-validated preload IPC ↔ main process/relay;
 4. local administrator ↔ loopback-only administration endpoints;
 5. source/lockfile ↔ CI ↔ signed installer and three web deployments;
-6. application ↔ third-party map/style/tile provider.
+6. Electron main ↔ independent publisher licence API ↔ managed PostgreSQL;
+7. application ↔ third-party map/style/tile provider.
 
 ## Security controls
 
@@ -102,6 +103,19 @@ Primary boundaries:
 - Tagged classroom releases require signing credentials and publish
   checksums, an SBOM, and provenance evidence.
 
+### Evaluator entitlements
+
+- Redemption codes contain at least 160 random bits and are stored only as an
+  HMAC digest; plaintext is displayed once by the publisher CLI.
+- Ed25519-signed leases bind tier, expiry, 72-hour offline limit, features,
+  version range, class limits, and the protected installation public key.
+- Electron main owns activation/refresh and Windows `safeStorage`; the renderer
+  receives only a schema-validated status summary.
+- The owned relay independently verifies the signed lease and requires a fresh
+  main-process heartbeat before class creation, joins, or normal commands.
+- Licence signing, code HMAC, database, deployment, and Authenticode secrets
+  are separate credentials. No private licence secret is packaged.
+
 ## Residual threats
 
 | Threat | Residual exposure and required treatment |
@@ -116,6 +130,8 @@ Primary boundaries:
 | Export leakage | Downloaded reports may be plaintext and fall outside application encryption/retention controls. |
 | Supply chain | npm packages, GitHub Actions, signing infrastructure, and host integrations remain trusted dependencies. Review lockfile/action changes and protect release credentials. |
 | Deployment drift | Repository state alone does not prove external environment values or aliases. Verify target and SHA from the served artifact. |
+| Endpoint cloning/licence bypass | A local administrator, patched executable, or full VM/disk clone can attack local enforcement. Device-bound keys, one-time redemption and 72-hour trusted leases deter ordinary copying but are not tamper-proof hardware attestation. |
+| Licence-service availability | Activation requires service/database availability. A valid lease permits 72 hours of LAN operation; after that, new activity fails closed while records and exports remain available. |
 
 ## Classroom encryption statement
 

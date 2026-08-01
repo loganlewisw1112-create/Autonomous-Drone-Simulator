@@ -17,9 +17,16 @@ matrix are unsupported until added to the recorded release test matrix.
 
 ## Offline boundary
 
-The packaged classroom pilot must work without internet after installation on
-the approved school LAN. The relay, app shell, scenario fixtures, scoring,
-replay, and exports are local. Online map tiles are optional context; their
-absence must produce the fallback plus explicit unknown-geography status, never
-a fabricated terrain/airspace pass. The public hosted demo is a tactical
-fallback, not the classroom availability plan.
+The licensed Windows classroom host requires internet for first activation and
+at least once every 72 hours to renew its signed entitlement lease. A new class
+may start only when the current offline lease covers the complete selected
+class duration plus its 15-minute debrief. Inside that verified window, the
+relay, student connections, app shell, scenario fixtures, scoring, replay, and
+exports remain local to the approved school LAN and do not depend on internet
+availability.
+
+Online map tiles are optional context; their absence must produce the fallback
+plus explicit unknown-geography status, never a fabricated terrain/airspace
+pass. The public hosted demo is a tactical fallback, not the classroom
+availability plan. Saved records, diagnostics, and exports remain accessible
+when licence verification is due or the evaluation has expired.

@@ -36,7 +36,7 @@ const CONFIG: ClassConfig = {
 }
 
 interface WireEnvelope {
-  v: 2
+  v: 3
   type: string
   classId: ClassId
   from?: string
@@ -45,6 +45,8 @@ interface WireEnvelope {
   classPubKey?: string
   studentPubKey?: string
   sealed?: Sealed
+  commandKind?: string
+  items?: Array<{ studentId: string; sealed: Sealed }>
 }
 
 class FakeWs {
@@ -93,10 +95,10 @@ function liveInstructor() {
   const socket = sockets[0]
   socket.onopen?.()
   const classPubKey = socket.sent[0].classPubKey!
-  socket.deliver({ v: 2, type: 'class.ok', classId: generatedId, instructorToken: 'TOKEN' })
+  socket.deliver({ v: 3, type: 'class.ok', classId: generatedId, instructorToken: 'TOKEN' })
   const student = generateKeyPair()
   socket.deliver({
-    v: 2,
+    v: 3,
     type: 'roster.update',
     classId: generatedId,
     students: [{ studentId: STUDENT_ID, displayName: 'Ada', joinedAt: 1, studentPubKey: student.publicKey }],
@@ -115,7 +117,7 @@ async function liveStudent() {
   const instructor = generateKeyPair()
   const studentPubKey = socket.sent[0].studentPubKey!
   socket.deliver({
-    v: 2, type: 'join.ok', classId: CLASS_ID, studentId: STUDENT_ID,
+    v: 3, type: 'join.ok', classId: CLASS_ID, studentId: STUDENT_ID,
     classPubKey: instructor.publicKey,
     classKeyFingerprint: publicKeyFingerprint(instructor.publicKey),
     config: CONFIG,
@@ -144,7 +146,7 @@ describe('classroom encrypted command wire', () => {
     socket.onopen?.()
     const instructor = generateKeyPair()
     socket.deliver({
-      v: 2,
+      v: 3,
       type: 'join.ok',
       classId: CLASS_ID,
       studentId: STUDENT_ID,
@@ -166,9 +168,11 @@ describe('classroom encrypted command wire', () => {
     expect(client.sendCommand(STUDENT_ID, command('cmd-1'))).toEqual([STUDENT_ID])
     expect(client.sendCommand(STUDENT_ID, command('cmd-2'))).toEqual([STUDENT_ID])
 
-    const messages = socket.sent.filter((message) => message.type === 'class.command')
-    expect(messages).toHaveLength(2)
-    expect(messages[0]).toMatchObject({ classId, studentId: STUDENT_ID, instructorToken: 'TOKEN' })
+    const batches = socket.sent.filter((message) => message.type === 'class.command.batch')
+    expect(batches).toHaveLength(2)
+    expect(batches[0]).toMatchObject({ classId, instructorToken: 'TOKEN', commandKind: 'pause' })
+    const messages = batches.map((batch) => batch.items![0])
+    expect(messages[0]).toMatchObject({ studentId: STUDENT_ID })
     const commandContext = { direction: 'instructor-to-student', type: 'class.command' } as const
     expect(cipher.open(messages[0].sealed!, commandContext)).toMatchObject({ seq: 1, body: { commandId: 'cmd-1' } })
     expect(cipher.open(messages[1].sealed!, commandContext)).toMatchObject({ seq: 2, body: { commandId: 'cmd-2' } })
@@ -180,7 +184,7 @@ describe('classroom encrypted command wire', () => {
     const sealed = cipher.seal({ seq: 1, body: command('cmd-1') }, {
       direction: 'instructor-to-student', type: 'class.command',
     })
-    const envelope = { v: 2, type: 'command', classId: CLASS_ID, sealed }
+    const envelope = { v: 3, type: 'command', classId: CLASS_ID, commandKind: 'pause', sealed }
 
     socket.deliver(envelope)
     socket.deliver(envelope)
@@ -208,7 +212,7 @@ describe('classroom encrypted command wire', () => {
     client.sendCommand(STUDENT_ID, command('cmd-1'))
 
     socket.deliver({
-      v: 2,
+      v: 3,
       type: 'student.ack',
       classId,
       from: STUDENT_ID,
@@ -228,9 +232,10 @@ describe('classroom encrypted command wire', () => {
   it('rejects a decrypted non-whitelisted command and acknowledges the failure', async () => {
     const { socket, cipher } = await liveStudent()
     socket.deliver({
-      v: 2,
+      v: 3,
       type: 'command',
       classId: CLASS_ID,
+      commandKind: 'shell',
       sealed: cipher.seal(
         { seq: 1, body: { commandId: 'cmd-bad', kind: 'shell' } },
         { direction: 'instructor-to-student', type: 'class.command' },
@@ -310,7 +315,7 @@ describe('classroom encrypted command wire', () => {
       }],
     })
 
-    socket.deliver({ v: 2, type: 'focus.on', classId: CLASS_ID })
+    socket.deliver({ v: 3, type: 'focus.on', classId: CLASS_ID })
 
     const focus = socket.sent.filter((message) => message.type === 'student.focus').at(-1)
     const opened = cipher.open<SealedPayload<ClassroomFocusFrame>>(focus!.sealed!, {

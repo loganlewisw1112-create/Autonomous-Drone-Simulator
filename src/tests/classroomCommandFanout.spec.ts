@@ -25,13 +25,15 @@ const STUDENTS = [
 ] as const
 
 interface WireEnvelope {
-  v: 2
+  v: 3
   type: string
   classId: ClassId
   studentId?: string | null
   instructorToken?: string
   classPubKey?: string
   sealed?: Sealed
+  commandKind?: string
+  items?: Array<{ studentId: string; sealed: Sealed }>
 }
 
 class FakeWs {
@@ -78,11 +80,11 @@ describe('classroom encrypted command fan-out', () => {
     const socket = sockets[0]
     socket.onopen?.()
     const instructorPublicKey = socket.sent[0].classPubKey!
-    socket.deliver({ v: 2, type: 'class.ok', classId, instructorToken: 'TOKEN' })
+    socket.deliver({ v: 3, type: 'class.ok', classId, instructorToken: 'TOKEN' })
 
     const keyPairs = STUDENTS.map(() => generateKeyPair())
     socket.deliver({
-      v: 2,
+      v: 3,
       type: 'roster.update',
       classId,
       students: STUDENTS.map((student, index) => ({
@@ -98,15 +100,16 @@ describe('classroom encrypted command fan-out', () => {
 
     expect(client.sendCommand(null, command('broadcast-1'))).toEqual(STUDENTS.map((student) => student.studentId))
 
-    const first = socket.sent.filter((message) => message.type === 'class.command')
+    const firstBatch = socket.sent.find((message) => message.type === 'class.command.batch')!
+    const first = firstBatch.items!
     expect(first).toHaveLength(2)
     expect(first.map((message) => message.studentId)).toEqual(STUDENTS.map((student) => student.studentId))
     expect(first).toEqual(expect.arrayContaining(STUDENTS.map((student) => expect.objectContaining({
-      type: 'class.command',
-      classId,
       studentId: student.studentId,
-      instructorToken: 'TOKEN',
     }))))
+    expect(firstBatch).toMatchObject({
+      type: 'class.command.batch', classId, instructorToken: 'TOKEN', commandKind: 'pause',
+    })
 
     const adaCipher = studentCiphers.get('stu-ada')!
     const boCipher = studentCiphers.get('stu-bo')!
@@ -139,7 +142,7 @@ describe('classroom encrypted command fan-out', () => {
     })))
 
     expect(client.sendCommand(null, command('broadcast-2'))).toEqual(STUDENTS.map((student) => student.studentId))
-    const second = socket.sent.filter((message) => message.type === 'class.command').slice(2)
+    const second = socket.sent.filter((message) => message.type === 'class.command.batch')[1].items!
     expect(second).toHaveLength(2)
     for (const message of second) {
       const cipher = studentCiphers.get(message.studentId!)!
