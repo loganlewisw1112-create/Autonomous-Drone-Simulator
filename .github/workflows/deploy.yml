@@ -35,22 +35,18 @@ jobs:
           - target: windows
             hook_secret: VERCEL_WINDOWS_DEPLOY_HOOK
             expected_url: https://autonomous-drone-simulator.vercel.app
-            rendered_marker: Fleet Status
           - target: mobile
             hook_secret: VERCEL_MOBILE_DEPLOY_HOOK
             expected_url: https://autonomous-drone-simulator-mobile.vercel.app
-            rendered_marker: Primary mission controls
           - target: classroom
             hook_secret: VERCEL_CLASSROOM_DEPLOY_HOOK
             expected_url: https://autonomous-drone-simulator-classroom.vercel.app
-            rendered_marker: Classroom Server
 
     env:
       DEPLOY_HOOK_URL: ${{ secrets[matrix.hook_secret] }}
       VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
       EXPECTED_URL: ${{ matrix.expected_url }}
       EXPECTED_TARGET: ${{ matrix.target }}
-      RENDERED_MARKER: ${{ matrix.rendered_marker }}
 
     steps:
       - name: Require protected deploy hook
@@ -121,11 +117,16 @@ jobs:
             --dump-dom \
             "$EXPECTED_URL/" > rendered.html 2> browser.log
 
-          # Revision and target identity are already checked authoritatively in
-          # build-info.json. The rendered smoke checks that the target-specific
-          # application actually mounted without depending on asynchronous
-          # footer metadata or map timing.
-          grep -F "$RENDERED_MARKER" rendered.html
+          # Revision and target identity are checked authoritatively in
+          # build-info.json. Visible copy varies with viewport and runtime
+          # state, so prove the React application replaced the empty source
+          # root instead of matching timing-dependent text.
+          if ! grep -F '<div id="root"><' rendered.html; then
+            echo 'Rendered application did not mount into #root.' >&2
+            head -c 2000 rendered.html >&2
+            cat browser.log >&2
+            exit 1
+          fi
           if grep -Eqi 'violates the following Content Security Policy directive|Refused to (load|connect to|execute).*Content Security Policy' browser.log; then
             cat browser.log >&2
             exit 1
