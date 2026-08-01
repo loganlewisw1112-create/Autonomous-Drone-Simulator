@@ -90,6 +90,16 @@ jobs:
           if ($health.signingKeyId -ne $env:LICENSING_JWS_KEY_ID) {
             throw "Licence signing kid mismatch: $($health.signingKeyId)"
           }
+          if ($health.issuer -ne $env:LICENSING_ISSUER) {
+            throw "Licence issuer mismatch: $($health.issuer)"
+          }
+          $publicKeyBytes = [Convert]::FromBase64String($env:LICENSING_JWS_PUBLIC_KEY_SPKI_BASE64)
+          $expectedThumbprint = [Convert]::ToBase64String(
+            [Security.Cryptography.SHA256]::HashData($publicKeyBytes)
+          ).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+          if ($health.publicKeyThumbprint -ne $expectedThumbprint) {
+            throw "Licence public-key thumbprint mismatch: $($health.publicKeyThumbprint)"
+          }
 
       - name: Require signing credentials
         shell: pwsh

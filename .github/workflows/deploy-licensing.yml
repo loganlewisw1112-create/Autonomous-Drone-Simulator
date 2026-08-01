@@ -27,6 +27,8 @@ jobs:
       DATABASE_URL: ${{ secrets.LICENSING_DATABASE_URL_UNPOOLED }}
       EXPECTED_URL: ${{ vars.LICENSING_API_URL }}
       EXPECTED_KID: ${{ vars.LICENSING_JWS_KEY_ID }}
+      EXPECTED_ISSUER: ${{ vars.LICENSING_ISSUER }}
+      EXPECTED_PUBLIC_KEY_SPKI_BASE64: ${{ vars.LICENSING_JWS_PUBLIC_KEY_SPKI_BASE64 }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -49,6 +51,8 @@ jobs:
           test -n "$DATABASE_URL"
           test -n "$EXPECTED_URL"
           test -n "$EXPECTED_KID"
+          test -n "$EXPECTED_ISSUER"
+          test -n "$EXPECTED_PUBLIC_KEY_SPKI_BASE64"
 
       - name: Apply additive licensing migrations
         run: npm --prefix services/licensing run migrate
@@ -74,6 +78,11 @@ jobs:
                 if (health.schemaVersion !== 1) process.exit(1);
                 if (health.revision !== process.env.VERIFIED_SHA) process.exit(1);
                 if (health.signingKeyId !== process.env.EXPECTED_KID) process.exit(1);
+                if (health.issuer !== process.env.EXPECTED_ISSUER) process.exit(1);
+                const expectedThumbprint = require('node:crypto').createHash('sha256')
+                  .update(Buffer.from(process.env.EXPECTED_PUBLIC_KEY_SPKI_BASE64, 'base64'))
+                  .digest('base64url');
+                if (health.publicKeyThumbprint !== expectedThumbprint) process.exit(1);
               "; then exit 0; fi
             fi
             sleep 5

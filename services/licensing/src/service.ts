@@ -283,6 +283,10 @@ export class LicensingService {
       revision: this.deps.config.revision,
       schemaVersion: LICENSING_SCHEMA_VERSION,
       signingKeyId: this.deps.config.signingKeyId,
+      issuer: this.deps.config.issuer,
+      publicKeyThumbprint: createHash('sha256')
+        .update(this.deps.config.signingPublicKey.export({ format: 'der', type: 'spki' }))
+        .digest('base64url'),
       serverTime: this.now().toISOString(),
     }
   }

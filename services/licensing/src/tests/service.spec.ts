@@ -179,6 +179,10 @@ describe('licensing service', () => {
       revision: 'test-sha',
       schemaVersion: 1,
       signingKeyId: 'test-key-1',
+      issuer: 'https://licensing.test',
+      publicKeyThumbprint: installationThumbprint(
+        base64url(signingKeys.publicKey.export({ format: 'der', type: 'spki' })),
+      ),
       serverTime: now.toISOString(),
     })
   })

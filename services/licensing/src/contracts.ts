@@ -76,6 +76,8 @@ export interface HealthResponse {
   revision: string
   schemaVersion: 1
   signingKeyId: string
+  issuer: string
+  publicKeyThumbprint: string
   serverTime: string
 }
 
