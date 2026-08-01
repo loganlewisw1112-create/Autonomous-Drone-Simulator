@@ -80,6 +80,11 @@ const administratorTokenWasGenerated = !process.env.CLASSROOM_ADMIN_TOKEN
 const administratorToken = process.env.CLASSROOM_ADMIN_TOKEN
   || crypto.randomBytes(32).toString('base64url')
 
+function testSeamsEnabled() {
+  return process.env.NODE_ENV === 'test'
+    && process.env.CLASSROOM_ENTITLEMENT_REQUIRED !== '1'
+}
+
 export const LIMITS = JSON.parse(readFileSync(
   fileURLToPath(new URL('../src/classroom/limits.json', import.meta.url)),
   'utf8',
@@ -170,7 +175,7 @@ function requestIp(req) {
   const actual = String(req?.socket?.remoteAddress || req?.connection?.remoteAddress || '')
   const testIp = req?.headers?.['x-classroom-test-ip']
   if (
-    process.env.NODE_ENV === 'test'
+    testSeamsEnabled()
     && process.env.CLASSROOM_TEST_SPOOF_IP === '1'
     && isLoopbackAddress(actual)
     && typeof testIp === 'string'
@@ -258,7 +263,7 @@ function entitlementAuthority(now = Date.now()) {
 // Test-only seam: production must synchronize a cryptographically verified JWS over
 // the loopback administrator endpoint.
 export function setRelayEntitlementForTests(claims, now = Date.now(), sequence = 1) {
-  if (process.env.NODE_ENV !== 'test') throw new Error('test-only')
+  if (!testSeamsEnabled()) throw new Error('test-only')
   relayEntitlement = {
     claims,
     licenceId: claims.sub,
@@ -271,7 +276,7 @@ export function setRelayEntitlementForTests(claims, now = Date.now(), sequence =
 }
 
 function defaultTestEntitlement(now = Date.now()) {
-  if (process.env.NODE_ENV !== 'test') return null
+  if (!testSeamsEnabled()) return null
   return {
     claims: { sub: 'test-licence', maxConcurrentClasses: MAX_CLASSES },
     licenceId: 'test-licence',
@@ -487,7 +492,7 @@ function validDisplayName(value) {
 }
 
 function validStudentPublicKey(value) {
-  if (process.env.NODE_ENV === 'test' && typeof value === 'string' && value.length > 0) return true
+  if (testSeamsEnabled() && typeof value === 'string' && value.length > 0) return true
   if (typeof value !== 'string' || value.length > 128) return false
   try { return Buffer.from(value, 'base64').length === 32 } catch { return false }
 }
@@ -509,7 +514,7 @@ function mintJoinCapability(classId, studentPubKey, ip, now = Date.now()) {
 }
 
 function consumeJoinCapability(sock, classId, studentPubKey, capability, now = Date.now()) {
-  if (process.env.NODE_ENV === 'test' && !capability && !sock.joinCapabilityToken) return true
+  if (testSeamsEnabled() && !capability && !sock.joinCapabilityToken) return true
   if (typeof capability !== 'string' || capability !== sock.joinCapabilityToken) return false
   const digest = capabilityDigest(capability)
   const record = joinCapabilities.get(digest)
@@ -1117,7 +1122,7 @@ async function writeVerifier(verifier) {
 }
 
 export function injectCredentialMigrationDeletionFailureForTests(fileName = null) {
-  if (process.env.NODE_ENV !== 'test') {
+  if (!testSeamsEnabled()) {
     throw new Error('credential migration fault injection is test-only')
   }
   credentialMigrationDeletionFailureForTests = fileName
@@ -1125,7 +1130,7 @@ export function injectCredentialMigrationDeletionFailureForTests(fileName = null
 
 async function deleteMigratedCredential(file) {
   if (
-    process.env.NODE_ENV === 'test'
+    testSeamsEnabled()
     && credentialMigrationDeletionFailureForTests === path.basename(file)
   ) {
     const error = Object.assign(
@@ -1233,7 +1238,8 @@ function activeInstructorSocketSession(sock, now = Date.now()) {
   // Direct fake-socket tests do not perform an HTTP upgrade. This flag is never
   // enabled by the CLI/Electron launchers and cannot be supplied over the wire.
   if (
-    process.env.CLASSROOM_TEST_SOCKET_AUTH === '1'
+    testSeamsEnabled()
+    && process.env.CLASSROOM_TEST_SOCKET_AUTH === '1'
     && sock.instructorSessionAuthorized === true
   ) {
     return { token: 'test-only', ip: sock.connectionIp || 'test', expiresAt: now + 1 }

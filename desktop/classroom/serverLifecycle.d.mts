@@ -15,7 +15,7 @@ export declare function classroomBaseUrl(
 
 export declare function buildServerEnv(
   baseEnv?: NodeJS.ProcessEnv,
-  opts?: { electronAsNode?: boolean },
+  opts?: { electronAsNode?: boolean; productionRelay?: boolean },
 ): NodeJS.ProcessEnv
 
 export declare function spawnClassroomServer(opts: {

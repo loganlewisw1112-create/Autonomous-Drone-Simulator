@@ -29,10 +29,18 @@ const outputPath = path.resolve(ROOT, option(
 
 const temporary = await mkdtemp(path.join(os.tmpdir(), 'adms-classroom-qualification-'))
 const adminToken = randomBytes(32).toString('base64url')
+const qualificationSigningKey = generateKeyPairSync('ed25519')
+const qualificationKeyId = 'qualification-ed25519-v1'
 process.env.CLASSROOM_ADMIN_TOKEN = adminToken
 process.env.CLASSROOM_SECRETS_DIR = path.join(temporary, 'secrets')
 process.env.CLASSROOM_RUNS_DIR = path.join(temporary, 'runs')
-process.env.NODE_ENV = 'test'
+process.env.NODE_ENV = 'production'
+process.env.CLASSROOM_ENTITLEMENT_REQUIRED = '1'
+process.env.CLASSROOM_ENTITLEMENT_ISSUER = 'https://qualification.invalid'
+process.env.CLASSROOM_ENTITLEMENT_AUDIENCE = 'adms-windows-classroom'
+process.env.CLASSROOM_ENTITLEMENT_PUBLIC_KEYS_JSON = JSON.stringify({
+  [qualificationKeyId]: qualificationSigningKey.publicKey.export({ format: 'jwk' }),
+})
 
 const [{ ensureClassroomCertificates }, relay] = await Promise.all([
   import('../../server/classroomTls.mjs'),
@@ -112,6 +120,34 @@ function percentile(values, percentileValue) {
   return sorted[Math.min(sorted.length - 1, Math.ceil(percentileValue * sorted.length) - 1)]
 }
 
+function signedQualificationEntitlement(now) {
+  const seconds = Math.floor(now / 1_000)
+  const header = Buffer.from(JSON.stringify({ alg: 'EdDSA', typ: 'JWT', kid: qualificationKeyId })).toString('base64url')
+  const payload = Buffer.from(JSON.stringify({
+    schemaVersion: 1,
+    iss: 'https://qualification.invalid',
+    aud: 'adms-windows-classroom',
+    sub: 'qualification-entitlement',
+    jti: 'qualification-lease',
+    iat: seconds,
+    nbf: seconds,
+    exp: seconds + 4 * 60 * 60,
+    activatedAt: seconds,
+    offlineUntil: seconds + 4 * 60 * 60,
+    serial: 1,
+    tier: 'selected_evaluator_demo',
+    installationKeyThumbprint: 'qualification-installation-key',
+    features: ['simulator', 'custom-missions', 'classroom-host', 'replay', 'export'],
+    maxStudentsPerClass: 40,
+    maxConcurrentClasses: 1,
+    minimumVersion: '1.1.0',
+    maximumVersionExclusive: '1.2.0',
+  })).toString('base64url')
+  const signature = sign(null, Buffer.from(`${header}.${payload}`, 'ascii'), qualificationSigningKey.privateKey)
+    .toString('base64url')
+  return `${header}.${payload}.${signature}`
+}
+
 async function requestJson(port, ca, pathname, body, headers = {}) {
   const payload = body === undefined ? null : Buffer.from(JSON.stringify(body))
   return new Promise((resolve, reject) => {
@@ -186,12 +222,6 @@ async function main() {
   const tls = await ensureClassroomCertificates({ directory: path.join(temporary, 'tls') })
   relay.resetRelayState()
   const now = Date.now()
-  relay.setRelayEntitlementForTests({
-    sub: 'local-qualification-only',
-    exp: Math.floor((now + 4 * 60 * 60_000) / 1000),
-    offlineUntil: Math.floor((now + 4 * 60 * 60_000) / 1000),
-    maxConcurrentClasses: 1,
-  }, now)
   const started = relay.startRelay(0, {
     tls: { key: tls.leafPrivateKeyPem, cert: tls.leafCertificatePem },
   })
@@ -201,6 +231,14 @@ async function main() {
   const address = relayServer.address()
   const port = typeof address === 'object' && address ? address.port : null
   if (!port) throw new Error('Relay did not bind a TCP port')
+
+  const entitlementSync = await requestJson(port, tls.caCertificatePem, '/api/entitlement/sync', {
+    leaseJws: signedQualificationEntitlement(now),
+    sequence: 1,
+  }, { 'x-classroom-admin-token': adminToken })
+  if (entitlementSync.status !== 200 || !['active', 'warning'].includes(entitlementSync.body?.state)) {
+    throw new Error(`Signed entitlement synchronization failed: ${entitlementSync.status}`)
+  }
 
   const instructorCode = 'Local Qualification 2026'
   const provision = await requestJson(port, tls.caCertificatePem, '/api/instructor-access/provision', {

@@ -311,10 +311,17 @@ export class EntitlementManager {
       this.installEntitlement(compact.toString('utf8').trim())
       await this.reevaluate(true)
       return this.current
-    } catch {
+    } catch (error) {
+      if (error?.message === 'known-revoked-entitlement') {
+        this.lastError = 'revoked'
+        this.current = this.makePublicState('revoked')
+        return this.current
+      }
       this.claims = null
       this.entitlement = null
-      this.lastError = 'installation-state-corrupt'
+      this.lastError = error?.message === 'stale-entitlement-serial'
+        ? 'stale-entitlement-serial'
+        : 'installation-state-corrupt'
       this.current = this.makePublicState('corrupt')
       return this.current
     }
@@ -325,9 +332,28 @@ export class EntitlementManager {
     if (claims.installationKeyThumbprint !== this.protectedState?.installationKeyThumbprint) {
       throw new Error('wrong-installation')
     }
+    const terminal = this.protectedState?.terminalEntitlement
+    if (terminal?.licenceId === claims.sub) {
+      this.entitlement = compact
+      this.claims = claims
+      throw new Error('known-revoked-entitlement')
+    }
+    const knownLicenceId = this.protectedState?.highestLeaseLicenceId
+    const knownSerial = this.protectedState?.highestLeaseSerial
+    const knownLeaseId = this.protectedState?.highestLeaseId
+    if (knownLicenceId && knownLicenceId !== claims.sub) throw new Error('unexpected-entitlement-identity')
+    if (Number.isSafeInteger(knownSerial)) {
+      if (claims.serial < knownSerial
+        || (claims.serial === knownSerial && knownLeaseId && claims.jti !== knownLeaseId)) {
+        throw new Error('stale-entitlement-serial')
+      }
+    }
     this.entitlement = compact
     this.claims = claims
     this.signingKeyId = JSON.parse(decodeBase64url(compact.split('.')[0]).toString('utf8')).kid
+    this.protectedState.highestLeaseLicenceId = claims.sub
+    this.protectedState.highestLeaseSerial = claims.serial
+    this.protectedState.highestLeaseId = claims.jti
   }
 
   async persistProtected() {
@@ -424,10 +450,36 @@ export class EntitlementManager {
     return { ok: true, state: this.current }
   }
 
-  serviceFailure(error) {
+  async persistTerminalEntitlement(status) {
+    if (!this.protectedState || !this.claims) return
+    this.protectedState.terminalEntitlement = {
+      licenceId: this.claims.sub,
+      status,
+      serial: this.claims.serial,
+      recordedAt: this.now(),
+    }
+    try {
+      await this.persistProtected()
+    } catch {
+      await unlink(this.entitlementPath).catch(() => {})
+      this.entitlement = null
+      this.claims = null
+      throw new Error('terminal-state-persistence-failed')
+    }
+  }
+
+  async serviceFailure(error) {
     const code = error instanceof LicensingServiceError ? error.code : 'service-unavailable'
     this.lastError = code
-    if (code === 'revoked') this.current = this.makePublicState('revoked')
+    if (code === 'revoked' || code === 'replaced') {
+      try {
+        await this.persistTerminalEntitlement(code)
+        this.current = this.makePublicState('revoked')
+      } catch {
+        this.lastError = 'terminal-state-persistence-failed'
+        this.current = this.makePublicState('corrupt')
+      }
+    }
     else if (code === 'expired') this.current = this.makePublicState('expired')
     else if (code === 'unsupported-version') this.current = this.makePublicState('unsupported_version')
     else if (code === 'clock-anomaly') this.current = this.makePublicState('clock_anomaly')
@@ -454,7 +506,7 @@ export class EntitlementManager {
       })
       return await this.acceptServiceEntitlement(payload)
     } catch (error) {
-      return this.serviceFailure(error)
+      return await this.serviceFailure(error)
     }
   }
 
@@ -472,11 +524,12 @@ export class EntitlementManager {
       return await this.acceptServiceEntitlement(payload)
     } catch (error) {
       await this.reevaluate()
-      return this.serviceFailure(error)
+      return await this.serviceFailure(error)
     }
   }
 
   getRelayLease() {
+    if (this.protectedState?.terminalEntitlement) return null
     return ['active', 'warning'].includes(this.current.status) ? this.entitlement : null
   }
 

@@ -22,10 +22,25 @@ export function classroomBaseUrl(port = DEFAULT_CLASSROOM_PORT, { secure = false
 
 /**
  * @param {NodeJS.ProcessEnv} [baseEnv]
- * @param {{ electronAsNode?: boolean }} [opts]
+ * @param {{ electronAsNode?: boolean, productionRelay?: boolean }} [opts]
  */
-export function buildServerEnv(baseEnv = process.env, { electronAsNode = false } = {}) {
+export function buildServerEnv(baseEnv = process.env, {
+  electronAsNode = false,
+  productionRelay = false,
+} = {}) {
   const env = { ...baseEnv }
+  if (productionRelay) {
+    for (const name of Object.keys(env)) {
+      // The packaged host owns the relay's entire CLASSROOM_* configuration.
+      // Do not let a launcher environment redirect storage/TLS or inject authority.
+      if (name.startsWith('CLASSROOM_')) delete env[name]
+    }
+    for (const name of [
+      'NODE_OPTIONS',
+      'NODE_PATH',
+    ]) delete env[name]
+    env.NODE_ENV = 'production'
+  }
   if (electronAsNode) env.ELECTRON_RUN_AS_NODE = '1'
   else delete env.ELECTRON_RUN_AS_NODE
   return env

@@ -84,9 +84,13 @@ jobs:
       - name: Verify production licence service
         shell: pwsh
         run: |
+          $expectedRevision = (git rev-parse HEAD).Trim()
           $health = Invoke-RestMethod -Method Get -Uri "$env:LICENSING_API_URL/v1/health" -TimeoutSec 20
           if ($health.status -ne 'ok') { throw 'Licence service health is not ok.' }
           if ($health.schemaVersion -ne 1) { throw "Unexpected licence schema: $($health.schemaVersion)" }
+          if ($health.revision -ne $expectedRevision) {
+            throw "Licence service revision $($health.revision) does not match release revision $expectedRevision."
+          }
           if ($health.signingKeyId -ne $env:LICENSING_JWS_KEY_ID) {
             throw "Licence signing kid mismatch: $($health.signingKeyId)"
           }
@@ -117,14 +121,21 @@ jobs:
             throw "Tag ${{ github.ref_name }} does not match package version v$packageVersion."
           }
 
-      - name: Require tagged revision to be merged to main
+      - name: Require annotated tag on the exact approved main revision
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
-          git fetch origin main --no-tags
-          git merge-base --is-ancestor HEAD origin/main
-          if ($LASTEXITCODE -ne 0) {
-            throw 'Tagged release revision is not merged to origin/main.'
+          git fetch origin main --tags --force
+          $tagRef = "refs/tags/$env:GITHUB_REF_NAME"
+          $tagObjectType = (git cat-file -t $tagRef).Trim()
+          if ($tagObjectType -ne 'tag') {
+            throw "Release tag $env:GITHUB_REF_NAME must be annotated; found object type $tagObjectType."
+          }
+          $tagRevision = (git rev-list -n 1 $tagRef).Trim()
+          $headRevision = (git rev-parse HEAD).Trim()
+          $mainRevision = (git rev-parse origin/main).Trim()
+          if ($tagRevision -ne $headRevision -or $tagRevision -ne $mainRevision) {
+            throw "Release tag must identify the exact current origin/main revision. tag=$tagRevision head=$headRevision main=$mainRevision"
           }
 
       - name: Package classroom host

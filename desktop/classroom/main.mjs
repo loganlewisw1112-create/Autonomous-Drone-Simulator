@@ -358,7 +358,7 @@ async function startOwnedServer() {
     args: [String(PORT)],
     cwd: app.getPath('userData'),
     env: {
-      ...buildServerEnv(process.env, { electronAsNode: true }),
+      ...buildServerEnv(process.env, { electronAsNode: true, productionRelay: true }),
       CLASSROOM_ADMIN_TOKEN: administratorToken,
       CLASSROOM_ENTITLEMENT_REQUIRED: '1',
       CLASSROOM_ENTITLEMENT_PUBLIC_KEYS_JSON: relayEntitlementPublicKeys(entitlementManager?.config ?? {}),
@@ -428,7 +428,9 @@ async function initializeEntitlement() {
   })
   await entitlementManager.initialize()
   lastNetworkOnline = net.isOnline()
-  if (lastNetworkOnline && entitlementManager.getRelayLease()) void entitlementManager.refresh()
+  // Finish the bounded online revocation/serial check before the relay can receive
+  // host authority. An unreachable service falls back to the still-valid offline lease.
+  if (lastNetworkOnline && entitlementManager.getRelayLease()) await entitlementManager.refresh()
   entitlementEvaluationTimer = setInterval(() => {
     void entitlementManager?.reevaluate()
     const online = net.isOnline()
@@ -555,7 +557,6 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     await initializeEntitlement()
     await boot()
-    if (entitlementManager?.getRelayLease()) void entitlementManager.refresh()
   })
 
   app.on('window-all-closed', () => {

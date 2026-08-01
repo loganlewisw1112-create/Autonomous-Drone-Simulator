@@ -692,6 +692,22 @@ describe('classroom relay resource limits', () => {
 })
 
 describe('classroom protocol-v3 entitlement and continuity', () => {
+  it('disables every unsigned test authority seam when entitlement-required mode is set', () => {
+    const previousRequired = process.env.CLASSROOM_ENTITLEMENT_REQUIRED
+    process.env.CLASSROOM_ENTITLEMENT_REQUIRED = '1'
+    try {
+      expect(() => relay.setRelayEntitlementForTests({
+        sub: 'unsigned-test-entitlement', exp: 9_999_999_999, offlineUntil: 9_999_999_999,
+      })).toThrow('test-only')
+      const instructor = new FakeSocket()
+      create(instructor)
+      expect(instructor.last('class.err')?.reason).toBe('instructor-session-required')
+    } finally {
+      if (previousRequired === undefined) delete process.env.CLASSROOM_ENTITLEMENT_REQUIRED
+      else process.env.CLASSROOM_ENTITLEMENT_REQUIRED = previousRequired
+    }
+  })
+
   it('enforces one concurrent class for a licensed evaluator', () => {
     authorizeOneClass()
     const first = new FakeSocket()

@@ -1,5 +1,5 @@
 import { generateKeyPairSync, sign } from 'node:crypto'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -45,6 +45,9 @@ async function createHarness() {
   const spki = serviceKeys.publicKey.export({ format: 'der', type: 'spki' }).toString('base64url')
   let now = Date.parse('2026-08-01T12:00:00.000Z')
   let activationPublicKey = null
+  let serial = 0
+  let revoked = false
+  const issuedEntitlements = []
   const fetchImpl = async (url, options) => {
     const body = JSON.parse(options.body)
     if (url.endsWith('/v1/challenges')) {
@@ -56,19 +59,23 @@ async function createHarness() {
         serverTime: new Date(now).toISOString(),
       }, { status: 201 })
     }
+    if (revoked) {
+      return Response.json({ error: { code: 'revoked', message: 'Revoked.', retryable: false } }, { status: 403 })
+    }
+    serial += 1
     const nowSeconds = Math.floor(now / 1_000)
     const entitlement = signedEntitlement(serviceKeys.privateKey, {
       schemaVersion: 1,
       iss: 'https://publisher.example',
       aud: 'adms-windows-classroom',
       sub: 'licence-12345678',
-      jti: `lease-${nowSeconds}`,
+      jti: `lease-${serial}`,
       iat: nowSeconds,
       nbf: nowSeconds - 1,
       exp: nowSeconds + 14 * 86_400,
       activatedAt: nowSeconds,
       offlineUntil: nowSeconds + 72 * 3_600,
-      serial: 1,
+      serial,
       tier: 'selected_evaluator_demo',
       installationKeyThumbprint: installationKeyThumbprint(activationPublicKey),
       features: ['simulator', 'custom-missions', 'classroom-host', 'replay', 'export'],
@@ -77,6 +84,7 @@ async function createHarness() {
       minimumVersion: '1.1.0',
       maximumVersionExclusive: '1.2.0',
     })
+    issuedEntitlements.push(entitlement)
     return Response.json({
       entitlement,
       serverTime: new Date(now).toISOString(),
@@ -95,6 +103,8 @@ async function createHarness() {
     directory,
     config,
     fetchImpl,
+    issuedEntitlements,
+    revoke() { revoked = true },
     get now() { return now },
     set now(value) { now = value },
   }
@@ -184,5 +194,60 @@ describe('desktop evaluator entitlement', () => {
     })).toThrow('invalid-entitlement-signature')
     expect(payload).not.toBe(tamperedPayload)
     expect(harness.directory).toBeTruthy()
+  })
+
+  it('persists revocation and denies both offline and online restart authority', async () => {
+    const harness = await createHarness()
+    const options = {
+      safeStorage: fakeSafeStorage('teacher-a'),
+      userDataPath: harness.directory,
+      config: harness.config,
+      appVersion: '1.1.0',
+      fetchImpl: harness.fetchImpl,
+      now: () => harness.now,
+    }
+    const manager = new EntitlementManager(options)
+    await manager.initialize()
+    await manager.activate('ADMS-0123-4567-89AB-CDEF-GHJK-MNPQ-RSTV-WXYZ')
+    expect((await manager.refresh()).ok).toBe(true)
+    harness.revoke()
+    expect(await manager.refresh()).toMatchObject({ ok: false, error: 'revoked' })
+    expect(manager.getState().status).toBe('revoked')
+    expect(manager.getRelayLease()).toBeNull()
+
+    const offlineRestart = new EntitlementManager({ ...options, fetchImpl: async () => { throw new Error('offline') } })
+    expect((await offlineRestart.initialize()).status).toBe('revoked')
+    expect(offlineRestart.getRelayLease()).toBeNull()
+
+    const onlineRestart = new EntitlementManager(options)
+    expect((await onlineRestart.initialize()).status).toBe('revoked')
+    expect(onlineRestart.getRelayLease()).toBeNull()
+  })
+
+  it('rejects a signed lease whose serial rolls back after a newer lease was trusted', async () => {
+    const harness = await createHarness()
+    const options = {
+      safeStorage: fakeSafeStorage('teacher-a'),
+      userDataPath: harness.directory,
+      config: harness.config,
+      appVersion: '1.1.0',
+      fetchImpl: harness.fetchImpl,
+      now: () => harness.now,
+    }
+    const manager = new EntitlementManager(options)
+    await manager.initialize()
+    await manager.activate('ADMS-0123-4567-89AB-CDEF-GHJK-MNPQ-RSTV-WXYZ')
+    const olderLease = harness.issuedEntitlements[0]
+    expect((await manager.refresh()).ok).toBe(true)
+    expect(harness.issuedEntitlements).toHaveLength(2)
+
+    await writeFile(path.join(harness.directory, 'licensing', 'entitlement.jws'), `${olderLease}\n`)
+    const restarted = new EntitlementManager(options)
+    expect(await restarted.initialize()).toMatchObject({
+      status: 'corrupt',
+      lastError: 'stale-entitlement-serial',
+      canBeginNewActivity: false,
+    })
+    expect(restarted.getRelayLease()).toBeNull()
   })
 })
