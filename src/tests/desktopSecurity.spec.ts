@@ -6,6 +6,7 @@ const root = process.cwd()
 const main = readFileSync(path.join(root, 'desktop/classroom/main.mjs'), 'utf8')
 const preload = readFileSync(path.join(root, 'desktop/classroom/preload.cjs'), 'utf8')
 const vercel = JSON.parse(readFileSync(path.join(root, 'vercel.json'), 'utf8')) as {
+  git: { deploymentEnabled: Record<string, boolean> }
   headers: Array<{ headers: Array<{ key: string; value: string }> }>
 }
 
@@ -45,5 +46,9 @@ describe('desktop and hosted browser hardening', () => {
     const csp = all.find((header) => header.key.toLowerCase() === 'content-security-policy')?.value
     expect(csp).toContain("object-src 'none'")
     expect(csp).toContain("frame-ancestors 'none'")
+  })
+
+  it('requires the protected deploy-hook workflow for main production releases', () => {
+    expect(vercel.git.deploymentEnabled.main).toBe(false)
   })
 })
