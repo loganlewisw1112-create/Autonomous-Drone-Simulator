@@ -1,6 +1,6 @@
 /**
  * Optional bridge injected by the Electron classroom shell preload.
- * Browser builds never set this — web Yes/No stays honest (probe only).
+ * Browser builds never set this — the web prompt stays probe-only.
  */
 
 export interface ClassroomDesktopState {
@@ -9,26 +9,30 @@ export interface ClassroomDesktopState {
   serverStarted: boolean
   serverOwned: boolean
   relayBaseUrl: string | null
+  relayJoinBaseUrl: string | null
 }
 
 export interface ClassroomDesktopBridge {
   isDesktop: true
   getState: () => ClassroomDesktopState
+  provisionInstructorAccess: (
+    code: string,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>
 }
 
 declare global {
   interface Window {
     classroomDesktop?: ClassroomDesktopBridge
-    __CLASSROOM_DESKTOP_STATE__?: Omit<ClassroomDesktopState, 'isDesktop' | 'promptHandled'> & {
-      promptHandled?: boolean
-    }
   }
 }
 
 export function getClassroomDesktopBridge(): ClassroomDesktopBridge | null {
   if (typeof window === 'undefined') return null
   const bridge = window.classroomDesktop
-  if (!bridge || bridge.isDesktop !== true || typeof bridge.getState !== 'function') return null
+  if (!bridge
+    || bridge.isDesktop !== true
+    || typeof bridge.getState !== 'function'
+    || typeof bridge.provisionInstructorAccess !== 'function') return null
   return bridge
 }
 
@@ -42,7 +46,5 @@ export function desktopPromptAlreadyHandled(): boolean {
       return true
     }
   }
-  // Main also injects a raw snapshot before preload getState is used.
-  const raw = typeof window !== 'undefined' ? window.__CLASSROOM_DESKTOP_STATE__ : undefined
-  return raw?.promptHandled === true
+  return false
 }

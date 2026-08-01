@@ -14,8 +14,19 @@ import { InstructorHub } from '@/components/classroom/InstructorHub'
 import { CoordinatorConsole } from '@/components/classroom/CoordinatorConsole'
 import { MissionScorecard } from '@/components/classroom/MissionScorecard'
 import { ClassroomWindowsGate } from '@/components/PlatformGate'
+import { BuildInfoFooter } from '@/components/BuildInfoFooter'
 import { isWindowsClient } from '@/platform/appTarget'
 import './classroom.css'
+
+function InsecureClassroomBanner() {
+  if (typeof location !== 'undefined' && location.protocol === 'https:') return null
+  return (
+    <div className="cls-insecure-banner" role="alert" data-testid="insecure-classroom-warning">
+      INSECURE CLASSROOM DEVELOPMENT MODE — LAN traffic is not protected.
+      Graded sessions require trusted HTTPS/WSS.
+    </div>
+  )
+}
 
 // Single lazy entry for the whole classroom feature. main.tsx renders this ONLY
 // when the build flag is set, so the module (and its networking) never ships in the
@@ -28,8 +39,15 @@ export function ClassroomEntry({
   mode: 'home' | 'student' | 'instructor'
   initialClassId?: string
 }) {
-  if (!isWindowsClient()) return <ClassroomWindowsGate />
-  return <ClassroomEntryInner mode={mode} initialClassId={initialClassId} />
+  return (
+    <>
+      {isWindowsClient()
+        ? <ClassroomEntryInner mode={mode} initialClassId={initialClassId} />
+        : <ClassroomWindowsGate />}
+      <InsecureClassroomBanner />
+      <BuildInfoFooter />
+    </>
+  )
 }
 
 function ClassroomEntryInner({

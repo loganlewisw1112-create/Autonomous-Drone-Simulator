@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { INCIDENT_SCENARIOS } from '@/scenarios/catalog'
 import {
   resolveTerrainFixtureId,
+  prepareScenarioTerrain,
   scenariosWithTerrain,
   terrainFixtureFor,
   terrainRasterFor,
@@ -17,6 +18,11 @@ const PRIORITY_TERRAIN_IDS = [
   'train_mountain_sar',
   'train_wildfire_flank',
 ] as const
+
+for (const id of [...PRIORITY_TERRAIN_IDS, 'nist_obstructed_lane']) {
+  const result = await prepareScenarioTerrain(id)
+  if (!result.ok) throw new Error(result.reason)
+}
 
 describe('Phase 6 terrain fixture expansion', () => {
   it('commits DEMs for every priority AO', () => {

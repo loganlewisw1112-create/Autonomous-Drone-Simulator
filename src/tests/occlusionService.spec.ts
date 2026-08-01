@@ -18,8 +18,11 @@ import {
   type StructureLayer,
 } from '@/sim/terrain/OcclusionService'
 import { sampleCenterLatLng, type Point3D, type TerrainRaster } from '@/sim/terrain/terrainRaster'
-import { occlusionServiceFor, terrainRasterFor } from '@/scenarios/terrainFixtures'
+import { occlusionServiceFor, prepareScenarioTerrain, terrainRasterFor } from '@/scenarios/terrainFixtures'
 import { createBuildingIndex } from '@/sim/terrain/buildingIndex'
+
+const terrainPreparation = await prepareScenarioTerrain('demo_wildfire')
+if (!terrainPreparation.ok) throw new Error(terrainPreparation.reason)
 
 // ---------------------------------------------------------------------------------------
 // Synthetic terrain: a flat 100 m plain with a 200 m plateau ridge running north–south.

@@ -5,9 +5,13 @@ import App from './App'
 import { initRunRecorder } from '@/account/runRecorder'
 import { useAuthStore } from '@/store/authStore'
 import { resolveClassroomRoute } from '@/platform/classroomRoute'
+import { UsagePolicyGate } from '@/licensing/UsagePolicyGate'
 
 initRunRecorder()
-void useAuthStore.getState().restoreRememberedSession()
+// v1 stored a raw account AES key for "remember me". v1.1 deliberately signs
+// every profile out on reload and removes that legacy secret without touching
+// any IndexedDB account or run data.
+useAuthStore.getState().clearLegacyPersistedSession()
 
 // Classroom is opt-in and OFF by default. Only a build with VITE_CLASSROOM_ENABLED
 // reaches the lazy chunk, so its networking tree-shakes out of the mobile/Windows
@@ -32,6 +36,6 @@ function resolveRoot() {
 const root = document.getElementById('root')!
 createRoot(root).render(
   <StrictMode>
-    {resolveRoot()}
+    <UsagePolicyGate>{resolveRoot()}</UsagePolicyGate>
   </StrictMode>,
 )

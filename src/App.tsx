@@ -9,6 +9,7 @@ import { WelcomeOverlay } from '@/components/WelcomeOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { WindowsPlatformGate } from '@/components/PlatformGate'
 import { AccountChip } from '@/components/account/AccountChip'
+import { BuildInfoFooter } from '@/components/BuildInfoFooter'
 import { useDeviceMode } from '@/hooks/useDeviceMode'
 import { APP_TARGET, isWindowsClient } from '@/platform/appTarget'
 import { useDroneStore } from '@/store/droneStore'
@@ -24,8 +25,6 @@ const MobileShell = lazy(() => import('@/components/mobile/MobileShell').then((m
 // Account panels are lazy for the same reason: gated on auth-store flags, null until opened.
 const SignInModal = lazy(() => import('@/components/account/SignInModal').then((m) => ({ default: m.SignInModal })))
 const AccountPanels = lazy(() => import('@/components/account/AccountPanels').then((m) => ({ default: m.AccountPanels })))
-
-const GIT_HASH = import.meta.env.VITE_GIT_HASH ?? 'dev'
 
 // Isolated so the 20-200Hz tick clock re-renders only this tiny span, not the whole header
 // or the rest of the app shell (which are independent siblings, not children of this).
@@ -105,10 +104,7 @@ export default function App() {
         {/* First-visit onboarding — after the loading screen clears, before any scenario */}
         {loadingDone && <WelcomeOverlay />}
 
-        {/* Audit footer */}
-        <div className="audit-bar">
-          commit: {GIT_HASH} · sim only · no real flight data
-        </div>
+        <BuildInfoFooter />
 
         {/* Loading screen — rendered on top until all systems validated */}
         {!loadingDone && (

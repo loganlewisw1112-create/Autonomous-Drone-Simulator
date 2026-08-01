@@ -95,7 +95,7 @@ describe('avoid maneuver — production loop integration', () => {
 
   it('a detected conflict sends the give-way drone through avoid and back, with chained events', () => {
     // Force a conflict: two airborne drones converging at nearly the same altitude
-    // within the 30 m horizontal / 15 ft vertical separation minima. Positions are
+    // within the 30 m horizontal / 25 ft vertical training alert thresholds. Positions are
     // set explicitly here — the coordinated launch now fans bays apart, so we can no
     // longer rely on stacked spawn points to manufacture a climb-out conflict.
     const st = useDroneStore.getState()

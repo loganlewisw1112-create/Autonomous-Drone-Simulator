@@ -19,8 +19,6 @@ export const PREFLIGHT_CHECKLIST: PreflightItem[] = [
   { id: 8, text: 'Compass calibration verified', category: 'vehicle' },
   { id: 9, text: 'Geofences loaded and active', category: 'mission' },
   { id: 10, text: 'Mission waypoints reviewed', category: 'mission' },
-  // Matches the simulated lost-link doctrine: drones continue their task through comms loss and
-  // reconnect on signal restore; RTB triggers on battery reserve, geofence, weather, or operator.
-  { id: 11, text: 'Lost-link procedure confirmed: continue task, reconnect on restore; RTB on reserve/geofence', category: 'mission' },
+  { id: 11, text: 'Scenario-specific lost-link doctrine and fallback reviewed', category: 'mission' },
   { id: 12, text: 'Observers briefed and in position', category: 'crew' },
 ]

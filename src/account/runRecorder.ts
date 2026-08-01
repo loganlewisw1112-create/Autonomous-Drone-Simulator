@@ -1,6 +1,6 @@
 import { useDroneStore, MAX_REPLAY_FRAMES } from '@/store/droneStore'
 import { useAuthStore } from '@/store/authStore'
-import { encryptJson, makeId } from '@/account/crypto'
+import { accountCipherAad, encryptJson, makeId } from '@/account/crypto'
 import { putRunBundle } from '@/account/accountDb'
 import { getClassroomRunTag } from '@/account/runContext'
 import { buildAfterActionPackage } from '@/sim/demo/missionReport'
@@ -161,7 +161,11 @@ export async function recordRun(session: MissionReplaySession): Promise<boolean>
         id,
         accountId: activeAccount.id,
         completedAt: summary.completedAt,
-        blob: encryptJson(sessionKey, detail),
+        blob: encryptJson(
+          sessionKey,
+          detail,
+          accountCipherAad('run-detail', activeAccount.id, id),
+        ),
       }
       // Optional, guarded headroom pre-check: skip the heavy write when the
       // Storage Manager reports there isn't room (absent in jsdom / private mode,
@@ -183,7 +187,11 @@ export async function recordRun(session: MissionReplaySession): Promise<boolean>
     id,
     accountId: activeAccount.id,
     completedAt: summary.completedAt,
-    blob: encryptJson(sessionKey, summary),
+    blob: encryptJson(
+      sessionKey,
+      summary,
+      accountCipherAad('run-summary', activeAccount.id, id),
+    ),
   }
 
   if (detailRecord) {
@@ -193,7 +201,14 @@ export async function recordRun(session: MissionReplaySession): Promise<boolean>
     // Retry only the compact row. A quota error is explicitly distinguished for
     // the UI; another detail-store failure remains a generic unavailable detail.
     summary.detailState = 'quota' in result && result.quota ? 'quota-limited' : 'unavailable'
-    record = { ...record, blob: encryptJson(sessionKey, summary) }
+    record = {
+      ...record,
+      blob: encryptJson(
+        sessionKey,
+        summary,
+        accountCipherAad('run-summary', activeAccount.id, id),
+      ),
+    }
   }
 
   return (await putRunBundle(record, null)).ok

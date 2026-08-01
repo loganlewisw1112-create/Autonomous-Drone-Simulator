@@ -1,4 +1,4 @@
-import { decryptJson, encryptJson, makeId } from '@/account/crypto'
+import { accountCipherAad, decryptJson, encryptJson, makeId } from '@/account/crypto'
 import {
   getClassroom,
   listClassrooms,
@@ -20,7 +20,11 @@ import type { GridFrame } from '@/classroom/gridFrame'
 
 export function decryptClassroomMeta(key: Uint8Array, record: ClassroomRecord): ClassroomMeta | null {
   try {
-    return decryptJson<ClassroomMeta>(key, record.blob)
+    return decryptJson<ClassroomMeta>(
+      key,
+      record.blob,
+      accountCipherAad('classroom-meta', record.accountId, record.id),
+    )
   } catch {
     return null
   }
@@ -28,7 +32,11 @@ export function decryptClassroomMeta(key: Uint8Array, record: ClassroomRecord): 
 
 export function decryptSessionArchive(key: Uint8Array, record: ClassroomSessionRecord): ClassroomSessionArchive | null {
   try {
-    return decryptJson<ClassroomSessionArchive>(key, record.blob)
+    return decryptJson<ClassroomSessionArchive>(
+      key,
+      record.blob,
+      accountCipherAad('classroom-session', record.accountId, record.id),
+    )
   } catch {
     return null
   }
@@ -53,7 +61,11 @@ export async function createClassroom(
     id: meta.classroomId,
     accountId,
     updatedAt: now,
-    blob: encryptJson(key, meta),
+    blob: encryptJson(
+      key,
+      meta,
+      accountCipherAad('classroom-meta', accountId, meta.classroomId),
+    ),
   }
   const ok = await putClassroom(record)
   return ok ? meta : null
@@ -72,7 +84,11 @@ export async function touchClassroomOpened(
   const next: ClassroomRecord = {
     ...row,
     updatedAt: meta.lastOpenedAt,
-    blob: encryptJson(key, meta),
+    blob: encryptJson(
+      key,
+      meta,
+      accountCipherAad('classroom-meta', accountId, classroomId),
+    ),
   }
   const ok = await putClassroom(next)
   return ok ? meta : null
@@ -194,7 +210,11 @@ export async function persistSessionArchive(
     classroomId: archive.classroomId,
     classId: archive.classId,
     endedAt: archive.endedAt,
-    blob: encryptJson(key, archive),
+    blob: encryptJson(
+      key,
+      archive,
+      accountCipherAad('classroom-session', accountId, archive.sessionId),
+    ),
   }
   const ok = await putClassroomSession(record)
   return ok ? archive.sessionId : null

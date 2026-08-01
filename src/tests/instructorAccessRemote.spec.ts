@@ -1,94 +1,90 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  clearDeviceInstructorAccessHash,
-  hashInstructorAccessCode,
-  readDeviceInstructorAccessHash,
-} from '@/account/instructorAccess'
-import { unlockWithInstructorAccessCode } from '@/account/instructorAccessRemote'
+  provisionInstructorAccessRemote,
+  unlockWithInstructorAccessCode,
+} from '@/account/instructorAccessRemote'
 
-describe('unlockWithInstructorAccessCode', () => {
+describe('relay-authoritative instructor access', () => {
   beforeEach(() => {
-    clearDeviceInstructorAccessHash()
-    vi.stubEnv('VITE_INSTRUCTOR_ACCESS_HASH', '')
+    localStorage.clear()
     vi.stubGlobal('fetch', vi.fn())
   })
 
   afterEach(() => {
-    clearDeviceInstructorAccessHash()
-    vi.unstubAllEnvs()
+    localStorage.clear()
     vi.unstubAllGlobals()
   })
 
-  it('accepts a matching code when a device hash already exists', async () => {
-    const code = 'EXISTING-SCHOOL'
-    const hash = hashInstructorAccessCode(code)
-    localStorage.setItem('drone-sim:instructor-access-hash:v1', hash)
-    const fetchMock = vi.mocked(fetch)
-    const result = await unlockWithInstructorAccessCode(code)
-    expect(result).toEqual({ ok: true })
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
-  it('rejects a wrong code when a device hash already exists', async () => {
-    localStorage.setItem(
-      'drone-sim:instructor-access-hash:v1',
-      hashInstructorAccessCode('EXISTING-SCHOOL'),
-    )
-    const result = await unlockWithInstructorAccessCode('wrong')
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.error).toMatch(/Invalid instructor access code/)
-  })
-
-  it('provisions the first typed code when nothing is configured', async () => {
-    vi.mocked(fetch).mockRejectedValue(new Error('offline'))
-    const code = 'FIRST-CODE'
-    const result = await unlockWithInstructorAccessCode(code)
-    expect(result).toEqual({ ok: true })
-    expect(readDeviceInstructorAccessHash()).toBe(hashInstructorAccessCode(code))
-  })
-
-  it('verifies against the LAN relay when the server already has a digest', async () => {
-    const code = 'LAN-SCHOOL'
+  it('creates an HttpOnly relay session instead of trusting a browser-local hash', async () => {
     const fetchMock = vi.mocked(fetch)
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ configured: true }),
+        json: async () => ({ configured: true, authenticated: false }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ ok: true }),
       } as Response)
 
-    const result = await unlockWithInstructorAccessCode(code)
-    expect(result).toEqual({ ok: true })
-    expect(readDeviceInstructorAccessHash()).toBe(hashInstructorAccessCode(code))
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await expect(unlockWithInstructorAccessCode('School Code 2026')).resolves.toEqual({ ok: true })
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/instructor-access/session',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'same-origin',
+        body: JSON.stringify({ code: 'School Code 2026' }),
+      }),
+    )
+    expect(localStorage.getItem('drone-sim:instructor-access-hash:v1')).toBeNull()
   })
 
-  it('does not keep a divergent local hash when LAN provision conflicts', async () => {
-    const fetchMock = vi.mocked(fetch)
-    fetchMock
+  it('reports invalid and rate-limited credentials without falling back locally', async () => {
+    vi.mocked(fetch)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ configured: false }),
+        json: async () => ({ configured: true, authenticated: false }),
       } as Response)
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 409,
-        json: async () => ({ ok: false, error: 'already-configured' }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ ok: false }),
-      } as Response)
+      .mockResolvedValueOnce({ ok: false, status: 429 } as Response)
 
-    const result = await unlockWithInstructorAccessCode('local-attempt')
+    const result = await unlockWithInstructorAccessCode('Incorrect Code 2026')
+    expect(result).toEqual({ ok: false, error: 'Invalid instructor access code' })
+  })
+
+  it('fails closed when the relay has not been provisioned', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ configured: false, authenticated: false }),
+    } as Response)
+
+    const result = await unlockWithInstructorAccessCode('First School Code')
     expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.error).toMatch(/already set/)
-    expect(readDeviceInstructorAccessHash()).toBeNull()
+    if (!result.ok) expect(result.error).toMatch(/local administrator/)
+  })
+
+  it('never falls back to browser-local authority when no relay is reachable', async () => {
+    const code = 'Hosted Showcase Code'
+    vi.mocked(fetch).mockRejectedValue(new Error('offline'))
+    const result = await unlockWithInstructorAccessCode(code)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/relay unavailable/i)
+  })
+
+  it('requires the process administrator token for provisioning', async () => {
+    await expect(provisionInstructorAccessRemote('School Code 2026')).resolves.toBe('unauthorized')
+    expect(fetch).not.toHaveBeenCalled()
+
+    vi.mocked(fetch).mockResolvedValue({ ok: true, status: 201 } as Response)
+    await expect(
+      provisionInstructorAccessRemote('School Code 2026', 'ADMIN'),
+    ).resolves.toBe('ok')
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/instructor-access/provision',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-classroom-admin-token': 'ADMIN' }),
+      }),
+    )
   })
 })

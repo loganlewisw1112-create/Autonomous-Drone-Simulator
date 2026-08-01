@@ -6,56 +6,86 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  VITE_GIT_SHA: ${{ github.sha }}
+
 jobs:
   verify:
+    name: Verify and qualify
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
-      - name: Install dependencies
+      - name: Pin npm
+        run: npm install --global npm@11.12.1
+
+      - name: Show toolchain
+        run: node --version && npm --version
+
+      - name: Install locked dependencies
         run: npm ci
 
-      - name: Typecheck
-        run: npx tsc -b
+      - name: Type, lint, test, and enforce coverage
+        run: npm run verify:ci
 
-      - name: Lint
-        run: npx eslint src
+      - name: Build Windows web target
+        run: npm run build:windows
 
-      - name: Test
-        run: npx vitest run
+      - name: Verify Windows build metadata
+        run: npm run build:info -- --target windows --sha ${{ github.sha }}
 
-      - name: Build
-        run: npx vite build
+      - name: Build Mobile web target
+        run: npm run build:mobile
 
-      # COORDINATOR_BUILD_PLAN §7: prove on the ARTIFACT, not the source, that the shipping
-      # mobile/Windows bundles carry no networking code and that the classroom build still
-      # ships its relay client. Builds both ways, so it runs after (and replaces) nothing above.
-      - name: Assert bundle isolation
+      - name: Verify Mobile build metadata
+        run: npm run build:info -- --target mobile --sha ${{ github.sha }}
+
+      - name: Build Classroom web target
+        run: npm run build:classroom
+
+      - name: Verify Classroom build metadata
+        run: npm run build:info -- --target classroom --sha ${{ github.sha }}
+
+      - name: Assert target bundle isolation
         run: npm run assert:bundles
 
       - name: Assert realism fixture budgets
         run: npm run assert:fixtures
 
-      - name: Audit (high+)
-        run: npm audit --audit-level=high
-        continue-on-error: true
+      - name: Assert deterministic target parity
+        run: npm run assert:target-parity
 
-      - name: Coverage (report-only)
-        run: npm run test:coverage
-        continue-on-error: true
+      - name: Audit production and development dependencies
+        run: npm audit --audit-level=high
+
+      - name: Require a clean tracked worktree
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
         if: always()
-        # Non-fatal: account artifact-storage quota can reject uploads; coverage is
-        # report-only and must never fail the verify gate.
         continue-on-error: true
         with:
-          name: coverage-report
+          name: coverage-${{ github.sha }}
           path: coverage/
+          if-no-files-found: ignore
           retention-days: 14

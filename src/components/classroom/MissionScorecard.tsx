@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { CLASSROOM_INTERVENTION_ACTOR_PREFIX } from '@/classroom/commandAttribution'
+import { buildHistoricalDebrief } from '@/classroom/historicalDebrief'
 import { buildMissionAssessment, type MissionAssessment } from '@/classroom/missionAssessment'
-import { buildHistoricalDebrief } from '@/scenarios/historicalDebrief'
 import { useDroneStore } from '@/store/droneStore'
+import { assuranceForScenario } from '@/assurance/trainingAssurance'
 
 export interface MissionScorecardProps {
   /** Test/debrief injection; live students read the current simulator snapshot. */
@@ -44,6 +45,7 @@ export function MissionScorecard({ assessment: suppliedAssessment }: MissionScor
   }, [snapshot])
 
   const assessment = suppliedAssessment === undefined ? liveAssessment : suppliedAssessment
+  const assurance = useMemo(() => assuranceForScenario(snapshot.scenario), [snapshot.scenario])
 
   const historicalDebrief = useMemo(() => {
     if (!snapshot.scenario || !assessment) return null
@@ -98,6 +100,12 @@ export function MissionScorecard({ assessment: suppliedAssessment }: MissionScor
             ? ` · ${assessment.authorization.missedStepIds.join(', ')}`
             : ''}
         </span>
+      </div>
+
+      <div className={`cls-scorecard-safety ${assurance.trainingRunAllowed ? 'pass' : 'major'}`}>
+        <span>TRAINING ASSURANCE</span>
+        <strong>{assurance.launchDisposition.replaceAll('_', ' ').toUpperCase()}</strong>
+        <span>{assurance.disclaimer}</span>
       </div>
 
       {historicalDebrief && (

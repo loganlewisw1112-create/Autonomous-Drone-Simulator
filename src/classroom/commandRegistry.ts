@@ -9,7 +9,7 @@ const ROUTE_COMMANDS = [
   'deep_scan', 'street_sweep', 'perimeter_orbit', 'expanding_search', 'standoff_observe', 'route_lkl',
 ] as const satisfies readonly OperatorRouteCommand[]
 const ROLES = ['pic', 'mission_commander', 'observer'] as const satisfies readonly OperatorRole[]
-const SIM_SPEEDS = [1, 5, 10, 20] as const satisfies readonly SimSpeed[]
+const SIM_SPEEDS = [1, 5, 10] as const satisfies readonly SimSpeed[]
 const ROUTE_APPLY_MODES = ['replace', 'divert_resume'] as const satisfies readonly RouteApplicationMode[]
 export type InstructorRouteApplyMode = RouteApplicationMode
 

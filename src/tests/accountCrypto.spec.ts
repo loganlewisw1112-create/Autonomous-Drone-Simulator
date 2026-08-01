@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
-  deriveKey, encryptJson, decryptJson, makeCheckBlob, verifyCheckBlob, makeKdfParams, toBase64, fromBase64,
+  accountCipherAad,
+  deriveKey,
+  encryptJson,
+  decryptJson,
+  makeCheckBlob,
+  verifyCheckBlob,
+  makeKdfParams,
+  toBase64,
+  fromBase64,
 } from '@/account/crypto'
 import { PBKDF2_ITERATIONS } from '@/account/types'
 
@@ -30,26 +38,36 @@ describe('account crypto', () => {
   it('encrypt/decrypt round-trips JSON with unique IVs per record', () => {
     const key = deriveKey('pw-for-test', { ...makeKdfParams(), iterations: 1000 })
     const payload = { scenarioId: 'wildfire', metrics: { totalFlightDistanceM: 1234.5 } }
-    const blobA = encryptJson(key, payload)
-    const blobB = encryptJson(key, payload)
+    const aad = accountCipherAad('run-summary', 'acct-1', 'run-1')
+    const blobA = encryptJson(key, payload, aad)
+    const blobB = encryptJson(key, payload, aad)
     expect(blobA.iv).not.toBe(blobB.iv)
     expect(blobA.ct).not.toBe(blobB.ct)
-    expect(decryptJson(key, blobA)).toEqual(payload)
+    expect(decryptJson(key, blobA, aad)).toEqual(payload)
   })
 
   it('rejects the wrong key via GCM auth-tag failure', () => {
     const params = { ...makeKdfParams(), iterations: 1000 }
     const right = deriveKey('right password', params)
     const wrong = deriveKey('wrong password', params)
-    const blob = encryptJson(right, { secret: true })
-    expect(() => decryptJson(wrong, blob)).toThrow()
+    const aad = accountCipherAad('prefs', 'acct-1')
+    const blob = encryptJson(right, { secret: true }, aad)
+    expect(() => decryptJson(wrong, blob, aad)).toThrow()
+  })
+
+  it('rejects moving a valid ciphertext to a different record context', () => {
+    const key = deriveKey('right password', { ...makeKdfParams(), iterations: 1000 })
+    const original = accountCipherAad('run-summary', 'acct-1', 'run-1')
+    const moved = accountCipherAad('run-summary', 'acct-1', 'run-2')
+    const blob = encryptJson(key, { secret: true }, original)
+    expect(() => decryptJson(key, blob, moved)).toThrow('record context')
   })
 
   it('check blob verifies only with the original key', () => {
     const params = { ...makeKdfParams(), iterations: 1000 }
     const key = deriveKey('operator password', params)
-    const blob = makeCheckBlob(key)
-    expect(verifyCheckBlob(key, blob)).toBe(true)
-    expect(verifyCheckBlob(deriveKey('not it', params), blob)).toBe(false)
+    const blob = makeCheckBlob(key, 'acct-1')
+    expect(verifyCheckBlob(key, blob, 'acct-1')).toBe(true)
+    expect(verifyCheckBlob(deriveKey('not it', params), blob, 'acct-1')).toBe(false)
   })
 })

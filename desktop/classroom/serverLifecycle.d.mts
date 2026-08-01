@@ -8,7 +8,10 @@ export type ClassroomProbeResult =
   | { ok: true; baseUrl: string }
   | { ok: false; reason: string }
 
-export declare function classroomBaseUrl(port?: string | number): string
+export declare function classroomBaseUrl(
+  port?: string | number,
+  opts?: { secure?: boolean },
+): string
 
 export declare function buildServerEnv(
   baseEnv?: NodeJS.ProcessEnv,
@@ -26,7 +29,7 @@ export declare function spawnClassroomServer(opts: {
 
 export declare function probeClassroomServer(
   baseUrl: string,
-  opts?: { fetchFn?: typeof fetch; timeoutMs?: number },
+  opts?: { fetchFn?: typeof fetch; timeoutMs?: number; ca?: string },
 ): Promise<ClassroomProbeResult>
 
 export declare function waitForClassroomServer(

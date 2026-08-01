@@ -15,6 +15,7 @@ const { closeClassMock, focusStudentMock, sendCommandMock } = vi.hoisted(() => (
 
 vi.mock('@/classroom/classroomClient', () => ({
   closeClass: closeClassMock,
+  currentClassJoinUrl: () => 'https://school.test/?join=B2CD3F#ik=example-fingerprint',
   focusStudent: focusStudentMock,
   sendCommand: sendCommandMock,
 }))
@@ -88,7 +89,7 @@ beforeEach(() => {
     focusedStudentId: 'stu-ada',
     frames: {
       'stu-ada': { t: 90, st: 1, d: [['uav-01', 3777000, -12241000, 45, 72, 3]], a: 0, th: 1, ev: 3, p: 72, b: 'F', sc: 59 },
-      'stu-bo': { t: 80, st: 1, d: [['uav-01', 3777100, -12241100, 60, 88, 3]], a: 0, th: 0, ev: 1, p: 86, b: 'B', sc: 84 },
+      'stu-bo': { t: 80, st: 1, d: [['uav-01', 3777100, -12241100, 60, 88, 3]], a: 0, th: 0, ev: 2, p: 86, b: 'B', sc: 84 },
     },
     focusAssessment: assessment(),
     commands: [commandRecord('cmd-pending', 'pending'), commandRecord('cmd-acked', 'acknowledged'), commandRecord('cmd-failed', 'failed')],
@@ -103,6 +104,15 @@ afterEach(() => {
 })
 
 describe('<CoordinatorConsole /> command authority', () => {
+  it('renders the fingerprint-pinned student join URL for copying', () => {
+    render(<CoordinatorConsole />)
+    expect(screen.getByLabelText('Student join URL')).toHaveValue(
+      'https://school.test/?join=B2CD3F#ik=example-fingerprint',
+    )
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
+    expect(screen.getByTitle('Pinned instructor-key fingerprint')).toHaveTextContent('Key example-fingerprint')
+  })
+
   it('issues focused and whole-class commands through the real client boundary', () => {
     render(<CoordinatorConsole />)
 
