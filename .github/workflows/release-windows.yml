@@ -1,0 +1,204 @@
+name: Package Windows classroom release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: 'true'
+  VITE_GIT_SHA: ${{ github.sha }}
+
+jobs:
+  verify:
+    name: Re-run complete release gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --global npm@11.12.1
+      - run: npm ci
+      - run: npm run verify:ci
+      - run: npm run build:windows
+      - run: npm run build:info -- --target windows --sha ${{ github.sha }}
+      - run: npm run build:mobile
+      - run: npm run build:info -- --target mobile --sha ${{ github.sha }}
+      - run: npm run build:classroom
+      - run: npm run build:info -- --target classroom --sha ${{ github.sha }}
+      - run: npm run assert:bundles
+      - run: npm run assert:fixtures
+      - run: npm run assert:target-parity
+      - run: npm run qualify:classroom:40 -- --output outputs/qualification/classroom-40-release.json
+      - run: npm audit --audit-level=high
+      - name: Require a clean tracked worktree
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+
+  package:
+    name: Build Windows package
+    needs: verify
+    runs-on: windows-latest
+    timeout-minutes: 40
+    environment: windows-release
+    env:
+      CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+      WINDOWS_SIGNER_SUBJECT: ${{ secrets.WINDOWS_SIGNER_SUBJECT }}
+      VITE_DISTRIBUTION_CHANNEL: licensed_windows
+      LICENSING_API_URL: ${{ vars.LICENSING_API_URL }}
+      LICENSING_ISSUER: ${{ vars.LICENSING_ISSUER }}
+      LICENSING_JWS_KEY_ID: ${{ vars.LICENSING_JWS_KEY_ID }}
+      LICENSING_JWS_PUBLIC_KEY_SPKI_BASE64: ${{ vars.LICENSING_JWS_PUBLIC_KEY_SPKI_BASE64 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --global npm@11.12.1
+      - run: npm ci
+
+      - name: Generate packaged public licence configuration
+        shell: pwsh
+        run: npm run licensing:public-config
+
+      - name: Verify production licence service
+        shell: pwsh
+        run: |
+          $expectedRevision = (git rev-parse HEAD).Trim()
+          $health = Invoke-RestMethod -Method Get -Uri "$env:LICENSING_API_URL/v1/health" -TimeoutSec 20
+          if ($health.status -ne 'ok') { throw 'Licence service health is not ok.' }
+          if ($health.schemaVersion -ne 1) { throw "Unexpected licence schema: $($health.schemaVersion)" }
+          if ($health.revision -ne $expectedRevision) {
+            throw "Licence service revision $($health.revision) does not match release revision $expectedRevision."
+          }
+          if ($health.signingKeyId -ne $env:LICENSING_JWS_KEY_ID) {
+            throw "Licence signing kid mismatch: $($health.signingKeyId)"
+          }
+          if ($health.issuer -ne $env:LICENSING_ISSUER) {
+            throw "Licence issuer mismatch: $($health.issuer)"
+          }
+          $publicKeyBytes = [Convert]::FromBase64String($env:LICENSING_JWS_PUBLIC_KEY_SPKI_BASE64)
+          $expectedThumbprint = [Convert]::ToBase64String(
+            [Security.Cryptography.SHA256]::HashData($publicKeyBytes)
+          ).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+          if ($health.publicKeyThumbprint -ne $expectedThumbprint) {
+            throw "Licence public-key thumbprint mismatch: $($health.publicKeyThumbprint)"
+          }
+
+      - name: Require signing credentials
+        shell: pwsh
+        run: |
+          if (-not $env:CSC_LINK -or -not $env:CSC_KEY_PASSWORD -or -not $env:WINDOWS_SIGNER_SUBJECT) {
+            throw 'Release workflow requires WINDOWS_CSC_LINK, WINDOWS_CSC_KEY_PASSWORD, and WINDOWS_SIGNER_SUBJECT. Unsigned or unverified-publisher packages are local engineering artifacts only.'
+          }
+
+      - name: Match tag to package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          if ("v$packageVersion" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match package version v$packageVersion."
+          }
+
+      - name: Require annotated tag on the exact approved main revision
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          git fetch origin main --tags --force
+          $tagRef = "refs/tags/$env:GITHUB_REF_NAME"
+          $tagObjectType = (git cat-file -t $tagRef).Trim()
+          if ($tagObjectType -ne 'tag') {
+            throw "Release tag $env:GITHUB_REF_NAME must be annotated; found object type $tagObjectType."
+          }
+          $tagRevision = (git rev-list -n 1 $tagRef).Trim()
+          $headRevision = (git rev-parse HEAD).Trim()
+          $mainRevision = (git rev-parse origin/main).Trim()
+          if ($tagRevision -ne $headRevision -or $tagRevision -ne $mainRevision) {
+            throw "Release tag must identify the exact current origin/main revision. tag=$tagRevision head=$headRevision main=$mainRevision"
+          }
+
+      - name: Package classroom host
+        run: npm run package:classroom
+
+      - name: Generate software bill of materials
+        run: npm run sbom
+
+      - name: Stage release evidence
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          $application = Get-Item 'outputs/classroom-desktop/win-unpacked/Autonomous Drone Simulator Classroom.exe'
+          $installers = @(
+            Get-ChildItem outputs/classroom-desktop -File -Filter '*.exe' |
+              Where-Object { $_.Name -notmatch '(?i)uninstall' }
+          )
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one NSIS installer, found $($installers.Count)."
+          }
+          .\scripts\verify-windows-signature.ps1 `
+            -Path @($application.FullName, $installers[0].FullName) `
+            -ExpectedPublisher $env:WINDOWS_SIGNER_SUBJECT `
+            -RequireTimestamp
+          Copy-Item -LiteralPath $installers[0].FullName -Destination release/
+          Copy-Item dist/sbom.cdx.json release/sbom.cdx.json
+          Copy-Item THIRD_PARTY_NOTICES.md release/THIRD_PARTY_NOTICES.md
+          Copy-Item LICENSE release/LICENSE
+
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          $artifacts = Get-ChildItem release -File
+          if (-not $artifacts) { throw 'No release artifacts were produced.' }
+          $artifacts |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content release/SHA256SUMS.txt
+
+      - name: Upload package for review
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-classroom-${{ github.sha }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attest tagged artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: release/*
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = Get-ChildItem release -File | ForEach-Object FullName
+          $prerelease = "${{ github.ref_name }}" -match '-(alpha|beta|rc)(\.|-)'
+          if ($prerelease) {
+            gh release create "${{ github.ref_name }}" $files --verify-tag --prerelease --generate-notes
+          } else {
+            gh release create "${{ github.ref_name }}" $files --verify-tag --generate-notes
+          }

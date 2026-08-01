@@ -5,30 +5,10 @@ import {
   type TerrainOcclusionService,
 } from '@/sim/terrain/OcclusionService'
 import { buildingIndexFor } from './buildingFixtures'
-import wildfireHeader from './fixtures/demo_wildfire/terrain.json'
-import wildfirePng from './fixtures/demo_wildfire/terrain.png?inline'
-import osoHeader from './fixtures/hist_oso_sr530_2014/terrain.json'
-import osoPng from './fixtures/hist_oso_sr530_2014/terrain.png?inline'
-import campHeader from './fixtures/hist_camp_fire_paradise_2018/terrain.json'
-import campPng from './fixtures/hist_camp_fire_paradise_2018/terrain.png?inline'
-import heleneHeader from './fixtures/hist_helene_asheville_2024/terrain.json'
-import helenePng from './fixtures/hist_helene_asheville_2024/terrain.png?inline'
-import surfsideHeader from './fixtures/hist_surfside_cts_2021/terrain.json'
-import surfsidePng from './fixtures/hist_surfside_cts_2021/terrain.png?inline'
-import mountainHeader from './fixtures/train_mountain_sar/terrain.json'
-import mountainPng from './fixtures/train_mountain_sar/terrain.png?inline'
-import flankHeader from './fixtures/train_wildfire_flank/terrain.json'
-import flankPng from './fixtures/train_wildfire_flank/terrain.png?inline'
 
 // Frozen terrain DEMs produced by tools/fixtures/terrain.mjs (REALISM_ROADMAP WP-0/WP-4).
-// Same shape as observedWeather.ts: a static import of committed data, keyed by fixture id.
-// Never a runtime fetch (§3, enforced by the ESLint rule over src/sim + src/scenarios).
-//
-// Phase 6 expands DEMs only for priority AOs (Oso, Camp Fire, Helene, Surfside, mountain SAR,
-// Dixie flank). Mobile builds alias to terrainFixtures.mobile.ts so phone bundles keep a subset.
-//
-// WHY `?inline`: DEM must decode identically in browser, classroom, and vitest node — Vite
-// resolves the PNG to a base64 data URI at transform time. Runtime fetch is banned.
+// Runtime mission loading is local-only: dynamic imports split committed fixtures into
+// scenario chunks, but never fetch source data or contact a third-party service.
 
 export interface TerrainFixture {
   /** Base64 data URI of the Terrarium PNG. */
@@ -36,58 +16,171 @@ export interface TerrainFixture {
   header: TerrainHeader
 }
 
-const TERRAIN: Record<string, TerrainFixture> = {
-  demo_wildfire: { payload: wildfirePng, header: wildfireHeader },
-  // WP-9 obstructed lane reuses the Grizzly Peak DEM (same AO).
-  nist_obstructed_lane: { payload: wildfirePng, header: wildfireHeader },
-  hist_oso_sr530_2014: { payload: osoPng, header: osoHeader },
-  hist_camp_fire_paradise_2018: { payload: campPng, header: campHeader },
-  hist_helene_asheville_2024: { payload: helenePng, header: heleneHeader },
-  hist_surfside_cts_2021: { payload: surfsidePng, header: surfsideHeader },
-  train_mountain_sar: { payload: mountainPng, header: mountainHeader },
-  train_wildfire_flank: { payload: flankPng, header: flankHeader },
+type FixtureModule = Readonly<{ fixture: TerrainFixture }>
+type FixtureLoader = () => Promise<FixtureModule>
+
+const loadWildfireTerrain = () => import('./terrainFixturePackages/demo_wildfire')
+
+/**
+ * This registry is the single simulation-data manifest for every build target.
+ * Presentation modules may still differ (mobile omits MapLibre extrusion/terrain rendering),
+ * but Vite must never replace or filter this registry by target.
+ */
+const TERRAIN_LOADERS: Readonly<Record<string, FixtureLoader>> = {
+  demo_wildfire: loadWildfireTerrain,
+  // WP-9 obstructed lane uses the same sourced Grizzly Peak DEM package.
+  nist_obstructed_lane: loadWildfireTerrain,
+  hist_oso_sr530_2014: () => import('./terrainFixturePackages/hist_oso_sr530_2014'),
+  hist_camp_fire_paradise_2018: () => import('./terrainFixturePackages/hist_camp_fire_paradise_2018'),
+  hist_helene_asheville_2024: () => import('./terrainFixturePackages/hist_helene_asheville_2024'),
+  hist_surfside_cts_2021: () => import('./terrainFixturePackages/hist_surfside_cts_2021'),
+  train_mountain_sar: () => import('./terrainFixturePackages/train_mountain_sar'),
+  train_wildfire_flank: () => import('./terrainFixturePackages/train_wildfire_flank'),
+}
+
+/**
+ * Physical fixture packages emitted as independent build chunks.
+ *
+ * `nist_obstructed_lane` intentionally aliases `demo_wildfire`, so the scenario registry has
+ * eight keys while the artifact has seven physical packages. Keeping both manifests explicit
+ * lets the release parity gate prove the alias itself is identical across targets without
+ * pretending it is an eighth DEM.
+ */
+const TERRAIN_PACKAGE_IDS = [
+  'demo_wildfire',
+  'hist_camp_fire_paradise_2018',
+  'hist_helene_asheville_2024',
+  'hist_oso_sr530_2014',
+  'hist_surfside_cts_2021',
+  'train_mountain_sar',
+  'train_wildfire_flank',
+] as const
+
+const preparedFixtures = new Map<string, TerrainFixture>()
+const pendingFixtures = new Map<string, Promise<TerrainFixture>>()
+
+export type TerrainPreparationResult =
+  | Readonly<{ ok: true; fixtureId: null; state: 'not_required' }>
+  | Readonly<{ ok: true; fixtureId: string; state: 'cached' | 'prepared' }>
+  | Readonly<{ ok: false; fixtureId: string; state: 'failed'; reason: string }>
+
+export class TerrainNotPreparedError extends Error {
+  readonly fixtureId: string
+
+  constructor(fixtureId: string) {
+    super(`Terrain fixture "${fixtureId}" has not been prepared; mission initialization is blocked`)
+    this.name = 'TerrainNotPreparedError'
+    this.fixtureId = fixtureId
+  }
 }
 
 /**
  * Resolve the committed DEM key for a scenario.
- * Prefers explicit `terrainFixtureId`, then falls back to the scenario id when a fixture exists.
+ * An explicit terrainFixtureId is returned even when unknown so preparation fails closed
+ * instead of silently treating a misspelled or missing package as flat terrain.
  */
 export function resolveTerrainFixtureId(
   scenario: { id: string; terrainFixtureId?: string } | string | null | undefined,
 ): string | undefined {
   if (!scenario) return undefined
   if (typeof scenario === 'string') {
-    return TERRAIN[scenario] ? scenario : undefined
+    return TERRAIN_LOADERS[scenario] ? scenario : undefined
   }
-  const key = scenario.terrainFixtureId ?? scenario.id
-  return TERRAIN[key] ? key : undefined
+  if (scenario.terrainFixtureId) return scenario.terrainFixtureId
+  return TERRAIN_LOADERS[scenario.id] ? scenario.id : undefined
 }
 
-/** The frozen terrain fixture for a scenario/fixture id, or undefined when none is sourced yet. */
-export function terrainFixtureFor(scenarioId: string): TerrainFixture | undefined {
-  return TERRAIN[scenarioId]
-}
+async function loadFixture(fixtureId: string): Promise<TerrainFixture> {
+  const prepared = preparedFixtures.get(fixtureId)
+  if (prepared) return prepared
 
-/** Scenario / fixture ids that currently have a committed DEM in this build. */
-export function scenariosWithTerrain(): string[] {
-  return Object.keys(TERRAIN)
+  const pending = pendingFixtures.get(fixtureId)
+  if (pending) return pending
+
+  const loader = TERRAIN_LOADERS[fixtureId]
+  if (!loader) throw new Error(`No committed terrain package exists for "${fixtureId}"`)
+
+  const request = loader()
+    .then(({ fixture }) => {
+      if (
+        !fixture
+        || !fixture.payload.startsWith('data:image/png;base64,')
+        || fixture.header.width <= 0
+        || fixture.header.height <= 0
+      ) {
+        throw new Error(`Terrain package "${fixtureId}" is malformed`)
+      }
+      preparedFixtures.set(fixtureId, fixture)
+      pendingFixtures.delete(fixtureId)
+      return fixture
+    })
+    .catch((error: unknown) => {
+      pendingFixtures.delete(fixtureId)
+      throw error
+    })
+
+  pendingFixtures.set(fixtureId, request)
+  return request
 }
 
 /**
- * Decoded DEM for a scenario. The decode is memoised inside `loadTerrainRaster` on the payload
- * itself, so repeated calls share one Float32Array rather than re-inflating the PNG.
+ * Prepare a scenario's committed terrain package before fleet initialization.
+ * Concurrent callers share one import promise; successful packages stay cached for the session.
  */
+export async function prepareScenarioTerrain(
+  scenario: { id: string; terrainFixtureId?: string } | string | null | undefined,
+): Promise<TerrainPreparationResult> {
+  const fixtureId = resolveTerrainFixtureId(scenario)
+  if (!fixtureId) return { ok: true, fixtureId: null, state: 'not_required' }
+  if (preparedFixtures.has(fixtureId)) return { ok: true, fixtureId, state: 'cached' }
+
+  try {
+    await loadFixture(fixtureId)
+    return { ok: true, fixtureId, state: 'prepared' }
+  } catch (error) {
+    return {
+      ok: false,
+      fixtureId,
+      state: 'failed',
+      reason: error instanceof Error ? error.message : `Terrain package "${fixtureId}" failed to load`,
+    }
+  }
+}
+
+/** Fail-closed assertion used by the synchronous simulation initialization boundary. */
+export function requireScenarioTerrainPrepared(
+  scenario: { id: string; terrainFixtureId?: string } | string | null | undefined,
+): void {
+  const fixtureId = resolveTerrainFixtureId(scenario)
+  if (fixtureId && !preparedFixtures.has(fixtureId)) throw new TerrainNotPreparedError(fixtureId)
+}
+
+/** The prepared terrain fixture, or undefined before preparation / when no fixture exists. */
+export function terrainFixtureFor(scenarioId: string): TerrainFixture | undefined {
+  return preparedFixtures.get(scenarioId)
+}
+
+/** Scenario / fixture ids that have committed DEM packages in every build target. */
+export function scenariosWithTerrain(): string[] {
+  return Object.keys(TERRAIN_LOADERS)
+}
+
+/** Physical committed DEM package ids expected in every built target. */
+export function terrainPackageIds(): string[] {
+  return [...TERRAIN_PACKAGE_IDS]
+}
+
+/** Decoded DEM for a prepared scenario. */
 export function terrainRasterFor(scenarioId: string): TerrainRaster | undefined {
-  const fixture = TERRAIN[scenarioId]
+  const fixture = preparedFixtures.get(scenarioId)
   return fixture ? loadTerrainRaster(fixture.payload, fixture.header) : undefined
 }
 
 /**
- * A fresh occlusion service over a scenario's DEM.
+ * A fresh occlusion service over a prepared scenario's DEM.
  *
  * Deliberately NOT memoised: the service carries a 1 Hz epoch and its LOS cache, and handing
- * two unrelated consumers the same mutable epoch would let one clear the other's cache. The
- * expensive part — the decoded raster — is shared.
+ * two unrelated consumers the same mutable epoch would let one clear the other's cache.
  */
 export function occlusionServiceFor(
   scenarioId: string,

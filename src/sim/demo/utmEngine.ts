@@ -36,7 +36,7 @@ export function buildUtmAirspaceState(input: BuildUtmAirspaceStateInput): UTMAir
     externalTracks,
     reservations,
     conflicts,
-    coordinationMode: 'Simulated UTM API coordination - strategic deconfliction, reservations, and external traffic are local demo data.',
+    coordinationMode: 'Scripted Airspace & Traffic exercise - reservations, conflicts, and external traffic are local deterministic training data; no UTM or USS connection.',
   }
 }
 

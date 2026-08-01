@@ -2,6 +2,8 @@ import { buildComplianceState } from '@/sim/demo/complianceEngine'
 import { buildMissionOutcomeSummary } from '@/sim/demo/missionOutcome'
 import { buildUtmAirspaceState } from '@/sim/demo/utmEngine'
 import { verifyChain } from '@/utils/chainOfCustody'
+import { assuranceForScenario } from '@/assurance/trainingAssurance'
+import { observedWeatherFor } from '@/scenarios/observedWeather'
 import type {
   AfterActionPackage,
   DroneState,
@@ -52,6 +54,8 @@ export function buildAfterActionPackage(input: BuildAfterActionPackageInput): Af
     drones,
     elapsedSec: input.elapsedSec,
   })
+  const assurance = assuranceForScenario(input.scenario)
+  const weatherProvenance = input.scenario ? observedWeatherFor(input.scenario.id)?.provenance : undefined
   const scenarioId = input.scenario?.id ?? 'no-scenario'
   const scenarioName = input.scenario?.name ?? 'No scenario loaded'
   const chainHash = input.events.at(-1)?.hash ?? '0'.repeat(64)
@@ -65,13 +69,15 @@ export function buildAfterActionPackage(input: BuildAfterActionPackageInput): Af
     scenarioVariant: { ...input.scenarioVariant },
     missionReport: {
       title: `${scenarioName} - After Action Report`,
-      summary: `${outcome.headline} ${input.events.length} chain-of-custody events captured for review.`,
+      summary: `${outcome.headline} ${input.events.length} application event-custody records captured for review. External custody is not implied.`,
       replayFrameCount: input.replayFrameCount,
       eventCount: input.events.length,
     },
     outcome,
     compliance,
     utm,
+    assurance,
+    ...(weatherProvenance ? { weatherProvenance } : {}),
     evidence: {
       chainHash,
       chainVerified: input.events.length > 0 && verifyChain(input.events),

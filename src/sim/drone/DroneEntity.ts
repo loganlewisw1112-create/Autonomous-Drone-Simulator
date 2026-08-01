@@ -183,6 +183,7 @@ export function isBatteryLow(drone: DroneState): boolean {
  * than a linear "25% remaining" gate — which is WP-11's stated accept criterion.
  */
 export const RESERVE_CELL_V = 3.6
+export const CRITICAL_CELL_V = 3.3
 
 /**
  * Voltage-aware reserve state of charge — WP-11's stated accept criterion that the knee triggers
@@ -201,9 +202,13 @@ export function reserveBatteryPct(sagV = FLIGHT_SAG_V): number {
  *  for aircraft with no modelled voltage (legacy drain path). */
 export function isAtVoltageReserve(drone: DroneState): boolean {
   if (drone.cellVoltageV === undefined) return isBatteryLow(drone)
+  if (!Number.isFinite(drone.cellVoltageV)) return true
   return drone.cellVoltageV <= RESERVE_CELL_V
 }
 
 export function isBatteryCritical(drone: DroneState): boolean {
-  return drone.batteryPct < 8
+  if (!Number.isFinite(drone.batteryPct) || drone.batteryPct < 8) return true
+  if (drone.cellVoltageV !== undefined
+    && (!Number.isFinite(drone.cellVoltageV) || drone.cellVoltageV <= CRITICAL_CELL_V)) return true
+  return false
 }

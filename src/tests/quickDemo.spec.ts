@@ -28,8 +28,8 @@ describe('runQuickDemo', () => {
     vi.useRealTimers()
   })
 
-  it('runs the full pipeline: scenario, fleet, evidence, plan, launch', () => {
-    const result = runQuickDemo()
+  it('runs the full pipeline: scenario, fleet, evidence, plan, launch', async () => {
+    const result = await runQuickDemo()
     expect(result.ok).toBe(true)
 
     const s = useDroneStore.getState()
@@ -46,8 +46,8 @@ describe('runQuickDemo', () => {
     expect(s.events.some((e) => e.eventType === 'preflight_complete')).toBe(true)
   })
 
-  it('drones actually lift off on the staggered schedule', () => {
-    expect(runQuickDemo().ok).toBe(true)
+  it('drones actually lift off on the staggered schedule', async () => {
+    expect((await runQuickDemo()).ok).toBe(true)
 
     // Advance the real production loop (setInterval fallback under fake timers).
     vi.advanceTimersByTime(12_000)
@@ -61,8 +61,8 @@ describe('runQuickDemo', () => {
     expect(useDroneStore.getState().tick).toBeGreaterThan(0)
   })
 
-  it('rejects an unknown scenario id without touching the store', () => {
-    const result = runQuickDemo('does-not-exist')
+  it('rejects an unknown scenario id without touching the store', async () => {
+    const result = await runQuickDemo('does-not-exist')
     expect(result.ok).toBe(false)
     expect(result.reason).toContain('does-not-exist')
     expect(useDroneStore.getState().scenario).toBeNull()

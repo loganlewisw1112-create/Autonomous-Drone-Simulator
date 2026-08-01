@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { buildRunSummary, recordRun } from '@/account/runRecorder'
 import { listRuns } from '@/account/accountDb'
-import { decryptJson } from '@/account/crypto'
+import { accountCipherAad, decryptJson } from '@/account/crypto'
 import { useAuthStore } from '@/store/authStore'
 import type { MissionReplaySession } from '@/types'
 import type { StoredRunSummary } from '@/account/types'
@@ -91,7 +91,7 @@ describe('runRecorder', () => {
   })
 
   it('records an encrypted run for the signed-in profile', async () => {
-    await useAuthStore.getState().signUp('recorder', '', 'password123', false)
+    await useAuthStore.getState().signUp('recorder', '', 'password123')
     expect(await recordRun(makeSession())).toBe(true)
 
     const { activeAccount, sessionKey } = useAuthStore.getState()
@@ -99,7 +99,11 @@ describe('runRecorder', () => {
     expect(runs).toHaveLength(1)
     // stored blob is ciphertext, not plaintext JSON
     expect(runs[0].blob.ct).not.toContain('wildfire')
-    const decrypted = decryptJson<StoredRunSummary>(sessionKey!, runs[0].blob)
+    const decrypted = decryptJson<StoredRunSummary>(
+      sessionKey!,
+      runs[0].blob,
+      accountCipherAad('run-summary', activeAccount!.id, runs[0].id),
+    )
     expect(decrypted.scenarioId).toBe('wildfire')
   })
 })

@@ -66,6 +66,7 @@ export function JoinGate({ initialClassId = '' }: { initialClassId?: string }) {
           <div style={{ color: '#ff8080', fontSize: 12 }}>
             {error === 'class-full' ? 'That class is full.'
               : error === 'no-such-class' ? 'No class with that code is running.'
+                : error === 'class-time-limit-reached' ? 'That class reached its scheduled time limit. Ask the instructor to create a new class; existing results remain available.'
                 : error === 'remote-control-consent-required' ? 'Consent is required to join this class.'
                 : `Could not join: ${error ?? 'unknown error'}`}
           </div>

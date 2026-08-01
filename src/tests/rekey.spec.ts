@@ -7,7 +7,13 @@ import {
   getAccountByUsername, listRuns, listRunDetails, listMissions,
 } from '@/account/accountDb'
 import {
-  deriveKey, encryptJson, decryptJson, makeKdfParams, makeCheckBlob, verifyCheckBlob,
+  accountCipherAad,
+  deriveKey,
+  encryptJson,
+  decryptJson,
+  makeKdfParams,
+  makeCheckBlob,
+  verifyCheckBlob,
 } from '@/account/crypto'
 import type { AccountRecord, KdfParams } from '@/account/types'
 
@@ -16,6 +22,10 @@ import type { AccountRecord, KdfParams } from '@/account/types'
 // failure aborts the whole thing, leaving the old key able to decrypt everything.
 
 const ACCOUNT_ID = 'acct-1'
+const PREFS_AAD = accountCipherAad('prefs', ACCOUNT_ID)
+const RUN_AAD = accountCipherAad('run-summary', ACCOUNT_ID, 'r1')
+const DETAIL_AAD = accountCipherAad('run-detail', ACCOUNT_ID, 'r1')
+const MISSION_AAD = accountCipherAad('custom-mission', ACCOUNT_ID, 'm1')
 
 function makeAccountRecord(key: Uint8Array, kdfParams: KdfParams): AccountRecord {
   return {
@@ -26,8 +36,8 @@ function makeAccountRecord(key: Uint8Array, kdfParams: KdfParams): AccountRecord
     displayName: 'Logan',
     createdAt: 1000,
     kdfParams,
-    checkBlob: makeCheckBlob(key),
-    prefsBlob: encryptJson(key, { defaultSimSpeed: 5 }),
+    checkBlob: makeCheckBlob(key, ACCOUNT_ID),
+    prefsBlob: encryptJson(key, { defaultSimSpeed: 5 }, PREFS_AAD),
   }
 }
 
@@ -47,9 +57,9 @@ describe('rekeyAllRecords', () => {
     const oldKdf = makeKdfParams()
     const oldKey = deriveKey('oldpassword', oldKdf)
     await seedAccount(oldKey, oldKdf)
-    await putRun({ schemaVersion: 1, id: 'r1', accountId: ACCOUNT_ID, completedAt: 1000, blob: encryptJson(oldKey, { scenarioId: 'wildfire' }) })
-    await putRunDetail({ schemaVersion: 2, id: 'r1', accountId: ACCOUNT_ID, completedAt: 1000, blob: encryptJson(oldKey, { detail: 'full-snapshot' }) })
-    await putMission({ schemaVersion: 2, id: 'm1', accountId: ACCOUNT_ID, updatedAt: 1000, blob: encryptJson(oldKey, { name: 'custom-mission' }) })
+    await putRun({ schemaVersion: 1, id: 'r1', accountId: ACCOUNT_ID, completedAt: 1000, blob: encryptJson(oldKey, { scenarioId: 'wildfire' }, RUN_AAD) })
+    await putRunDetail({ schemaVersion: 2, id: 'r1', accountId: ACCOUNT_ID, completedAt: 1000, blob: encryptJson(oldKey, { detail: 'full-snapshot' }, DETAIL_AAD) })
+    await putMission({ schemaVersion: 2, id: 'm1', accountId: ACCOUNT_ID, updatedAt: 1000, blob: encryptJson(oldKey, { name: 'custom-mission' }, MISSION_AAD) })
 
     const newKdf = makeKdfParams()
     const newKey = deriveKey('newpassword', newKdf)
@@ -58,21 +68,21 @@ describe('rekeyAllRecords', () => {
 
     // Account row: new key verifies, old key no longer does.
     const account = await getAccountByUsername('logan')
-    expect(verifyCheckBlob(newKey, account!.checkBlob)).toBe(true)
-    expect(verifyCheckBlob(oldKey, account!.checkBlob)).toBe(false)
+    expect(verifyCheckBlob(newKey, account!.checkBlob, ACCOUNT_ID)).toBe(true)
+    expect(verifyCheckBlob(oldKey, account!.checkBlob, ACCOUNT_ID)).toBe(false)
 
     // Every record store now decrypts with the new key and rejects the old one.
     const run = (await listRuns(ACCOUNT_ID))[0]
-    expect(decryptJson(newKey, run.blob)).toEqual({ scenarioId: 'wildfire' })
-    expect(() => decryptJson(oldKey, run.blob)).toThrow()
+    expect(decryptJson(newKey, run.blob, RUN_AAD)).toEqual({ scenarioId: 'wildfire' })
+    expect(() => decryptJson(oldKey, run.blob, RUN_AAD)).toThrow()
 
     const detail = (await listRunDetails(ACCOUNT_ID))[0]
-    expect(decryptJson(newKey, detail.blob)).toEqual({ detail: 'full-snapshot' })
-    expect(() => decryptJson(oldKey, detail.blob)).toThrow()
+    expect(decryptJson(newKey, detail.blob, DETAIL_AAD)).toEqual({ detail: 'full-snapshot' })
+    expect(() => decryptJson(oldKey, detail.blob, DETAIL_AAD)).toThrow()
 
     const mission = (await listMissions(ACCOUNT_ID))[0]
-    expect(decryptJson(newKey, mission.blob)).toEqual({ name: 'custom-mission' })
-    expect(() => decryptJson(oldKey, mission.blob)).toThrow()
+    expect(decryptJson(newKey, mission.blob, MISSION_AAD)).toEqual({ name: 'custom-mission' })
+    expect(() => decryptJson(oldKey, mission.blob, MISSION_AAD)).toThrow()
   }, 20000)
 
   it('aborts atomically when a row cannot be decrypted — nothing changes', async () => {
@@ -80,11 +90,11 @@ describe('rekeyAllRecords', () => {
     const oldKey = deriveKey('oldpassword', oldKdf)
     const foreignKey = deriveKey('someone-else', makeKdfParams())
     await seedAccount(oldKey, oldKdf)
-    await putRun({ schemaVersion: 1, id: 'r1', accountId: ACCOUNT_ID, completedAt: 1000, blob: encryptJson(oldKey, { scenarioId: 'wildfire' }) })
-    await putRunDetail({ schemaVersion: 2, id: 'r1', accountId: ACCOUNT_ID, completedAt: 1000, blob: encryptJson(oldKey, { detail: 'full-snapshot' }) })
+    await putRun({ schemaVersion: 1, id: 'r1', accountId: ACCOUNT_ID, completedAt: 1000, blob: encryptJson(oldKey, { scenarioId: 'wildfire' }, RUN_AAD) })
+    await putRunDetail({ schemaVersion: 2, id: 'r1', accountId: ACCOUNT_ID, completedAt: 1000, blob: encryptJson(oldKey, { detail: 'full-snapshot' }, DETAIL_AAD) })
     // This mission blob is encrypted under a DIFFERENT key: the rekey cursor will
     // fail to decrypt it with oldKey and must abort the whole transaction.
-    await putMission({ schemaVersion: 2, id: 'm1', accountId: ACCOUNT_ID, updatedAt: 1000, blob: encryptJson(foreignKey, { name: 'corrupt' }) })
+    await putMission({ schemaVersion: 2, id: 'm1', accountId: ACCOUNT_ID, updatedAt: 1000, blob: encryptJson(foreignKey, { name: 'corrupt' }, MISSION_AAD) })
 
     const newKdf = makeKdfParams()
     const newKey = deriveKey('newpassword', newKdf)
@@ -93,13 +103,13 @@ describe('rekeyAllRecords', () => {
 
     // The account row is untouched — old key still verifies, new key does not.
     const account = await getAccountByUsername('logan')
-    expect(verifyCheckBlob(oldKey, account!.checkBlob)).toBe(true)
-    expect(verifyCheckBlob(newKey, account!.checkBlob)).toBe(false)
+    expect(verifyCheckBlob(oldKey, account!.checkBlob, ACCOUNT_ID)).toBe(true)
+    expect(verifyCheckBlob(newKey, account!.checkBlob, ACCOUNT_ID)).toBe(false)
 
     // Runs and run-details were rolled back — old key still decrypts them.
     const run = (await listRuns(ACCOUNT_ID))[0]
-    expect(decryptJson(oldKey, run.blob)).toEqual({ scenarioId: 'wildfire' })
+    expect(decryptJson(oldKey, run.blob, RUN_AAD)).toEqual({ scenarioId: 'wildfire' })
     const detail = (await listRunDetails(ACCOUNT_ID))[0]
-    expect(decryptJson(oldKey, detail.blob)).toEqual({ detail: 'full-snapshot' })
+    expect(decryptJson(oldKey, detail.blob, DETAIL_AAD)).toEqual({ detail: 'full-snapshot' })
   }, 20000)
 })

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
 import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
+import { prepareScenarioTerrain } from '@/scenarios/terrainFixtures'
 import { buildOperatorCommandRoute, buildRouteSuggestions, validateOperatorRoute } from '@/sim/mission/operatorRoutes'
 import {
   auditTerrainClearance,
@@ -301,7 +302,9 @@ describe('operator terrain route warnings', () => {
     }])
   })
 
-  it('detects a committed demo_wildfire building using real terrain and Overture data', () => {
+  it('detects a committed demo_wildfire building using real terrain and Overture data', async () => {
+    const wildfire = ALL_SCENARIOS.find((item) => item.id === 'demo_wildfire')!
+    expect(await prepareScenarioTerrain(wildfire)).toMatchObject({ ok: true })
     const fixture = buildingFixtureFor('demo_wildfire')!
     const feature = fixture.features[0]
     const coordinate = feature.geometry.type === 'Polygon'

@@ -2,11 +2,10 @@
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ClassroomHome } from '@/components/classroom/ClassroomHome'
 import { ClassSetup } from '@/components/classroom/ClassSetup'
 import { useAuthStore } from '@/store/authStore'
-import { hashInstructorAccessCode } from '@/account/instructorAccess'
 
 beforeEach(() => {
   globalThis.indexedDB = new IDBFactory()
@@ -16,12 +15,11 @@ beforeEach(() => {
     showSignIn: false, showSettings: false, showAnalytics: false,
     storageAvailable: true,
   })
-  vi.stubEnv('VITE_INSTRUCTOR_ACCESS_HASH', hashInstructorAccessCode('home-test'))
 })
 
 afterEach(() => {
   cleanup()
-  vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
 })
 
 describe('ClassroomHome auth', () => {
@@ -72,7 +70,11 @@ describe('ClassSetup unlock gate', () => {
     expect(screen.queryByLabelText('Scenario')).toBeNull()
   })
 
-  it('reveals scenario Create class and Access saved after unlock', () => {
+  it('reveals scenario Create class and Access saved only with an active relay session', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ configured: true, authenticated: true }),
+    }))
     useAuthStore.setState({
       activeAccount: {
         id: 'i1', username: 'teach', displayName: 'Teacher', role: 'instructor',
@@ -81,7 +83,9 @@ describe('ClassSetup unlock gate', () => {
       sessionKey: new Uint8Array(32),
     })
     render(<ClassSetup onOpenSaved={() => {}} />)
-    expect(screen.queryByTestId('instructor-unlock-section')).toBeNull()
+    await waitFor(() => {
+      expect(screen.queryByTestId('instructor-unlock-section')).toBeNull()
+    })
     expect(screen.getByTestId('create-new-class')).toBeTruthy()
     expect(screen.getByTestId('access-saved-classes')).toBeTruthy()
     expect(screen.getByLabelText('Scenario')).toBeTruthy()

@@ -1,13 +1,10 @@
 // @vitest-environment jsdom
 import 'fake-indexeddb/auto'
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { render, screen, cleanup } from '@testing-library/react'
 import { ClassroomAuthGate } from '@/components/classroom/ClassroomAuthGate'
 import { useAuthStore } from '@/store/authStore'
-import { hashInstructorAccessCode } from '@/account/instructorAccess'
-
-const ACCESS_HASH = hashInstructorAccessCode('gate-test-code')
 
 beforeEach(() => {
   globalThis.indexedDB = new IDBFactory()
@@ -17,12 +14,10 @@ beforeEach(() => {
     showSignIn: false, showSettings: false, showAnalytics: false,
     storageAvailable: true,
   })
-  vi.stubEnv('VITE_INSTRUCTOR_ACCESS_HASH', ACCESS_HASH)
 })
 
 afterEach(() => {
   cleanup()
-  vi.unstubAllEnvs()
 })
 
 describe('ClassroomAuthGate', () => {

@@ -3,7 +3,12 @@ import { useShallow } from 'zustand/react/shallow'
 import { getScenarioById } from '@/scenarios/registry'
 import { compileCustomMission } from '@/components/designer/designerValidation'
 import { useClassroomStore, type ClassroomCommandRecord } from '@/classroom/classroomStore'
-import { closeClass, focusStudent, sendCommand } from '@/classroom/classroomClient'
+import {
+  closeClass,
+  currentClassJoinUrl,
+  focusStudent,
+  sendCommand,
+} from '@/classroom/classroomClient'
 import { alertSeverity, stateToCode, type AlertSeverity, type GridDrone } from '@/classroom/gridFrame'
 import type { InstructorCommand } from '@/classroom/commandRegistry'
 import {
@@ -83,7 +88,7 @@ function scenarioSites(sc: ScenarioConfig | null): SiteOption[] {
 
 export function CoordinatorConsole() {
   const {
-    classId, config, roster, frames, focusedStudentId, focusFrame, focusAssessment, commands,
+    classId, config, roster, frames, focusedStudentId, focusFrame, focusAssessment, commands, sessionStartedAt,
   } = useClassroomStore(useShallow((state) => ({
     classId: state.classId,
     config: state.config,
@@ -93,12 +98,64 @@ export function CoordinatorConsole() {
     focusFrame: state.focusFrame,
     focusAssessment: state.focusAssessment,
     commands: state.commands,
+    sessionStartedAt: state.sessionStartedAt,
   })))
   const integrity = useClassroomStore((state) => state.integrity)
   const [rightPane, setRightPane] = useState<'results' | 'focus'>('results')
   const [targetMode, setTargetMode] = useState<'focused' | 'all'>('focused')
+  const [joinLinkCopied, setJoinLinkCopied] = useState(false)
+  const [joinQrDataUrl, setJoinQrDataUrl] = useState<string | null>(null)
+  const [clockNow, setClockNow] = useState(Date.now())
 
   const scenario = useMemo(() => config ? scenarioForConfig(config) : null, [config])
+  const joinUrl = classId ? currentClassJoinUrl() : null
+  const instructorFingerprint = useMemo(() => {
+    if (!joinUrl) return null
+    return new URLSearchParams(new URL(joinUrl).hash.replace(/^#/, '')).get('ik')
+  }, [joinUrl])
+  const classExpiresAt = sessionStartedAt === null
+    ? null
+    : sessionStartedAt + (config?.durationMinutes ?? 60) * 60_000
+  const classExpired = classExpiresAt !== null && clockNow >= classExpiresAt
+  const classRemainingMin = classExpiresAt === null ? null : Math.max(0, Math.ceil((classExpiresAt - clockNow) / 60_000))
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(Date.now()), 15_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    setJoinQrDataUrl(null)
+    if (!joinUrl) return () => { cancelled = true }
+
+    void import('qrcode')
+      .then(({ toDataURL }) => toDataURL(joinUrl, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 192,
+        color: { dark: '#07110cff', light: '#ffffffff' },
+      }))
+      .then((dataUrl) => {
+        if (!cancelled) setJoinQrDataUrl(dataUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setJoinQrDataUrl(null)
+      })
+
+    return () => { cancelled = true }
+  }, [joinUrl])
+
+  async function copyJoinUrl(): Promise<void> {
+    if (!joinUrl) return
+    try {
+      await navigator.clipboard.writeText(joinUrl)
+      setJoinLinkCopied(true)
+      window.setTimeout(() => setJoinLinkCopied(false), 2_000)
+    } catch {
+      setJoinLinkCopied(false)
+    }
+  }
 
   /**
    * The wall backdrop: a real basemap with the mission geometry drawn over it, composited once
@@ -195,6 +252,9 @@ export function CoordinatorConsole() {
         <span className="cls-code" title="Read this code aloud">{classId}</span>
         <span className="cls-header-meta">{scenarioName}</span>
         <span className="cls-header-meta cls-header-count">{roster.length} joined</span>
+        <span className="cls-header-meta" role={classExpired ? 'alert' : 'status'}>
+          {classExpired ? 'TIME LIMIT REACHED · monitoring/export remain available' : `${classRemainingMin ?? '—'} min remaining`}
+        </span>
         {rejected > 0 && (
           <span
             className="cls-integrity"
@@ -209,6 +269,35 @@ export function CoordinatorConsole() {
         </div>
         <button className="cls-btn ghost cls-header-btn" onClick={() => void closeClass()}>End class</button>
       </header>
+
+      {joinUrl && (
+        <div className="cls-join-share" aria-label="Secure student join link">
+          {joinQrDataUrl && (
+            <img
+              className="cls-join-qr"
+              src={joinQrDataUrl}
+              alt={`QR code for classroom ${classId}`}
+              width={96}
+              height={96}
+            />
+          )}
+          <label htmlFor="classroom-join-url">Student join URL</label>
+          <input
+            id="classroom-join-url"
+            readOnly
+            value={joinUrl}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+          <button type="button" className="cls-btn ghost" onClick={() => void copyJoinUrl()}>
+            {joinLinkCopied ? 'Copied' : 'Copy link'}
+          </button>
+          {instructorFingerprint && (
+            <code title="Pinned instructor-key fingerprint">
+              Key {instructorFingerprint}
+            </code>
+          )}
+        </div>
+      )}
 
       <div className="cls-alert-strip">
         {alerting.length === 0
@@ -231,6 +320,7 @@ export function CoordinatorConsole() {
           roster={roster}
           droneIds={droneIds}
           sites={scenarioSites(scenario)}
+          classExpired={classExpired}
         />
 
         <main className={`cls-wall ${roster.length > 16 ? 'compact' : ''}`} aria-label="Student rubric wall">
@@ -262,7 +352,7 @@ export function CoordinatorConsole() {
 }
 
 function CommandRail({
-  targetMode, onTargetModeChange, focusedStudentId, roster, droneIds, sites,
+  targetMode, onTargetModeChange, focusedStudentId, roster, droneIds, sites, classExpired,
 }: {
   targetMode: 'focused' | 'all'
   onTargetModeChange: (target: 'focused' | 'all') => void
@@ -270,6 +360,7 @@ function CommandRail({
   roster: RosterEntry[]
   droneIds: string[]
   sites: SiteOption[]
+  classExpired: boolean
 }) {
   const [selectedDroneId, setSelectedDroneId] = useState('')
   const [directive, setDirective] = useState('')
@@ -356,7 +447,7 @@ function CommandRail({
         <CommandButton disabled={!canSend} onClick={() => issueKind('pause')}>Pause</CommandButton>
         <CommandButton disabled={!canSend} onClick={() => issueKind('resume_session')}>Resume</CommandButton>
         <CommandButton disabled={!canSend} onClick={() => issueKind('end_mission')} danger>End mission</CommandButton>
-        <CommandButton disabled={!canSend} onClick={() => issueKind('restart')}>Restart</CommandButton>
+        <CommandButton disabled={!canSend || classExpired} onClick={() => issueKind('restart')}>Restart</CommandButton>
       </CommandGroup>
 
       <CommandGroup title="Fleet">
@@ -436,13 +527,13 @@ function CommandRail({
             disabled={!canSend}
             onChange={(event) => {
               const speed = Number(event.target.value)
-              if (![1, 5, 10, 20].includes(speed)) return
+              if (![1, 5, 10].includes(speed)) return
               issue({ commandId: nextCommandId(), kind: 'set_sim_speed', speed: speed as 1 | 5 | 10 | 20 })
               event.target.value = ''
             }}
           >
             <option value="">Set…</option>
-            <option value="1">1×</option><option value="5">5×</option><option value="10">10×</option><option value="20">20×</option>
+            <option value="1">1×</option><option value="5">5×</option><option value="10">10×</option>
           </select>
         </label>
       </CommandGroup>

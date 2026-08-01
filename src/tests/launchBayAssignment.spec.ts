@@ -4,7 +4,6 @@
  * a reassigned bay MUST move the drone's spawn position.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
-import { ALL_SCENARIOS } from '@/scenarios/catalog'
 import { useDroneStore } from '@/store/droneStore'
 import { initFleet } from '@/sim/SimulationLoop'
 import { BAY_SPACING_M } from '@/sim/mission/LaunchCoordinator'
@@ -12,9 +11,62 @@ import { buildAutoLaunchBayPlan } from '@/sim/mission/launchBayPlanning'
 import { buildLaunchSlotsForPlan } from '@/sim/mission/launchPlanGeometry'
 import { getDefaultWeatherState } from '@/sim/weather/weatherEngine'
 import { haversineDistanceM } from '@/utils/geometry'
-import type { LaunchBayPlan } from '@/types'
+import type { LaunchBayPlan, LaunchRecoverySite, ScenarioConfig } from '@/types'
 
-const scenario = ALL_SCENARIOS.find((s) => s.id === 'train_uscg_maritime_sar') ?? ALL_SCENARIOS[0]
+const singletonSite: LaunchRecoverySite = {
+  id: 'singleton',
+  kind: 'field_icp',
+  label: 'Singleton pad',
+  agency: 'TEST',
+  position: { lat: 37.7900, lng: -122.3900 },
+  surfaceNote: 'One-aircraft test pad.',
+  capacityDrones: 1,
+  exposure: 'sheltered',
+}
+
+const sharedSite: LaunchRecoverySite = {
+  id: 'shared',
+  kind: 'field_icp',
+  label: 'Shared pad',
+  agency: 'TEST',
+  position: { lat: 37.7900, lng: -122.3860 },
+  surfaceNote: 'Two-aircraft test pad.',
+  capacityDrones: 2,
+  exposure: 'sheltered',
+}
+
+const scenario: ScenarioConfig = {
+  id: 'test_launch_bay_assignment',
+  name: 'Launch bay assignment fixture',
+  description: 'Stable test fixture with one singleton bay and one shared bay.',
+  seed: 4401,
+  droneCount: 3,
+  missionType: 'waypoint',
+  startPosition: { lat: 37.7900, lng: -122.3900 },
+  waypoints: [],
+  perDroneWaypoints: {
+    'uav-01': [{ id: 'uav-01-task', position: { lat: 37.7920, lng: -122.3900 }, altitudeFt: 120 }],
+    'uav-02': [{ id: 'uav-02-task', position: { lat: 37.7920, lng: -122.3880 }, altitudeFt: 120 }],
+    'uav-03': [{ id: 'uav-03-task', position: { lat: 37.7920, lng: -122.3860 }, altitudeFt: 120 }],
+  },
+  geofences: [],
+  heatSources: [],
+  batteryStartPct: 100,
+  batteryDrainRatePerSec: 0.02,
+  commsLossWindows: [],
+  launchSites: { singleton: singletonSite, shared: sharedSite },
+  recoverySites: { singleton: singletonSite, shared: sharedSite },
+  defaultLaunchAssignments: {
+    'uav-01': 'singleton',
+    'uav-02': 'shared',
+    'uav-03': 'shared',
+  },
+  defaultRecoveryAssignments: {
+    'uav-01': 'singleton',
+    'uav-02': 'shared',
+    'uav-03': 'shared',
+  },
+}
 const siteIds = Object.keys(scenario.launchSites ?? {})
 const defaultAssignments = scenario.defaultLaunchAssignments ?? {}
 
@@ -38,7 +90,12 @@ describe('launch bay assignment wiring', () => {
   })
 
   it('scenario provides a stable physical-site pool with valid default assignments', () => {
-    expect(siteIds.length).toBeGreaterThanOrEqual(1)
+    expect(siteIds).toEqual(['singleton', 'shared'])
+    expect(defaultAssignments).toEqual({
+      'uav-01': 'singleton',
+      'uav-02': 'shared',
+      'uav-03': 'shared',
+    })
     for (const siteId of Object.values(defaultAssignments)) {
       expect(scenario.launchSites?.[siteId]).toBeDefined()
       expect(scenario.launchSites?.[siteId]?.id).toBe(siteId)
@@ -52,7 +109,7 @@ describe('launch bay assignment wiring', () => {
     expect(drone.position).toEqual(scenario.launchSites![siteId].position)
   })
 
-  it('fans a reassigned drone away from the resident drone at a shared site', () => {
+  it('fans a reassigned drone away from the resident drones at a shared site', () => {
     const [sourceId, sourceDefaultSiteId] = singletonAssignment()
     const residentEntry = Object.entries(defaultAssignments).find(([, siteId]) => siteId !== sourceDefaultSiteId)!
     const [residentId, sharedSiteId] = residentEntry
@@ -63,12 +120,16 @@ describe('launch bay assignment wiring', () => {
 
     const reassigned = useDroneStore.getState().drones.find((d) => d.id === sourceId)!
     const resident = useDroneStore.getState().drones.find((d) => d.id === residentId)!
-    const midpoint = {
-      lat: (reassigned.position.lat + resident.position.lat) / 2,
-      lng: (reassigned.position.lng + resident.position.lng) / 2,
+    const sharedDroneIds = Object.entries({ ...defaultAssignments, [sourceId]: sharedSiteId })
+      .filter(([, siteId]) => siteId === sharedSiteId)
+      .map(([droneId]) => droneId)
+    const sharedDrones = useDroneStore.getState().drones.filter((drone) => sharedDroneIds.includes(drone.id))
+    const centroid = {
+      lat: sharedDrones.reduce((sum, drone) => sum + drone.position.lat, 0) / sharedDrones.length,
+      lng: sharedDrones.reduce((sum, drone) => sum + drone.position.lng, 0) / sharedDrones.length,
     }
     expect(haversineDistanceM(reassigned.position, resident.position)).toBeGreaterThanOrEqual(BAY_SPACING_M - 1)
-    expect(haversineDistanceM(midpoint, sharedSite.position)).toBeLessThan(0.2)
+    expect(haversineDistanceM(centroid, sharedSite.position)).toBeLessThan(0.2)
   })
 
   it('falls back to the drone default site for unknown assignment keys', () => {

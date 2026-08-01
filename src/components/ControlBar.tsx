@@ -4,6 +4,9 @@ import { MissionProgress } from '@/components/MissionProgress'
 import { useMissionControls } from '@/hooks/useMissionControls'
 import { useScenarioOptions } from '@/scenarios/registry'
 import type { OperatorRole, SimSpeed, ScenarioVariantConfig } from '@/types'
+import { useAuthStore } from '@/store/authStore'
+import { APP_TARGET } from '@/platform/appTarget'
+import { observedWeatherFor } from '@/scenarios/observedWeather'
 
 const ROLE_LABELS: Record<OperatorRole, string> = {
   pic: 'PIC',
@@ -14,20 +17,23 @@ const ROLE_LABELS: Record<OperatorRole, string> = {
 const CustomMissionHub = lazy(() => import('@/components/designer/CustomMissionHub').then((module) => ({ default: module.CustomMissionHub })))
 
 export function ControlBar() {
+  const activeAccount = useAuthStore((state) => state.activeAccount)
   const {
     ui, scenario, events, drones, lifecycle, operatorRole, weatherState, scenarioVariant, investorDemo, lastRouteChange,
     latestFleetRetaskResult, fleetRetaskUndo,
     setSimSpeed, setOperatorRole, setInvestorDemoEnabled,
-    exportStatus, canStart, canAbort, canStop, canRetaskFleet, launchReady, allLanded,
+    exportStatus, missionLoadError, missionLoadPending,
+    canStart, canAbort, canStop, canRetaskFleet, launchReady, allLanded,
     handleStart, handleAbort, handlePause, handleResume, handleEndMission, handleUndoRouteChange,
     handleFleetRetask, handleUndoRetask,
     handleScenarioChange, handleVariantChange, handleRandomizeSeed, handleDemoReset,
     handleExportLog, handleExportKML, handleExportGeoJSON, handleExportAfterAction,
   } = useMissionControls()
 
-  const scenarioOptions = useScenarioOptions()
+  const scenarioOptions = useScenarioOptions().filter((option) => activeAccount || !option.config.isCustom)
   const [showVariant, setShowVariant] = useState(false)
   const [showDesigner, setShowDesigner] = useState(false)
+  const weatherProvenance = scenario ? observedWeatherFor(scenario.id)?.provenance : undefined
 
   return (
     <div className="control-dock" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -109,6 +115,12 @@ export function ControlBar() {
           {weatherState.activeHazards.length === 0 && (
             <span style={{ color: 'var(--text-dim)' }}>Clear conditions</span>
           )}
+          {weatherProvenance && (
+            <span style={{ color: weatherProvenance.isProxy ? 'var(--accent-yellow)' : 'var(--text-dim)' }}>
+              {weatherProvenance.isProxy ? 'PROXY WEATHER' : 'OBSERVED WEATHER'} · {weatherProvenance.sourceScenarioId} · {weatherProvenance.observedDate} · {weatherProvenance.sourceLocation.lat.toFixed(4)}, {weatherProvenance.sourceLocation.lng.toFixed(4)}
+              {weatherProvenance.isProxy ? ` · proxy for ${weatherProvenance.proxyForScenarioId}; not an exact reconstruction` : ''}
+            </span>
+          )}
         </div>
       )}
 
@@ -118,15 +130,17 @@ export function ControlBar() {
         <select
           className="scenario-select"
           value={scenario?.id ?? ''}
-          onChange={(e) => handleScenarioChange(e.target.value)}
+          disabled={missionLoadPending}
+          onChange={(e) => { void handleScenarioChange(e.target.value) }}
         >
-          <option value="" disabled>— Load Scenario —</option>
+          <option value="" disabled>{missionLoadPending ? '— Preparing terrain… —' : '— Load Scenario —'}</option>
           {scenarioOptions.map((s) => (
             <option key={s.id} value={s.id}>{s.label}</option>
           ))}
         </select>
-        <button className="btn" onClick={() => setShowDesigner(true)} title="Create or load a saved custom mission">
-          ＋ CUSTOM MISSION
+        {missionLoadError && <span className="export-status" role="alert">TERRAIN LOAD BLOCKED: {missionLoadError}</span>}
+        <button className="btn" onClick={() => setShowDesigner(true)} title={activeAccount ? 'Create, import, or load a saved custom mission' : 'Sign in is required for all custom mission actions'}>
+          {activeAccount ? '＋ CUSTOM MISSION' : '🔒 CUSTOM MISSION'}
         </button>
 
         <div className="control-divider" />
@@ -216,11 +230,13 @@ export function ControlBar() {
         {/* Speed */}
         <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>SIM</span>
         <div className="btn-group">
-          {([1, 5, 10, 20] as SimSpeed[]).map((s) => (
+          {([1, 5, 10, ...(APP_TARGET === 'classroom' ? [] : [20])] as SimSpeed[]).map((s) => (
             <button
               key={s}
               className={`btn${ui.simSpeed === s ? ' active' : ''}`}
               onClick={() => setSimSpeed(s)}
+              disabled={s === 20 && drones.some((drone) => drone.missionState === 'emergency')}
+              title={s === 20 ? 'Unassessed solo/replay speed; disabled in classroom and emergency response' : undefined}
             >
               {s}×
             </button>
@@ -230,8 +246,8 @@ export function ControlBar() {
         <div className="control-divider" />
 
         {/* Exports */}
-        <button className="btn" onClick={handleExportLog} disabled={events.length === 0} title="Export chain-of-custody log as JSONL">
-          📋 CUSTODY LOG
+        <button className="btn" onClick={handleExportLog} disabled={events.length === 0} title="Export the application event-custody log as JSONL; external custody is not established by this export">
+          📋 EVENT CUSTODY LOG
         </button>
         <button className="btn" onClick={handleExportKML} disabled={drones.length === 0} title="Export full flight path as KML">
           🗺 KML

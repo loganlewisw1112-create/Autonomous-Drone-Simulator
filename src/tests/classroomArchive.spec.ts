@@ -29,7 +29,7 @@ async function makeInstructor(username = 'teach'): Promise<{ accountId: string; 
     displayName: 'Teacher',
     createdAt: Date.now(),
     kdfParams,
-    checkBlob: makeCheckBlob(key),
+    checkBlob: makeCheckBlob(key, accountId),
     role: 'instructor',
   }
   await putAccount(record)
@@ -110,7 +110,7 @@ describe('classroom archive + sync seam', () => {
       displayName: 'Teacher',
       createdAt: Date.now(),
       kdfParams,
-      checkBlob: makeCheckBlob(key2),
+      checkBlob: makeCheckBlob(key2, accountId),
       role: 'instructor',
     })
     const imported = await importClassroomSync(envelope!, accountId)

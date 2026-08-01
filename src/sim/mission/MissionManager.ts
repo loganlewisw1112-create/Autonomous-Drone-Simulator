@@ -1,6 +1,6 @@
 import type { DroneState, MissionState, Waypoint } from '@/types'
 import { haversineDistanceM, bearingDeg } from '@/utils/geometry'
-import { isBatteryCritical } from '@/sim/drone/DroneEntity'
+import { isAtVoltageReserve, isBatteryCritical } from '@/sim/drone/DroneEntity'
 
 const ARRIVAL_RADIUS_M = 10
 /** Seconds to confirm a thermal contact before entering thermal_hold. */
@@ -22,6 +22,7 @@ export function effectiveDwellSec(dwellTimeSec: number | undefined): number | un
 
 export interface MissionSafetyContext {
   batteryReservePct?: number
+  batteryRequiredToHomePct?: number
   weatherForceRtb?: boolean
 }
 
@@ -84,7 +85,13 @@ export function getMissionSafetyOverride(
   }
 
   const reserveAndGeofenceExempt: MissionState[] = ['return_to_base', 'emergency', 'landed', 'hover', 'recharge']
-  if (drone.batteryPct < (context.batteryReservePct ?? 25) && !reserveAndGeofenceExempt.includes(drone.missionState)) {
+  const percentageReserve = context.batteryReservePct ?? 25
+  const energyToHomeReserve = context.batteryRequiredToHomePct ?? 0
+  const reserveTriggered = !Number.isFinite(drone.batteryPct)
+    || drone.batteryPct < percentageReserve
+    || (drone.cellVoltageV !== undefined && isAtVoltageReserve(drone))
+    || drone.batteryPct <= energyToHomeReserve
+  if (reserveTriggered && !reserveAndGeofenceExempt.includes(drone.missionState)) {
     return { nextState: 'return_to_base', reason: 'battery_reserve' }
   }
   if (drone.geofenceBreachFlag && !reserveAndGeofenceExempt.includes(drone.missionState)) {
@@ -210,6 +217,13 @@ export function getNextCommand(drone: DroneState, mm: MissionManagerState): Comm
         // hoverStartSec NOT returned → SimulationLoop preserves existing value
       }
     }
+
+    case 'lost_link_hold':
+      return {
+        cmd: { targetHeadingDeg: drone.headingDeg, throttle: 0, targetAltitudeFt: Math.max(20, drone.altitudeFt) },
+        nextState: 'lost_link_hold',
+        nextWaypointIndex: drone.currentWaypointIndex,
+      }
 
     case 'avoid': {
       // Traffic-conflict avoidance: the give-way drone holds a divergence heading (set by

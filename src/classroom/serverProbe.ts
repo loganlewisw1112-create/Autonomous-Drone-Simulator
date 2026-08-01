@@ -139,7 +139,7 @@ export function classroomSetupInstructions(): string {
   return [
     'Live multi-student classes need the Classroom Server on one Windows instructor PC.',
     '',
-    'Preferred: launch the desktop classroom app and choose Yes',
+    'Preferred: launch the desktop classroom app and choose Start server',
     '  npm run classroom:desktop',
     '',
     'Or from a terminal in this repo:',

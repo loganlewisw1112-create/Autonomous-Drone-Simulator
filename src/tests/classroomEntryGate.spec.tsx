@@ -16,7 +16,7 @@ vi.mock('@/components/classroom/ClassroomHome', () => ({
   ClassroomHome: () => <div data-testid="classroom-home">home</div>,
 }))
 
-vi.mock('@/classroom/desktopBridge', () => ({
+vi.mock('@/licensing/desktopBridge', () => ({
   desktopPromptAlreadyHandled: () => true,
   getClassroomDesktopBridge: () => null,
 }))

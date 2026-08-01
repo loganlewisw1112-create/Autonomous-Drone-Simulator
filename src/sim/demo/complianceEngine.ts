@@ -35,7 +35,8 @@ export function buildComplianceState(input: BuildComplianceStateInput): Complian
     .filter((drone) => ['stranded', 'unrecoverable_sim'].includes(drone.missionState))
     .map((drone) => drone.id)
   const maxObservedAltitudeFt = input.drones.reduce((max, drone) => Math.max(max, drone.altitudeFt), 0)
-  const authorization = buildAuthorizationFromProfile(input.scenario)
+  const trainingAuthorization = buildAuthorizationFromProfile(input.scenario)
+  const authorization = trainingAuthorization
   const waiverFlags = buildWaiverFlags(input, maxObservedAltitudeFt)
   const ceilingCaption = airspaceCeilingCaption(airspaceForScenario(input.scenario?.id))
 

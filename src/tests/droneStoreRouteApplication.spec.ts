@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
 import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
+import { prepareScenarioTerrain } from '@/scenarios/terrainFixtures'
 import { createDroneState } from '@/sim/drone/DroneEntity'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
 import { loadSavedDroneWaypointRoute } from '@/sim/mission/waypointPersistence'
@@ -127,8 +128,9 @@ describe('drone store route application', () => {
     expect(useDroneStore.getState().routeSuggestions).toEqual([])
   })
 
-  it('accepts a route with terrain findings and prioritizes structure clearance in the warning', () => {
+  it('accepts a route with terrain findings and prioritizes structure clearance in the warning', async () => {
     const wildfire = ALL_SCENARIOS.find((item) => item.id === 'demo_wildfire')!
+    expect(await prepareScenarioTerrain(wildfire)).toMatchObject({ ok: true })
     const feature = buildingFixtureFor('demo_wildfire')!.features[0]
     const coordinate = feature.geometry.type === 'Polygon'
       ? feature.geometry.coordinates[0][0]

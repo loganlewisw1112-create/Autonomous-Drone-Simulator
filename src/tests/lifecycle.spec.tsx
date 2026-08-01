@@ -12,7 +12,7 @@
  * uses) and count it — no IndexedDB/auth machinery required.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { act, render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { useDroneStore } from '@/store/droneStore'
 import { useMissionControls } from '@/hooks/useMissionControls'
 import { tick, stopTicking, endMission, initFleet } from '@/sim/SimulationLoop'
@@ -55,7 +55,7 @@ function Harness() {
       <button onClick={c.handleResume}>resume</button>
       <button onClick={c.handleEndMission}>end</button>
       <button onClick={c.handleDemoReset}>reset</button>
-      <button onClick={() => c.handleScenarioChange('demo_sar')}>browse</button>
+      <button onClick={() => { void c.handleScenarioChange('demo_sar') }}>browse</button>
     </div>
   )
 }
@@ -138,13 +138,16 @@ describe('mission lifecycle — run-record invariants', () => {
     expect(useDroneStore.getState().replaySession).toBeNull()
   })
 
-  it('scenario browsing writes no run record and enters preflight', () => {
+  it('scenario browsing writes no run record and enters preflight', async () => {
     useDroneStore.setState({ drones: [makeDrone('uav-01', 'idle')] })
     useDroneStore.getState().setRunning(false)
     useDroneStore.getState().setLifecycle('idle')
 
     render(<Harness />)
-    fireEvent.click(screen.getByText('browse'))
+    await act(async () => {
+      fireEvent.click(screen.getByText('browse'))
+      await Promise.resolve()
+    })
 
     expect(finalizeCount).toBe(0)
     expect(useDroneStore.getState().replaySession).toBeNull()
@@ -169,8 +172,8 @@ describe('mission lifecycle — run-record invariants', () => {
     expect(useDroneStore.getState().ui.isRunning).toBe(lifecycle === 'running')
   })
 
-  it('quickDemo start writes no run record', () => {
-    const result = runQuickDemo('demo_basic')
+  it('quickDemo start writes no run record', async () => {
+    const result = await runQuickDemo('demo_basic')
     expect(result.ok).toBe(true)
 
     expect(finalizeCount).toBe(0)

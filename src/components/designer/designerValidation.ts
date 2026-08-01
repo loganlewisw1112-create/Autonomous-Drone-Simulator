@@ -4,6 +4,7 @@ import { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
 import type { CustomMissionDefinition, LaunchRecoverySite, ScenarioConfig, Waypoint } from '@/types'
 
 export const MAX_CUSTOM_DRONES = 8
+export const MAX_STANDARD_CUSTOM_DRONES = 4
 export { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
 
 export interface DesignerValidationResult {
@@ -115,6 +116,12 @@ export function compileCustomMission(definition: CustomMissionDefinition): Scena
     authoredRoutes: definition.routes,
     defaultLaunchAssignments,
     defaultRecoveryAssignments,
+    assuranceMode: definition.geographicMode === 'real_coordinate_familiarization'
+      ? 'geographic_familiarization'
+      : 'synthetic_training',
+    lostLinkPolicy: { action: 'hold_then_rtb', holdSec: 10, explicitlyAcknowledged: true },
+    advancedFleetExercise: definition.droneCount > MAX_STANDARD_CUSTOM_DRONES
+      && definition.advancedFleetAcknowledged === true,
   }
 }
 
@@ -162,13 +169,26 @@ function validateRoute(droneId: string, route: Waypoint[] | undefined, errors: s
 export function validateCustomMission(definition: CustomMissionDefinition): DesignerValidationResult {
   const errors: string[] = []
   if (!definition.name.trim()) errors.push('Mission name is required.')
+  if (definition.name.length > 80) errors.push('Mission name must be 80 characters or fewer.')
   if (!definition.locationLabel.trim()) errors.push('Location name is required.')
+  if (definition.locationLabel.length > 120) errors.push('Location name must be 120 characters or fewer.')
   if (!definition.purpose.trim()) errors.push('Mission purpose is required.')
+  if (definition.purpose.length > 500) errors.push('Mission purpose must be 500 characters or fewer.')
   if (!definition.endGoal.trim()) errors.push('Mission end goal is required.')
+  if (definition.endGoal.length > 500) errors.push('Mission end goal must be 500 characters or fewer.')
   if (!validCoordinate(definition.center)) errors.push('Mission center coordinates are invalid.')
   if (!Number.isInteger(definition.droneCount) || definition.droneCount < 1 || definition.droneCount > MAX_CUSTOM_DRONES) {
     errors.push(`Fleet size must be between 1 and ${MAX_CUSTOM_DRONES} drones.`)
   }
+  if (definition.droneCount > MAX_STANDARD_CUSTOM_DRONES && definition.advancedFleetAcknowledged !== true) {
+    errors.push('Fleets of 5-8 drones require the advanced multi-crew exercise acknowledgement and a documented separation plan.')
+  }
+  if (definition.geographicMode !== undefined
+    && definition.geographicMode !== 'synthetic_training'
+    && definition.geographicMode !== 'real_coordinate_familiarization') {
+    errors.push('Mission coordinate mode is not supported.')
+  }
+  if (definition.sites.length > 16) errors.push('A custom mission may contain at most 16 launch/recovery sites.')
   if (!definition.sites.length) errors.push('Add at least one launch/recovery site.')
   definition.sites.forEach((site, index) => {
     if (!site.label.trim()) errors.push(`Site ${index + 1} needs a label.`)

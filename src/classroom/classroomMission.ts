@@ -8,6 +8,7 @@ import { buildAutoLaunchBayPlan } from '@/sim/mission/launchBayPlanning'
 import { buildLaunchSlotsForPlan } from '@/sim/mission/launchPlanGeometry'
 import { PREFLIGHT_CHECKLIST } from '@/sim/mission/preflightChecklist'
 import type { ClassConfig } from '@/classroom/protocol'
+import { prepareScenarioTerrain } from '@/scenarios/terrainFixtures'
 
 // Loads the instructor's assignment into the live simulator and starts it, so a
 // student tile begins reporting telemetry the moment they join. Mirrors the
@@ -16,12 +17,20 @@ import type { ClassConfig } from '@/classroom/protocol'
 // startSimLoop would create a hard store ↔ SimulationLoop circular import.
 
 export interface LoadResult { ok: boolean; reason?: string }
+export interface LoadMissionOptions { isCurrent?: () => boolean }
 
-export function loadClassMission(config: ClassConfig): LoadResult {
+export async function loadClassMission(
+  config: ClassConfig,
+  options: LoadMissionOptions = {},
+): Promise<LoadResult> {
   const scenario = config.kind === 'catalog'
     ? getScenarioById(config.scenarioId)?.config
     : compileCustomMission(config.definition)
   if (!scenario) return { ok: false, reason: `unknown scenario: ${config.kind === 'catalog' ? config.scenarioId : 'custom'}` }
+
+  const terrain = await prepareScenarioTerrain(scenario)
+  if (!terrain.ok) return { ok: false, reason: terrain.reason }
+  if (options.isCurrent && !options.isCurrent()) return { ok: false, reason: 'classroom assignment was cancelled' }
 
   const store = useDroneStore.getState()
   // Cancel any prior run WITHOUT finalizing (no ghost record), same as a scenario swap.

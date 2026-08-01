@@ -1,23 +1,30 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { decryptJson, encryptJson, makeId } from '@/account/crypto'
+import { accountCipherAad, decryptJson, encryptJson, makeId } from '@/account/crypto'
 import { deleteMission, listMissions, putMission } from '@/account/accountDb'
 import { MAX_CUSTOM_MISSIONS } from '@/account/types'
 import { registerCustomScenario, unregisterCustomScenario } from '@/scenarios/registry'
 import { initFleet, stopTicking } from '@/sim/SimulationLoop'
 import { buildWeatherState } from '@/sim/weather/weatherEngine'
+import { prepareScenarioTerrain } from '@/scenarios/terrainFixtures'
 import { useAuthStore } from '@/store/authStore'
 import { useDroneStore } from '@/store/droneStore'
 import type { CustomMissionDefinition, CustomMissionRecord } from '@/account/types'
 import type { LaunchRecoverySiteKind, Waypoint } from '@/types'
 import {
   MAX_CUSTOM_DRONES,
+  MAX_STANDARD_CUSTOM_DRONES,
   MAX_WAYPOINTS_PER_DRONE,
   compileCustomMission,
   customDroneId,
   validateCustomMission,
 } from './designerValidation'
 import { DesignerMap } from './DesignerMap'
+import {
+  buildCustomMissionExport,
+  missionFingerprint,
+  parseCustomMissionImport,
+} from './customMissionImport'
 
 const STEPS = ['Mission', 'Location', 'Sites', 'Routes', 'Review'] as const
 
@@ -45,6 +52,8 @@ function emptyDefinition(): CustomMissionDefinition {
     launchAssignments: {},
     recoveryAssignments: {},
     routes: { [customDroneId(0)]: [] },
+    geographicMode: 'synthetic_training',
+    advancedFleetAcknowledged: false,
     createdAt: now,
     updatedAt: now,
   }
@@ -62,8 +71,8 @@ function download(filename: string, text: string, type = 'application/json') {
 function MissionStep({ value, onChange }: { value: CustomMissionDefinition; onChange: (value: CustomMissionDefinition) => void }) {
   return (
     <div className="designer-form-grid">
-      <label>Mission name<input value={value.name} maxLength={60} onChange={(e) => onChange({ ...value, name: e.target.value })} /></label>
-      <label>Location name<input value={value.locationLabel} maxLength={80} placeholder="City, district, or operation area" onChange={(e) => onChange({ ...value, locationLabel: e.target.value })} /></label>
+      <label>Mission name<input value={value.name} maxLength={80} onChange={(e) => onChange({ ...value, name: e.target.value })} /></label>
+      <label>Location name<input value={value.locationLabel} maxLength={120} placeholder="City, district, or operation area" onChange={(e) => onChange({ ...value, locationLabel: e.target.value })} /></label>
       <label className="designer-span-2">What is the mission for?<textarea value={value.purpose} maxLength={500} onChange={(e) => onChange({ ...value, purpose: e.target.value })} /></label>
       <label className="designer-span-2">What ends the mission successfully?<textarea value={value.endGoal} maxLength={500} onChange={(e) => onChange({ ...value, endGoal: e.target.value })} /></label>
       <label>Fleet size<select value={value.droneCount} onChange={(e) => {
@@ -72,6 +81,13 @@ function MissionStep({ value, onChange }: { value: CustomMissionDefinition; onCh
         for (let i = 0; i < droneCount; i++) routes[customDroneId(i)] ??= []
         onChange({ ...value, droneCount, routes })
       }}>{Array.from({ length: MAX_CUSTOM_DRONES }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} drone{index ? 's' : ''}</option>)}</select></label>
+      <label>Coordinate use<select value={value.geographicMode ?? 'synthetic_training'} onChange={(e) => onChange({ ...value, geographicMode: e.target.value as CustomMissionDefinition['geographicMode'] })}>
+        <option value="synthetic_training">Synthetic training area</option>
+        <option value="real_coordinate_familiarization">Real-coordinate familiarization (non-operational)</option>
+      </select></label>
+      {value.droneCount > MAX_STANDARD_CUSTOM_DRONES && (
+        <label className="designer-span-2"><input type="checkbox" checked={value.advancedFleetAcknowledged === true} onChange={(e) => onChange({ ...value, advancedFleetAcknowledged: e.target.checked })} /> I am configuring an advanced, supervised multi-crew exercise and will provide sector/time separation, protected volumes, terrain-aware altitude bands, and conflict procedures.</label>
+      )}
     </div>
   )
 }
@@ -160,17 +176,21 @@ function ReviewStep({ value }: { value: CustomMissionDefinition }) {
       <div><strong>{value.name || 'Unnamed mission'}</strong><span>{value.locationLabel || 'No location name'}</span><span>{value.droneCount} drones · {value.sites.length} sites · {Object.values(value.routes).reduce((sum, route) => sum + route.length, 0)} waypoints</span></div>
       <div><span className="account-label">PURPOSE</span><p>{value.purpose || 'Not provided'}</p></div>
       <div><span className="account-label">END GOAL</span><p>{value.endGoal || 'Not provided'}</p></div>
+      <div><span className="account-label">ASSURANCE ENVELOPE</span><p>{value.geographicMode === 'real_coordinate_familiarization'
+        ? 'Real-coordinate familiarization only. Missing authoritative terrain, obstacles, airspace, weather, aircraft, authorization, and contingency evidence blocks operational validation.'
+        : 'Synthetic training only. Results are scored only when the assigned exercise has approved fixtures.'}</p></div>
       {result.valid
-        ? <p className="designer-valid">✓ Mission passes route and safety checks.</p>
+        ? <p className="designer-valid">✓ Mission passes the available training checks. This is not an operational safety or regulatory approval.</p>
         : <div className="designer-errors" role="alert"><strong>Fix before saving:</strong><ul>{result.errors.map((error) => <li key={error}>{error}</li>)}</ul></div>}
     </div>
   )
 }
 
 export function CustomMissionHub({ onClose, mobile = false }: { onClose: () => void; mobile?: boolean }) {
-  const { activeAccount, sessionKey, setShowSignIn } = useAuthStore(useShallow((state) => ({
+  const { activeAccount, sessionKey, storageReadOnly, setShowSignIn } = useAuthStore(useShallow((state) => ({
     activeAccount: state.activeAccount,
     sessionKey: state.sessionKey,
+    storageReadOnly: state.storageReadOnly,
     setShowSignIn: state.setShowSignIn,
   })))
   const lifecycle = useDroneStore((state) => state.lifecycle)
@@ -179,9 +199,16 @@ export function CustomMissionHub({ onClose, mobile = false }: { onClose: () => v
   const [step, setStep] = useState(0)
   const [status, setStatus] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const importInput = useRef<HTMLInputElement>(null)
   const activeRun = lifecycle === 'running' || lifecycle === 'paused'
 
-  function enterPreflight(scenario: ReturnType<typeof compileCustomMission>) {
+  async function enterPreflight(scenario: ReturnType<typeof compileCustomMission>): Promise<boolean> {
+    setStatus('Preparing mission terrain…')
+    const terrain = await prepareScenarioTerrain(scenario)
+    if (!terrain.ok) {
+      setStatus(`Terrain load blocked: ${terrain.reason}`)
+      return false
+    }
     const store = useDroneStore.getState()
     stopTicking()
     store.setRunning(false)
@@ -190,6 +217,7 @@ export function CustomMissionHub({ onClose, mobile = false }: { onClose: () => v
     initFleet()
     store.setLifecycle('preflight')
     store.setShowPreflight(true)
+    return true
   }
 
   useEffect(() => {
@@ -202,7 +230,13 @@ export function CustomMissionHub({ onClose, mobile = false }: { onClose: () => v
       if (cancelled) return
       const next: CustomMissionDefinition[] = []
       for (const record of records) {
-        try { next.push(decryptJson<CustomMissionDefinition>(sessionKey, record.blob)) } catch { /* corrupt rows stay unavailable */ }
+        try {
+          next.push(decryptJson<CustomMissionDefinition>(
+            sessionKey,
+            record.blob,
+            accountCipherAad('custom-mission', activeAccount.id, record.id),
+          ))
+        } catch { /* corrupt rows stay unavailable */ }
       }
       setDefinitions(next)
       setLoading(false)
@@ -212,6 +246,10 @@ export function CustomMissionHub({ onClose, mobile = false }: { onClose: () => v
 
   async function saveDraft(useNow: boolean) {
     if (!draft || !activeAccount || !sessionKey) return
+    if (storageReadOnly) {
+      setStatus('This profile is read-only. Export a backup before repairing encrypted data.')
+      return
+    }
     const result = validateCustomMission(draft)
     if (!result.valid || !result.scenario) { setStep(4); setStatus('Fix the review issues before saving.'); return }
     const updated = { ...draft, updatedAt: Date.now() }
@@ -220,7 +258,11 @@ export function CustomMissionHub({ onClose, mobile = false }: { onClose: () => v
       id: updated.id,
       accountId: activeAccount.id,
       updatedAt: updated.updatedAt,
-      blob: encryptJson(sessionKey, updated),
+      blob: encryptJson(
+        sessionKey,
+        updated,
+        accountCipherAad('custom-mission', activeAccount.id, updated.id),
+      ),
     }
     const stored = await putMission(record)
     if (!stored.ok) {
@@ -232,12 +274,15 @@ export function CustomMissionHub({ onClose, mobile = false }: { onClose: () => v
     const scenario = registerCustomScenario(result.scenario).config
     setStatus('Mission saved to this profile.')
     if (useNow) {
-      enterPreflight(scenario)
-      onClose()
+      if (await enterPreflight(scenario)) onClose()
     }
   }
 
   async function removeDefinition(definition: CustomMissionDefinition) {
+    if (storageReadOnly) {
+      setStatus('This profile is read-only. No saved missions were changed.')
+      return
+    }
     if (activeRun || !window.confirm(`Delete “${definition.name}”?`)) return
     if (await deleteMission(definition.id)) {
       unregisterCustomScenario(`custom-${definition.id}`)
@@ -245,12 +290,37 @@ export function CustomMissionHub({ onClose, mobile = false }: { onClose: () => v
     }
   }
 
-  function loadDefinition(definition: CustomMissionDefinition) {
+  async function loadDefinition(definition: CustomMissionDefinition) {
     const checked = validateCustomMission(definition)
     if (!checked.valid || !checked.scenario) { setDraft(definition); setStep(4); setStatus('This saved mission needs attention before it can run.'); return }
     const scenario = registerCustomScenario(compileCustomMission(definition)).config
-    enterPreflight(scenario)
-    onClose()
+    if (await enterPreflight(scenario)) onClose()
+  }
+
+  async function importDefinition(file: File | undefined) {
+    if (!file || !activeAccount || !sessionKey) return
+    if (storageReadOnly) {
+      setStatus('This profile is read-only. Import is disabled until encrypted storage is repaired.')
+      return
+    }
+    let text: string
+    try { text = await file.text() } catch {
+      setStatus('The selected file could not be read. Copy it locally and try again.')
+      return
+    }
+    const imported = parseCustomMissionImport(text, makeId)
+    if (!imported.ok) {
+      setStatus(imported.message)
+      return
+    }
+    const duplicate = definitions.some((definition) => missionFingerprint(definition) === imported.fingerprint)
+    if (duplicate) {
+      setStatus('Import blocked: an identical mission already exists in this profile. Open the existing mission instead.')
+      return
+    }
+    setDraft(imported.definition)
+    setStep(4)
+    setStatus('Import validated. Review it before saving; the imported ID was regenerated and no existing mission was overwritten.')
   }
 
   return (
@@ -285,7 +355,7 @@ export function CustomMissionHub({ onClose, mobile = false }: { onClose: () => v
           </>
         ) : (
           <div className="designer-library">
-            <div className="designer-library-toolbar"><span>{definitions.length}/{MAX_CUSTOM_MISSIONS} saved</span><button className="btn primary" disabled={activeRun || definitions.length >= MAX_CUSTOM_MISSIONS} onClick={() => { setStep(0); setDraft(emptyDefinition()); setStatus(null) }}>＋ NEW MISSION</button></div>
+            <div className="designer-library-toolbar"><span>{definitions.length}/{MAX_CUSTOM_MISSIONS} saved</span><input ref={importInput} type="file" accept="application/json,.json" hidden onChange={(event) => { void importDefinition(event.target.files?.[0]); event.currentTarget.value = '' }} /><button className="btn" disabled={activeRun || definitions.length >= MAX_CUSTOM_MISSIONS || storageReadOnly} onClick={() => importInput.current?.click()}>IMPORT JSON</button><button className="btn primary" disabled={activeRun || definitions.length >= MAX_CUSTOM_MISSIONS || storageReadOnly} onClick={() => { setStep(0); setDraft(emptyDefinition()); setStatus(null) }}>＋ NEW MISSION</button></div>
             {activeRun && <p className="designer-warning">End the active mission before editing, deleting, or loading another one.</p>}
             {loading && <p className="account-empty">Decrypting custom missions…</p>}
             {!loading && !definitions.length && <p className="account-empty">No custom missions saved yet.</p>}
@@ -293,7 +363,7 @@ export function CustomMissionHub({ onClose, mobile = false }: { onClose: () => v
               <article key={definition.id} className="designer-mission-card">
                 <div><strong>{definition.name}</strong><span>{definition.locationLabel}</span><small>{definition.droneCount} drones · {Object.values(definition.routes).reduce((sum, route) => sum + route.length, 0)} waypoints</small></div>
                 <p>{definition.purpose}</p>
-                <div><button className="btn primary" disabled={activeRun} onClick={() => loadDefinition(definition)}>USE MISSION</button><button className="btn" disabled={activeRun} onClick={() => { setDraft(structuredClone(definition)); setStep(0); setStatus(null) }}>EDIT</button><button className="btn danger" disabled={activeRun} onClick={() => void removeDefinition(definition)}>DELETE</button><button className="btn" onClick={() => download(`${definition.name.replace(/\W+/g, '-').toLowerCase()}.json`, JSON.stringify(definition, null, 2))}>EXPORT</button></div>
+                <div><button className="btn primary" disabled={activeRun} onClick={() => { void loadDefinition(definition) }}>USE MISSION</button><button className="btn" disabled={activeRun || storageReadOnly} onClick={() => { setDraft(structuredClone(definition)); setStep(0); setStatus(null) }}>EDIT</button><button className="btn danger" disabled={activeRun || storageReadOnly} onClick={() => void removeDefinition(definition)}>DELETE</button><button className="btn" onClick={() => download(`${definition.name.replace(/\W+/g, '-').toLowerCase()}.json`, JSON.stringify(buildCustomMissionExport(definition), null, 2))}>EXPORT</button></div>
               </article>
             ))}</div>
           </div>

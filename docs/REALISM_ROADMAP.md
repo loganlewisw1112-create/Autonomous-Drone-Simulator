@@ -1,6 +1,6 @@
-# Realism Roadmap — research findings and execution plan (v4)
+# Realism Roadmap — research findings and execution plan (v5)
 
-**Autonomous Drone Mission Simulator · 22 July 2026**
+**Autonomous Drone Mission Simulator · updated 27 July 2026**
 
 **Execution update:** WP-1 through WP-11 are complete — **all of Tranches A, B, C and D**.
 Terrain/building occlusion, AGL/MSL conversion, route/live surface safety, target-specific thermal
@@ -16,9 +16,9 @@ placement rather than a timer**, satisfying §22 point 5.
 WP-9 adds the bridge to the Coordinator dashboard: two standards-referenced lanes producing the
 one legitimately auto-scorable number in the product, reported into the class comparison table.
 
-WP-4/5/6/7 are scoped to the pinned `demo_wildfire` fixture (it is the AO carrying terrain,
-buildings and a constellation, and which the obstructed lane reuses); WP-8 applies catalog-wide,
-since clutter class derives from each scenario's existing weather location tag.
+WP-4/5/6/7 began with the pinned `demo_wildfire` fixture and now cover the priority AOs carrying
+declared terrain/building data; GNSS constellation depth remains concentrated in
+`demo_wildfire`. WP-8 applies catalog-wide because clutter derives from scenario location.
 
 **Tranches C and D are complete.** WP-10 and WP-11 are now wired live, which was the
 determinism-sensitive step held back deliberately. The only package left is **WP-12**, still
@@ -65,19 +65,15 @@ formats and byte budgets closed.
 | WP-3/4 | **DONE for the first realism AO** | `demo_wildfire` carries pinned terrain and Overture buildings, exact LOS, surface safety, provenance and fixture-budget enforcement. |
 | WP-7 GNSS | **DONE + LIVE** | Real CelesTrak YUMA almanac → IS-GPS-200 propagation → frozen az/el → `skyVisibility()` → DOP → σ_H → reported position. Loss of fix on <4 sats or HDOP > 20. Truth retained; error is band-limited noise from sim time, so no RNG state and replay stays byte-identical. `demo_wildfire` only. |
 | WP-8 RF | **DONE + LIVE** | §18.4 log-distance with per-scenario clutter, WP-4 NLOS penalty, seeded shadow fading and a one-hop relay solver. Comms-loss windows and weather demoted from overrides to dB impairments — placement decides. Clutter exponent blends toward free space by height above clutter (stated modelling choice). |
-| WP-9 NIST lanes | **DONE + LIVE** | Open + obstructed lanes scored 0-100 on the published rubric (20x5 features, 20-min limit), gated on one-arcminute acuity AND WP-4 line of sight. Folded from evidence events, so chain-verified and replay-identical. Reported alongside the mission score, never merged into it. Measured: open 80/100, obstructed 44/100 — the gap is entirely terrain. |
+| WP-9 NIST lanes | **DONE + LIVE** | Six NIST-inspired drills are cataloged. Open + obstructed lanes are scored 0-100 on the referenced rubric, gated on one-arcminute acuity and WP-4 line of sight. Scoring folds evidence events and is reported separately from mission score. The deterministic acceptance contract requires an obstructed-lane terrain penalty of at least 20 points; it does not freeze incidental historic scores. |
 | WP-12 | **BLOCKED** | OpenSky still needs authenticated access or an approved alternative source. |
 | WP-6 SAR POD | **DONE + LIVE** | `sensors/podReporting.ts` closes R_d → W → coverage → POD against the live WP-5 range and reports per-sector + cumulative POD on the READY tab. Derived from `positionHistory`; no sim-tick change, no new kernel state. Removed the fabricated 60 m radius fallback the old sector objective used. |
-| WP-10/11 | **MODULE DONE** | Pure, tested, deterministic modules shipped: `weather/dryden.ts` (turbulence), `drone/battery.ts` (discharge curve). Change no live behaviour yet — live wiring into the loop is the deferred, determinism-sensitive step (WP-5 pattern). |
+| WP-10/11 | **DONE + LIVE** | Deterministic Dryden turbulence and LiPo discharge are wired into the production loop and covered by production-path tests. |
 | Coordinator consumer for WP-9 | **LANDED** | Classroom build ships; a NIST-scored lane now has a comparison table to report into. |
 
-**The offline frontier WP-10/11 exists as tested math.** They need no fixtures. Each shipped
-as a pure module with its own spec (the WP-5 pattern) so the suite stays green and the sim
-tick's determinism is untouched. What remains for each is the *live wiring* — swapping the linear
-battery drain and injecting Dryden gusts into the loop — each a deliberate, separately-verified
-step because it touches deterministic behaviour. **WP-6 has since completed that step**: POD is
-reported on the READY tab as a derived read-model over `positionHistory`, which needed no sim-tick
-change at all (see WP-6 below).
+WP-10/11 remain pure deterministic modules at their boundaries, but they are no longer offline:
+the production loop consumes both. WP-6 POD is reported on the READY tab as a deterministic
+read-model over `positionHistory`.
 
 ---
 
@@ -258,7 +254,7 @@ converts a plausible scenario into a documented one.
 **Files:** `tools/fixtures/weather.mjs` · `src/sim/weather/weatherEngine.ts` ·
 `src/scenarios/catalog.ts` (add `realDate` per scenario)
 
-**Accept:** ≥12 of 21 scenarios carry observed weather; determinism tests still pass; a
+**Accept:** ≥12 of the 25 incident scenarios carry observed weather; determinism tests still pass; a
 scenario without a fixture is bit-identical to current behaviour.
 
 **Test:** `weatherEngine.spec` gains a case asserting observed-baseline + seed produces a
@@ -334,7 +330,7 @@ so they are testable as discrete obstacles rather than smeared into the ground.
 
 ### 4.3 Terrain data and fixture format
 
-**Source, US** (all 21 scenarios are US-located): **USGS 3DEP 1-metre DEM**, produced
+**Source, US** (the current catalog is US-located): **USGS 3DEP 1-metre DEM**, produced
 exclusively from lidar at 1 m or better, representing **the topographic bare-earth surface** —
 exactly the DTM required. Metres, NAVD88, UTM/NAD83 in the conterminous US. Prefer the newer
 **Seamless 1-Metre DEM (S1M)**, which merges lidar-derived terrain into a surface seamless
@@ -364,7 +360,7 @@ its cost.
 | 10 m | 250 k | 750 KB | **~90–150 KB** |
 | 2 m inset (500 m box) | 62 k | 190 KB | ~25 KB |
 
-Across 21 scenarios: **roughly 2–4 MB committed.** Acceptable. Shipping 1 m rasters would be
+Across a fully covered 31-scenario catalog: **roughly 3–6 MB committed.** Acceptable. Shipping 1 m rasters would be
 ~1.5 GB and is the failure mode to avoid.
 
 ### 4.4 Building data and fixture format
@@ -373,7 +369,7 @@ Across 21 scenarios: **roughly 2–4 MB committed.** Acceptable. Shipping 1 m ra
 from OpenStreetMap, Microsoft AI-generated footprints and Esri — community data first, ML
 filling the remainder. Critically: **heights were extracted from open lidar by comparison
 against USGS 3DEP, adding over six million 2.5D buildings**, and **height completeness is
-substantially better in the United States than elsewhere.** All 21 scenarios sit in the
+substantially better in the United States than elsewhere.** The current catalog sits in the
 best-covered region. Microsoft replaced its own buildings layer with Overture in July 2024 —
 a reasonable proxy for production readiness.
 
@@ -794,10 +790,10 @@ comparison table.
 advisory; the lane score is published, standardised and agency-recognised. Averaging them would
 contaminate the one number that can survive a training officer's scrutiny.
 
-**Measured.** Flying the open-lane brief unchanged scores **80/100** with no target completed —
-the finest feature needs ~17 m standoff, so the last point on every target must be bought with a
-deliberate descent. The obstructed lane scores **44/100** with the same aircraft and rubric, a
-ragged 1-4 features per target. That 36-point gap is **entirely terrain**.
+**Acceptance contract.** The open and obstructed briefs must remain deterministic, nonzero, and
+repeatable. The obstructed route must produce a terrain-caused score penalty of **at least
+20 points** while preserving a ragged depth profile. Exact historic totals are diagnostic data,
+not a public contract.
 
 **⚠ A design trap worth recording.** The obstructed lane was first built as an overflight, like
 the open lane, and scored **identically to it**. An aircraft directly above a target always has
@@ -811,9 +807,9 @@ exists to catch.
 
 **Scope, stated.** These implement the published *rubric* and the acuity basis; they are **not** a
 reproduction of any NIST apparatus drawing, and the target coordinates are this project's own
-layout. The defensible claim is "implements the NIST sUAS standard test-method rubric, referenced
-by NFPA 2400 and ASTM F38.03" — not "is a certified NIST lane" — and the citation ships with the
-score so it is never a bare number. The confined lane is not built.
+layout. The defensible claim is "NIST-inspired skills drills using referenced scoring concepts" —
+not a certified apparatus, test method, accreditation, or conformance result. Six drills are
+cataloged; open and obstructed have the strongest terrain/acuity scoring evidence.
 
 **Catalog note.** `ALL_SCENARIOS` now includes the lanes; `INCIDENT_SCENARIOS` excludes them.
 Lanes are standardised skills trials, not incidents — they have no commanding agency, dispatch
@@ -1199,7 +1195,7 @@ Link margin → packet loss → control latency → the existing comms-degraded 
 | `constellation.json` | az/el per satellite, 5-min epochs | ~5 KB | ~12 epochs × 31 sats |
 | `manifest.json` | provenance + SHA-256 | ~2 KB | **Required** — licence and attribution |
 
-**Total per scenario ≈ 250–450 KB; across 21 scenarios ≈ 5–9 MB committed.**
+**Total per scenario ≈ 250–450 KB; across 31 scenarios ≈ 8–14 MB committed if all receive full coverage.**
 
 ---
 
@@ -1297,8 +1293,8 @@ The roadmap has succeeded when all of the following hold:
 6. At least one NIST-referenced scored lane exists and reports 0–100 into the Coordinator
    comparison table.
 7. The same seed produces identical output on Mobile, Windows and Coordinator builds.
-8. `src/` still contains zero network calls, and `npm test && npm run lint && npm run build &&
-   npm audit` is green.
+8. `src/` still contains zero runtime fixture fetches, and the complete
+   `RELEASE_CHECKLIST.md` gate is green.
 
 Point 7 and point 8 are the ones to protect. Everything else is negotiable.
 

@@ -27,6 +27,8 @@ function markSeen() {
 export function WelcomeOverlay() {
   const scenario = useDroneStore((s) => s.scenario)
   const [dismissed, setDismissed] = useState(() => safeStorage()?.getItem(WELCOME_KEY) === '1')
+  const [launchError, setLaunchError] = useState<string | null>(null)
+  const [launching, setLaunching] = useState(false)
 
   // Loading a scenario manually (while the overlay could still show) counts as "seen".
   useEffect(() => {
@@ -46,7 +48,7 @@ export function WelcomeOverlay() {
         <div className="modal-title">⬡ Drone Ops Center</div>
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55, margin: '0 0 10px' }}>
           A multi-drone public-safety mission simulator: deterministic flight physics, weather,
-          comms degradation, airspace deconfliction, and a verifiable chain-of-custody evidence
+          comms degradation, scripted airspace deconfliction, and a verifiable application event-custody
           log — all running locally in your browser.
         </p>
         <p style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.5, margin: '0 0 14px' }}>
@@ -55,20 +57,27 @@ export function WelcomeOverlay() {
           workflow yourself.
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button className="btn" onClick={dismiss}>
+          <button className="btn" onClick={dismiss} disabled={launching}>
             Explore manually
           </button>
           <button
             className="btn primary"
             data-testid="welcome-launch-demo"
+            disabled={launching}
             onClick={() => {
-              dismiss()
-              runQuickDemo()
+              setLaunching(true)
+              setLaunchError(null)
+              void runQuickDemo().then((result) => {
+                setLaunching(false)
+                if (result.ok) dismiss()
+                else setLaunchError(result.reason ?? 'Demo terrain could not be prepared')
+              })
             }}
           >
-            ▶ LAUNCH DEMO
+            {launching ? 'PREPARING…' : '▶ LAUNCH DEMO'}
           </button>
         </div>
+        {launchError && <p role="alert" style={{ color: 'var(--accent-red)', fontSize: 11 }}>{launchError}</p>}
       </div>
     </div>
   )

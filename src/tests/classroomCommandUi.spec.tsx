@@ -10,7 +10,7 @@ const { joinClassMock } = vi.hoisted(() => ({ joinClassMock: vi.fn() }))
 
 vi.mock('@/classroom/classroomClient', () => ({ joinClass: joinClassMock }))
 vi.mock('@/App', () => ({ default: () => <main>Simulator</main> }))
-vi.mock('@/classroom/desktopBridge', () => ({
+vi.mock('@/licensing/desktopBridge', () => ({
   desktopPromptAlreadyHandled: () => true,
   getClassroomDesktopBridge: () => null,
 }))
@@ -77,16 +77,17 @@ describe('classroom remote-control disclosure', () => {
 
     render(<ClassroomEntry mode="student" />)
 
-    const alert = screen.getByRole('alert')
+    const alert = screen.getByText(/INSTRUCTOR CONTROL/).closest('[role="alert"]')
+    expect(alert).not.toBeNull()
     expect(alert).toHaveClass('cls-takeover-banner')
     expect(alert).toHaveTextContent('INSTRUCTOR CONTROL')
     expect(alert).toHaveTextContent('UAV-03 → RETURN TO BASE')
     expect(alert).toHaveTextContent('classroom:instructor:B2CD3F')
 
     act(() => vi.advanceTimersByTime(2_999))
-    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getByText(/INSTRUCTOR CONTROL/)).toBeInTheDocument()
     act(() => vi.advanceTimersByTime(1))
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/INSTRUCTOR CONTROL/)).not.toBeInTheDocument()
     expect(useClassroomStore.getState().takeoverNotice).toBeNull()
   })
 })

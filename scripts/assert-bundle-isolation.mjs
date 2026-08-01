@@ -36,6 +36,15 @@ const viteBin = join(root, 'node_modules', 'vite', 'bin', 'vite.js')
 // vendor strings, so match the construction form the app actually uses.
 const NET_TOKENS = [/new WebSocket\s*\(/, /\bWebSocketServer\b/]
 const MOBILE_BUILDING_3D_TOKENS = [/scenario-buildings-extrusion/, /fill-extrusion/]
+const TERRAIN_PACKAGES = [
+  'demo_wildfire',
+  'hist_camp_fire_paradise_2018',
+  'hist_helene_asheville_2024',
+  'hist_oso_sr530_2014',
+  'hist_surfside_cts_2021',
+  'train_mountain_sar',
+  'train_wildfire_flank',
+]
 
 function build(mode, appTarget) {
   rmSync(dist, { recursive: true, force: true })
@@ -65,6 +74,18 @@ const withTokens = (files, tokens) =>
     return tokens.some((re) => re.test(src))
   }).map((f) => f.name)
 
+function terrainPackages(files) {
+  return TERRAIN_PACKAGES.filter((id) => files.some((file) => file.name.startsWith(`${id}-`)))
+}
+
+function assertTerrainManifest(target, files, failures) {
+  const actual = terrainPackages(files)
+  if (JSON.stringify(actual) !== JSON.stringify(TERRAIN_PACKAGES)) {
+    failures.push(`${target} terrain manifest mismatch: expected ${TERRAIN_PACKAGES.join(', ')}, got ${actual.join(', ') || 'none'}`)
+  }
+  return actual
+}
+
 const failures = []
 
 // ── Shipping build (mobile / Windows): classroom must be absent entirely ──────
@@ -72,6 +93,7 @@ build(null)
 const shipping = bundleFiles()
 const shippingClassroom = shipping.filter((f) => /Classroom/i.test(f.name)).map((f) => f.name)
 const shippingNet = withNetworking(shipping)
+const shippingTerrain = assertTerrainManifest('default', shipping, failures)
 
 if (shippingClassroom.length > 0) {
   failures.push(`default build emitted a classroom chunk: ${shippingClassroom.join(', ')}`)
@@ -87,6 +109,7 @@ build(null, 'mobile')
 const mobile = bundleFiles()
 const mobileApp = mobile.filter((f) => !/^maplibre-/i.test(f.name))
 const mobileBuilding3d = withTokens(mobileApp, MOBILE_BUILDING_3D_TOKENS)
+const mobileTerrain = assertTerrainManifest('mobile', mobile, failures)
 if (mobileBuilding3d.length > 0) {
   failures.push(`mobile app chunks contain the desktop building implementation: ${mobileBuilding3d.join(', ')}`)
 }
@@ -96,6 +119,7 @@ build('classroom')
 const classroom = bundleFiles()
 const classroomChunks = classroom.filter((f) => /Classroom/i.test(f.name)).map((f) => f.name)
 const classroomNet = withNetworking(classroom)
+const classroomTerrain = assertTerrainManifest('classroom', classroom, failures)
 
 if (classroomChunks.length === 0) {
   failures.push('classroom build emitted no classroom chunk — the feature stopped shipping')
@@ -118,3 +142,4 @@ console.log('Bundle isolation OK')
 console.log(`  shipping build : ${shipping.length} chunks, no classroom chunk, no networking`)
 console.log(`  mobile build   : ${mobileApp.length} app chunks, no scenario-building extrusion code`)
 console.log(`  classroom build: networking confined to ${classroomNet.join(', ')}`)
+console.log(`  terrain parity : ${shippingTerrain.length} canonical packages in default/mobile/classroom (${mobileTerrain.length}/${classroomTerrain.length})`)

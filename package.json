@@ -1,11 +1,15 @@
 {
   "name": "autonomous-drone-mission-simulator",
-  "version": "1.0.0",
+  "version": "1.1.0-rc.1",
   "description": "Local-first React and TypeScript simulator for multi-drone public-safety missions, tactical route control, replay, and evidence exports.",
+  "author": "Logan Lewis-Whitfield",
   "private": true,
   "type": "module",
+  "main": "desktop/classroom/main.mjs",
+  "packageManager": "npm@11.12.1",
   "engines": {
-    "node": ">=20"
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
   },
   "repository": {
     "type": "git",
@@ -13,56 +17,118 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b && tsc -p tsconfig.scripts.json",
+    "build": "npm run build:windows",
+    "build:target": "tsc -b && vite build",
+    "build:windows": "cross-env VITE_APP_TARGET=windows VITE_BUILD_TARGET=windows npm run build:target",
+    "build:mobile": "cross-env VITE_APP_TARGET=mobile VITE_BUILD_TARGET=mobile npm run build:target",
+    "build:classroom": "cross-env VITE_APP_TARGET=classroom VITE_BUILD_TARGET=classroom npm run build:target -- --mode classroom",
+    "build:info": "node scripts/verify-build-info.mjs",
     "preview": "vite preview",
-    "classroom": "vite build --mode classroom && node server/classroom.mjs",
+    "classroom": "npm run build:classroom && node server/classroom.mjs",
     "classroom:relay": "node server/classroom.mjs",
-    "classroom:desktop": "vite build --mode classroom && electron desktop/classroom/main.mjs",
+    "classroom:desktop": "npm run build:classroom && electron desktop/classroom/main.mjs",
     "classroom:desktop:launch": "electron desktop/classroom/main.mjs",
     "fixtures": "node tools/fixtures/index.mjs",
     "fixtures:terrain": "node tools/fixtures/terrain.mjs",
     "fixtures:buildings": "node tools/fixtures/buildings.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "cross-env VITEST_COVERAGE_FAST_KDF=1 vitest run --coverage --maxWorkers=2",
     "prepare": "husky",
-    "lint": "eslint src",
+    "lint": "eslint src server desktop scripts tools vite.config.ts vitest.config.ts",
+    "verify:licensing": "npm ci --prefix services/licensing && npm --prefix services/licensing run verify",
+    "licensing:migrate": "npm --prefix services/licensing run migrate --",
+    "licensing:publisher": "npm --prefix services/licensing run publisher --",
+    "licensing:public-config": "node scripts/generate-license-public-config.mjs",
+    "verify:licensed-packaging": "node scripts/verify-licensed-packaging-config.mjs",
+    "verify:ci": "npm run typecheck && npm run lint && npm run assert:training-scope && npm run verify:licensing && npm test -- --maxWorkers=1 && npm run test:coverage",
     "assert:bundles": "node scripts/assert-bundle-isolation.mjs",
     "assert:fixtures": "node scripts/assert-realism-fixture-budget.mjs",
-    "deploy": "npm run build && gh-pages -d dist"
+    "assert:target-parity": "node scripts/assert-target-parity.mjs",
+    "assert:training-scope": "node scripts/assert-training-scope.mjs",
+    "qualify:classroom:40": "node tools/classroom/qualify-40.mjs",
+    "package:classroom": "npm run verify:licensed-packaging && npm run build:classroom && electron-builder --win nsis",
+    "sbom": "npm sbom --sbom-format cyclonedx > dist/sbom.cdx.json",
+    "deploy": "npm run build:windows && gh-pages -d dist"
   },
   "dependencies": {
     "@noble/ciphers": "^2.2.0",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^1.8.0",
+    "@peculiar/x509": "^2.0.0",
     "maplibre-gl": "^5.24.0",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^3.9.2",
+    "reflect-metadata": "^0.2.2",
     "ws": "^8.21.1",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/node": "^26.1.1",
+    "@types/node": "^26.1.2",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@types/ws": "^8.18.1",
-    "@typescript-eslint/eslint-plugin": "^8.64.0",
-    "@typescript-eslint/parser": "^8.18.2",
+    "@typescript-eslint/eslint-plugin": "^8.65.0",
+    "@typescript-eslint/parser": "^8.65.0",
     "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-v8": "^4.1.10",
-    "electron": "^37.10.3",
-    "eslint": "^9.17.0",
+    "cross-env": "^10.1.0",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "fake-indexeddb": "^6.2.5",
     "gh-pages": "^6.3.0",
+    "globals": "^17.8.0",
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
     "vitest": "^4.1.9"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8",
+    "postcss": "8.5.23"
+  },
+  "build": {
+    "appId": "com.loganlewis.autonomousdrone.classroom",
+    "productName": "Autonomous Drone Simulator Classroom",
+    "asar": true,
+    "directories": {
+      "output": "outputs/classroom-desktop"
+    },
+    "files": [
+      "dist/**/*",
+      "desktop/classroom/**/*",
+      "desktop/licensing/**/*",
+      "server/**/*",
+      "src/classroom/limits.json",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.md",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "public/drone-icon.svg",
+      "artifactName": "Autonomous-Drone-Simulator-Classroom-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": true
+    }
   }
 }

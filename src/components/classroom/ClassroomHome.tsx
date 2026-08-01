@@ -20,7 +20,8 @@ export function ClassroomHome() {
             <div style={{ fontSize: 18, fontWeight: 700 }}>Classroom</div>
             <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4, lineHeight: 1.45 }}>
               Sign in or create an account. Students can self-register.
-              New instructors insert the access code once on Start a training class.
+              A local relay administrator provisions the school access code. New instructors
+              enter that code once on Start a training class.
             </div>
           </div>
           <ClassroomAuthForm allowRoleSwitch />

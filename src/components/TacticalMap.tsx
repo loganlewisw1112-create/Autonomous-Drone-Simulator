@@ -1816,7 +1816,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
 
       {scenario && (
         <div className="utm-status-card" data-testid="utm-status-card">
-          <strong>UTM</strong>
+          <strong>SCRIPTED TRAFFIC</strong>
           <span>{utmState.externalTracks.length} TRAFFIC</span>
           <span>{utmState.reservations.length} VOLUMES</span>
           <span className={utmState.conflicts.length > 0 ? 'utm-warn' : 'utm-ok'}>{utmState.conflicts.length} CONFLICTS</span>
@@ -1898,6 +1898,5 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     </div>
   )
 }
-
 
 

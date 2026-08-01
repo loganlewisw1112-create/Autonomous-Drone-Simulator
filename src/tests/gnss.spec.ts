@@ -9,13 +9,16 @@ import {
 } from '@/sim/nav/gnss'
 import { computeDop, MAX_USABLE_HDOP, type SatelliteLook } from '@/sim/nav/dop'
 import { constellationAt, constellationFor } from '@/scenarios/constellationFixtures'
-import { occlusionServiceFor } from '@/scenarios/terrainFixtures'
+import { occlusionServiceFor, prepareScenarioTerrain } from '@/scenarios/terrainFixtures'
 import type { OcclusionService } from '@/sim/terrain/OcclusionService'
 import { haversineDistanceM } from '@/utils/geometry'
 
 // REALISM_ROADMAP WP-7 §7.2 / §18.3. Occlusion → DOP → reported position.
 
 const AO = { lat: 37.8992, lng: -122.2432 }
+
+const terrainPreparation = await prepareScenarioTerrain('demo_wildfire')
+if (!terrainPreparation.ok) throw new Error(terrainPreparation.reason)
 
 const OPEN_SKY: SatelliteLook[] = [
   { azDeg: 0, elDeg: 90 },

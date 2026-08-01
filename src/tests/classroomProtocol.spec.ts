@@ -31,7 +31,7 @@ describe('classroom protocol', () => {
   it('recognizes only known message types', () => {
     expect(isMsgType('student.grid')).toBe(true)
     expect(isMsgType('class.create')).toBe(true)
-    expect(isMsgType('class.command')).toBe(true)
+    expect(isMsgType('class.command.batch')).toBe(true)
     expect(isMsgType('command')).toBe(true)
     expect(isMsgType('student.ack')).toBe(true)
     expect(isMsgType('nope')).toBe(false)
@@ -40,27 +40,30 @@ describe('classroom protocol', () => {
 
   it('encode/decode round-trips every message type', () => {
     const messages: Envelope[] = [
-      { v: 1, type: 'class.create', classId: CLASS_ID, classPubKey: 'PUB', config: { kind: 'catalog', scenarioId: 'demo', variant: variant() } },
-      { v: 1, type: 'class.focus', classId: CLASS_ID, studentId: 'stu-1' },
-      { v: 1, type: 'class.command', classId: CLASS_ID, studentId: 'stu-1', instructorToken: 'TOK', sealed: { iv: 'IV', ct: 'CT' } },
-      { v: 1, type: 'class.close', classId: CLASS_ID },
-      { v: 1, type: 'student.join', classId: CLASS_ID, displayName: 'Ada', studentPubKey: 'SPUB' },
-      { v: 1, type: 'student.grid', classId: CLASS_ID, from: 'stu-1', sealed: { iv: 'IV', ct: 'CT' } },
-      { v: 1, type: 'student.focus', classId: CLASS_ID, sealed: { iv: 'IV', ct: 'CT' } },
-      { v: 1, type: 'student.run', classId: CLASS_ID, sealed: { iv: 'IV', ct: 'CT' } },
-      { v: 1, type: 'student.ack', classId: CLASS_ID, sealed: { iv: 'IV', ct: 'CT' } },
-      { v: 1, type: 'student.leave', classId: CLASS_ID },
-      { v: 1, type: 'join.ok', classId: CLASS_ID, studentId: 'stu-1', classPubKey: 'PUB', config: { kind: 'catalog', scenarioId: 'demo', variant: variant() } },
-      { v: 1, type: 'join.err', classId: CLASS_ID, reason: 'class-full' },
-      { v: 1, type: 'focus.on', classId: CLASS_ID },
-      { v: 1, type: 'focus.off', classId: CLASS_ID },
-      { v: 1, type: 'command', classId: CLASS_ID, sealed: { iv: 'IV', ct: 'CT' } },
-      { v: 1, type: 'class.closed', classId: CLASS_ID },
-      { v: 1, type: 'roster.update', classId: CLASS_ID, students: [{ studentId: 'stu-1', displayName: 'Ada', joinedAt: 1, studentPubKey: 'SPUB' }] },
-      { v: 1, type: 'student.gone', classId: CLASS_ID, from: 'stu-1' },
-      { v: 1, type: 'class.create', classId: CLASS_ID, classPubKey: 'PUB', config: { kind: 'catalog', scenarioId: 'demo', variant: variant() }, instructorToken: 'TOK' },
-      { v: 1, type: 'class.ok', classId: CLASS_ID, instructorToken: 'TOK' },
-      { v: 1, type: 'class.err', classId: CLASS_ID, reason: 'not-instructor' },
+      { v: 3, type: 'class.create', classId: CLASS_ID, classPubKey: 'PUB', config: { kind: 'catalog', scenarioId: 'demo', variant: variant() } },
+      { v: 3, type: 'class.focus', classId: CLASS_ID, studentId: 'stu-1' },
+      { v: 3, type: 'class.command.batch', classId: CLASS_ID, commandKind: 'pause', instructorToken: 'TOK', items: [{ studentId: 'stu-1', sealed: { iv: 'IV', ct: 'CT' } }] },
+      { v: 3, type: 'class.close', classId: CLASS_ID },
+      { v: 3, type: 'student.join', classId: CLASS_ID, displayName: 'Ada', studentPubKey: 'SPUB', capability: 'CAP' },
+      { v: 3, type: 'student.grid', classId: CLASS_ID, from: 'stu-1', sealed: { iv: 'IV', ct: 'CT' } },
+      { v: 3, type: 'student.focus', classId: CLASS_ID, sealed: { iv: 'IV', ct: 'CT' } },
+      { v: 3, type: 'student.run', classId: CLASS_ID, sealed: { iv: 'IV', ct: 'CT' } },
+      { v: 3, type: 'student.ack', classId: CLASS_ID, sealed: { iv: 'IV', ct: 'CT' } },
+      { v: 3, type: 'student.leave', classId: CLASS_ID },
+      { v: 3, type: 'join.ok', classId: CLASS_ID, studentId: 'stu-1', classPubKey: 'PUB', classKeyFingerprint: 'FP', config: { kind: 'catalog', scenarioId: 'demo', variant: variant() }, resumeToken: 'RESUME', serverNow: 1, activeUntil: 2, debriefUntil: 3, phase: 'active' },
+      { v: 3, type: 'join.err', classId: CLASS_ID, reason: 'class-full' },
+      { v: 3, type: 'focus.on', classId: CLASS_ID },
+      { v: 3, type: 'focus.off', classId: CLASS_ID },
+      { v: 3, type: 'command', classId: CLASS_ID, commandKind: 'pause', sealed: { iv: 'IV', ct: 'CT' } },
+      { v: 3, type: 'class.closed', classId: CLASS_ID },
+      { v: 3, type: 'roster.update', classId: CLASS_ID, students: [{ studentId: 'stu-1', displayName: 'Ada', joinedAt: 1, studentPubKey: 'SPUB' }] },
+      { v: 3, type: 'student.gone', classId: CLASS_ID, from: 'stu-1' },
+      { v: 3, type: 'class.create', classId: CLASS_ID, classPubKey: 'PUB', config: { kind: 'catalog', scenarioId: 'demo', variant: variant() }, instructorToken: 'TOK' },
+      { v: 3, type: 'class.ok', classId: CLASS_ID, instructorToken: 'TOK', serverNow: 1, activeUntil: 2, debriefUntil: 3, phase: 'active' },
+      { v: 3, type: 'class.state', classId: CLASS_ID, serverNow: 1, activeUntil: 2, debriefUntil: 3, phase: 'debrief' },
+      { v: 3, type: 'class.command.result', classId: CLASS_ID, commandKind: 'pause', queued: 1, unavailable: 0 },
+      { v: 3, type: 'class.err', classId: CLASS_ID, reason: 'not-instructor' },
+      { v: 3, type: 'backup.warn', classId: CLASS_ID, reason: 'quota-limited' },
     ]
     for (const msg of messages) {
       expect(decodeEnvelope(encodeEnvelope(msg))).toEqual(msg)
@@ -69,7 +72,7 @@ describe('classroom protocol', () => {
 
   it('rejects malformed envelopes', () => {
     expect(() => decodeEnvelope('not json')).toThrow()
-    expect(() => decodeEnvelope(JSON.stringify({ v: 2, type: 'focus.on', classId: CLASS_ID }))).toThrow(/version/)
+    expect(() => decodeEnvelope(JSON.stringify({ v: 1, type: 'focus.on', classId: CLASS_ID }))).toThrow(/version/)
     expect(() => decodeEnvelope(JSON.stringify({ v: PROTOCOL_VERSION, type: 'evil.exec', classId: CLASS_ID }))).toThrow(/type/)
     expect(() => decodeEnvelope(JSON.stringify({ v: PROTOCOL_VERSION, type: 'focus.on', classId: 'AEIOU1' }))).toThrow(/classId/)
   })
@@ -86,7 +89,6 @@ describe('classroom protocol', () => {
     expect(CLASS_ID_LENGTH).toBe(limits.CLASS_ID_LENGTH)
   })
 })
-
 // The sealed anti-replay counter (build plan §2.3, implemented inside the ciphertext
 // rather than on the cleartext envelope — see SealedPayload).
 describe('classroom sealed sequence', () => {

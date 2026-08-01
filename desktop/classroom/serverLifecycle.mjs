@@ -7,21 +7,40 @@
  */
 
 import { spawn } from 'node:child_process'
+import https from 'node:https'
 
 export const DEFAULT_CLASSROOM_PORT = 8080
 export const HEALTH_PATH = '/api/health'
 
-/** @param {string | number} [port] */
-export function classroomBaseUrl(port = DEFAULT_CLASSROOM_PORT) {
-  return `http://127.0.0.1:${port}`
+/**
+ * @param {string | number} [port]
+ * @param {{ secure?: boolean }} [opts]
+ */
+export function classroomBaseUrl(port = DEFAULT_CLASSROOM_PORT, { secure = false } = {}) {
+  return `${secure ? 'https' : 'http'}://127.0.0.1:${port}`
 }
 
 /**
  * @param {NodeJS.ProcessEnv} [baseEnv]
- * @param {{ electronAsNode?: boolean }} [opts]
+ * @param {{ electronAsNode?: boolean, productionRelay?: boolean }} [opts]
  */
-export function buildServerEnv(baseEnv = process.env, { electronAsNode = false } = {}) {
+export function buildServerEnv(baseEnv = process.env, {
+  electronAsNode = false,
+  productionRelay = false,
+} = {}) {
   const env = { ...baseEnv }
+  if (productionRelay) {
+    for (const name of Object.keys(env)) {
+      // The packaged host owns the relay's entire CLASSROOM_* configuration.
+      // Do not let a launcher environment redirect storage/TLS or inject authority.
+      if (name.startsWith('CLASSROOM_')) delete env[name]
+    }
+    for (const name of [
+      'NODE_OPTIONS',
+      'NODE_PATH',
+    ]) delete env[name]
+    env.NODE_ENV = 'production'
+  }
   if (electronAsNode) env.ELECTRON_RUN_AS_NODE = '1'
   else delete env.ELECTRON_RUN_AS_NODE
   return env
@@ -58,14 +77,53 @@ export function spawnClassroomServer({
  * @param {{
  *   fetchFn?: typeof fetch
  *   timeoutMs?: number
+ *   ca?: string
  * }} [opts]
  * @returns {Promise<{ ok: true, baseUrl: string } | { ok: false, reason: string }>}
  */
-export async function probeClassroomServer(baseUrl, { fetchFn = fetch, timeoutMs = 2000 } = {}) {
+export async function probeClassroomServer(baseUrl, {
+  fetchFn = fetch,
+  timeoutMs = 2000,
+  ca,
+} = {}) {
   const root = String(baseUrl || '').replace(/\/$/, '')
   if (!root) return { ok: false, reason: 'missing-url' }
 
   const url = `${root}${HEALTH_PATH}`
+  if (url.startsWith('https:') && ca) {
+    return new Promise((resolve) => {
+      const req = https.request(url, {
+        method: 'GET',
+        ca,
+        rejectUnauthorized: true,
+        timeout: timeoutMs,
+      }, (res) => {
+        let body = ''
+        res.setEncoding('utf8')
+        res.on('data', (chunk) => {
+          if (body.length < 65_536) body += chunk
+        })
+        res.on('end', () => {
+          if (res.statusCode == null || res.statusCode < 200 || res.statusCode >= 300) {
+            resolve({ ok: false, reason: `http-${res.statusCode ?? 'unknown'}` })
+            return
+          }
+          try {
+            const parsed = JSON.parse(body)
+            resolve(parsed?.ok === true && parsed?.service === 'classroom-relay'
+              ? { ok: true, baseUrl: root }
+              : { ok: false, reason: 'unexpected-body' })
+          } catch {
+            resolve({ ok: false, reason: 'unexpected-body' })
+          }
+        })
+      })
+      req.on('timeout', () => req.destroy(new Error('timeout')))
+      req.on('error', () => resolve({ ok: false, reason: 'unreachable' }))
+      req.end()
+    })
+  }
+
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
@@ -102,7 +160,7 @@ export async function waitForClassroomServer(baseUrl, {
   let last = /** @type {{ ok: false, reason: string }} */ ({ ok: false, reason: 'pending' })
   while (Date.now() - started < timeoutMs) {
     const result = await probe(baseUrl)
-    if (result.ok) return result
+    if (result.ok === true) return result
     last = result
     await sleep(intervalMs)
   }

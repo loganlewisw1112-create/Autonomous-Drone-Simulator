@@ -86,12 +86,12 @@ describe('MobileShell', () => {
     expect(useMobileStore.getState().activeSurface).toBe('evidence')
   })
 
-  it('opens scenario controls and the custom mission entry', async () => {
+  it('opens scenario controls and makes the guest custom-mission boundary explicit', async () => {
     render(<MobileShell />)
     fireEvent.click(screen.getByRole('button', { name: 'SCENARIO' }))
     expect(screen.getByText('LOAD SCENARIO')).toBeInTheDocument()
     expect(screen.getByText('WEATHER SEVERITY')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '+ CUSTOM MISSIONS' }))
+    fireEvent.click(screen.getByRole('button', { name: '🔒 CUSTOM MISSIONS — SIGN IN REQUIRED' }))
     expect(await screen.findByTestId('custom-mission-hub')).toBeInTheDocument()
     expect(useMobileStore.getState().activeSurface).toBeNull()
   })

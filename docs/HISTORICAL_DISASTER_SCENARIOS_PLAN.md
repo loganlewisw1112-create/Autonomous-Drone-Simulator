@@ -1,5 +1,9 @@
 # Historical Disaster Scenarios — research findings and feasibility plan (v1)
 
+> **Archived design record.** Counts and “not authored” statements below refer
+> to the catalog when this plan was written. The current source of truth is the
+> 25-incident + 6-skills manifest and `PROJECT_STATUS.md`.
+
 **Autonomous Drone Mission Simulator · 22 July 2026 · PLAN ONLY, no code written**
 
 Proposal under assessment: add **10 scenarios modelled on real, past US natural or public
@@ -67,7 +71,7 @@ platform assignments. The 14 "extreme" scenarios are hand-authored TS literals i
 | `featureTypeFor` | keyword → bridge / shoreline / fireline / perimeter / street | Same gap. |
 | `localDispatchSourcesFor`, `supportDispatchSourceFor`, `leadFieldUnitFor` | keyword | Same gap. |
 | `launchSites` / `recoverySites` / assignments | geometric derivation + `isCityScenario` | Works, but `isCityScenario` is a hard-coded city list (Oakland/Hollywood/Times Square/SF/Seattle). New cities need adding or the metadata test's "no generic/water launch labels in cities" rule won't apply where it should. |
-| `missionObjectives` | **not authored by any of the 21 scenarios** — all use `resolveMissionObjectives`'s deterministic fallback (`missionObjectives.ts:49`) | Opportunity: disaster scenarios are the first good reason to author objectives explicitly. |
+| `missionObjectives` | At the original 21-scenario baseline, none authored objectives and all used `resolveMissionObjectives`'s deterministic fallback (`missionObjectives.ts:49`) | Historical opportunity that motivated the later disaster-scenario work. |
 | `weatherProfile` | `deriveWeatherProfile`, perturbed around the frozen observed baseline | Works as-is. |
 
 **Conclusion: adding a scenario is not just adding a literal.** Half its briefing is produced by

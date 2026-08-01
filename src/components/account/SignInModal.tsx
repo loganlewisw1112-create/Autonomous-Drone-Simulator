@@ -21,7 +21,6 @@ export function SignInModal() {
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(true)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -37,8 +36,8 @@ export function SignInModal() {
   async function handleSubmit() {
     setBusy(true)
     try {
-      if (mode === 'signup') await signUp(username, displayName, password, rememberMe)
-      else await signIn(username, password, rememberMe)
+      if (mode === 'signup') await signUp(username, displayName, password)
+      else await signIn(username, password)
     } finally {
       setBusy(false)
       setPassword('')
@@ -83,6 +82,7 @@ export function SignInModal() {
               className="account-input"
               style={{ marginTop: 4 }}
               value={username}
+              maxLength={64}
               autoCapitalize="none"
               autoComplete="username"
               onChange={(e) => setUsername(e.target.value)}
@@ -91,11 +91,12 @@ export function SignInModal() {
 
           {mode === 'signup' && (
             <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-              DISPLAY NAME (shown in mission logs)
+              OPERATOR ALIAS (shown in mission logs; do not use a real name for classroom pilots)
               <input
                 className="account-input"
                 style={{ marginTop: 4 }}
                 value={displayName}
+                maxLength={64}
                 onChange={(e) => setDisplayName(e.target.value)}
               />
             </label>
@@ -107,16 +108,12 @@ export function SignInModal() {
               className="account-input"
               style={{ marginTop: 4 }}
               type="password"
+              maxLength={128}
               value={password}
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !busy && void handleSubmit()}
             />
-          </label>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--text-secondary)' }}>
-            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
-            Stay signed in on this device
           </label>
 
           {authError && (
@@ -139,7 +136,8 @@ export function SignInModal() {
           <p style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
             Profiles are stored only on this device. Passwords are never transmitted; mission
             history is AES-256-GCM encrypted with a key derived from your password
-            (PBKDF2-SHA-256). A forgotten password cannot be recovered — export backups from Settings.
+            (PBKDF2-SHA-256). The key stays in memory, so reloading signs you out.
+            A forgotten password cannot be recovered — export backups from Settings.
           </p>
         </div>
       </div>

@@ -16,6 +16,7 @@ import { laneForScenario } from '@/scenarios/nistLanes'
 import { scoreLane } from '@/sim/mission/laneScoring'
 import { terrainAltitudeSnapshot } from '@/sim/terrain/altitude'
 import type { MissionEvent, ScenarioConfig } from '@/types'
+import { assuranceForScenario } from '@/assurance/trainingAssurance'
 
 // Recharts is a ~530kB vendor chunk — keep it out of the first paint by lazy-loading
 // the chart block (same React.lazy pattern as the modals in App.tsx).
@@ -141,6 +142,10 @@ export function TelemetryPanel() {
   const compliance = useMemo(
     () => activeTab === 'readiness' ? buildComplianceState({ scenario, drones, scenarioVariant, elapsedSec }) : null,
     [activeTab, scenario, drones, scenarioVariant, elapsedSec],
+  )
+  const assurance = useMemo(
+    () => activeTab === 'readiness' ? assuranceForScenario(scenario) : null,
+    [activeTab, scenario],
   )
   const authTraining = useMemo(
     () => activeTab === 'readiness'
@@ -331,7 +336,7 @@ export function TelemetryPanel() {
           {/* Event log */}
           <div className="panel-section" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div className="panel-label">
-              Chain of Custody Log
+              Application Event-Custody Log
               <span style={{ marginLeft: 6, fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)' }}>
                 {events.length} events
               </span>
@@ -349,7 +354,7 @@ export function TelemetryPanel() {
                     border: `1px solid ${chainValid ? '#44ff8855' : 'var(--accent-red)'}`,
                   }}
                 >
-                  {chainValid ? 'CHAIN VERIFIED' : 'CHAIN BROKEN'}
+                  {chainValid ? 'EVENT CHAIN VALID' : 'EVENT CHAIN BROKEN'}
                 </span>
               )}
             </div>
@@ -367,7 +372,7 @@ export function TelemetryPanel() {
       {activeTab === 'mavlink' && (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
           <div className="panel-section">
-            <div className="panel-label" style={{ marginBottom: 4 }}>MAVLink v2 — Decoded Feed</div>
+            <div className="panel-label" style={{ marginBottom: 4 }}>Simulated MAVLink-style — Training Data</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
               {drones.map((d) => (
                 <div key={d.id} style={{
@@ -407,7 +412,7 @@ export function TelemetryPanel() {
           >
             {mavlinkFeed.length === 0 ? (
               <span style={{ color: 'var(--text-dim)' }}>
-                {ui.isRunning ? 'Waiting for telemetry…' : 'Start mission to receive MAVLink feed'}
+                {ui.isRunning ? 'Waiting for simulated training data…' : 'Start exercise to generate simulated messages'}
               </span>
             ) : mavlinkFeed.map((line, i) => (
               <div key={i} style={{
@@ -475,7 +480,7 @@ export function TelemetryPanel() {
         </div>
       )}
       {/* ── READINESS TAB ────────────────────────────────────────────────── */}
-      {activeTab === 'readiness' && outcome && compliance && utm && (
+      {activeTab === 'readiness' && outcome && compliance && assurance && utm && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }} data-testid="investor-readiness-panel">
           <div className="panel-section">
             <div className="panel-label" style={{ marginBottom: 8 }}>Mission Outcome (measured)</div>
@@ -525,6 +530,16 @@ export function TelemetryPanel() {
           )}
 
           <div className="panel-section">
+            <div className="panel-label" style={{ marginBottom: 8 }}>Training Assurance</div>
+            <ReadinessPill label="MODE" value={assurance.mode.replaceAll('_', ' ').toUpperCase()} tone={assurance.trainingRunAllowed ? 'good' : 'warn'} />
+            <ReadinessPill label="DISPOSITION" value={assurance.launchDisposition.replaceAll('_', ' ').toUpperCase()} tone={assurance.trainingRunAllowed ? 'good' : 'bad'} />
+            <ReadinessPill label="TRAINING INPUT GAPS" value={`${assurance.blockers.length}`} tone={assurance.blockers.length === 0 ? 'good' : 'bad'} />
+            <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--text-dim)', lineHeight: 1.35 }}>
+              {assurance.disclaimer}
+            </div>
+          </div>
+
+          <div className="panel-section">
             <div className="panel-label" style={{ marginBottom: 8 }}>Compliance & Airspace Readiness</div>
             <ReadinessPill label="REMOTE ID" value={compliance.remoteId.status.toUpperCase()} tone={compliance.remoteId.status === 'broadcasting' ? 'good' : 'warn'} />
             <ReadinessPill label="AUTH" value={compliance.airspace.authorization.label} tone={compliance.airspace.authorization.status === 'ready' ? 'good' : 'warn'} />
@@ -554,7 +569,7 @@ export function TelemetryPanel() {
           </div>
 
           <div className="panel-section">
-            <div className="panel-label" style={{ marginBottom: 8 }}>UTM / External Traffic</div>
+            <div className="panel-label" style={{ marginBottom: 8 }}>Scripted Airspace &amp; Traffic</div>
             <ReadinessPill label="COORD" value={utm.coordinationMode} tone="good" />
             <ReadinessPill label="TRACKS" value={`${utm.externalTracks.length} external / ${utm.reservations.length} reservations`} tone="good" />
             <ReadinessPill label="CONFLICTS" value={`${utm.conflicts.length} active`} tone={utm.conflicts.length > 0 ? 'warn' : 'good'} />
@@ -569,7 +584,7 @@ export function TelemetryPanel() {
 
 function tabLabel(tab: Tab): string {
   if (tab === 'telem') return 'TELEM'
-  if (tab === 'mavlink') return 'MAVLINK'
+  if (tab === 'mavlink') return 'SIM LINK'
   if (tab === 'metrics') return 'METRICS'
   return 'READY'
 }

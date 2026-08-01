@@ -64,9 +64,9 @@ export function BottomDock() {
 
 // ── Sheets (rendered inside a bottom Drawer by MobileShell) ──────────────────
 
-export function ScenarioSheet({ onScenarioSelected, onOpenCustomMissions }: { onScenarioSelected?: () => void; onOpenCustomMissions?: () => void }) {
+export function ScenarioSheet({ onScenarioSelected, onOpenCustomMissions, customMissionsLocked = false }: { onScenarioSelected?: () => void; onOpenCustomMissions?: () => void; customMissionsLocked?: boolean }) {
   const {
-    scenario, scenarioVariant, weatherState,
+    scenario, scenarioVariant, weatherState, missionLoadError, missionLoadPending,
     handleScenarioChange, handleVariantChange, handleRandomizeSeed, handleDemoReset,
   } = useMissionControls()
   const scenarioOptions = useScenarioOptions()
@@ -77,20 +77,23 @@ export function ScenarioSheet({ onScenarioSelected, onOpenCustomMissions }: { on
       <select
         className="mobile-select"
         value={scenario?.id ?? ''}
+        disabled={missionLoadPending}
         onChange={(e) => {
-          onScenarioSelected?.()
-          handleScenarioChange(e.target.value)
+          void handleScenarioChange(e.target.value).then((loaded) => {
+            if (loaded) onScenarioSelected?.()
+          })
         }}
       >
-        <option value="" disabled>— Load Scenario —</option>
+        <option value="" disabled>{missionLoadPending ? '— Preparing terrain… —' : '— Load Scenario —'}</option>
         {scenarioOptions.map((s) => (
           <option key={s.id} value={s.id}>{s.label}</option>
         ))}
       </select>
+      {missionLoadError && <span className="mobile-status-line" role="alert">Terrain load blocked: {missionLoadError}</span>}
 
       {onOpenCustomMissions && (
         <button className="mobile-btn mobile-btn-full" onClick={onOpenCustomMissions}>
-          + CUSTOM MISSIONS
+          {customMissionsLocked ? '🔒 CUSTOM MISSIONS — SIGN IN REQUIRED' : '+ CUSTOM MISSIONS'}
         </button>
       )}
 
@@ -226,6 +229,8 @@ export function MissionSheet() {
             key={s}
             className={`mobile-btn grow${ui.simSpeed === s ? ' active' : ''}`}
             onClick={() => setSimSpeed(s)}
+            disabled={s === 20 && drones.some((drone) => drone.missionState === 'emergency')}
+            title={s === 20 ? 'Unassessed solo/replay speed; disabled during emergencies' : undefined}
           >
             {s}×
           </button>
@@ -279,7 +284,7 @@ export function ExportsSheet() {
       </div>
       <div className="mobile-sheet-row">
         <button className="mobile-btn grow" onClick={handleExportLog} disabled={events.length === 0}>
-          📋 CUSTODY LOG
+          📋 EVENT CUSTODY LOG
         </button>
       </div>
       <div className="mobile-sheet-row">

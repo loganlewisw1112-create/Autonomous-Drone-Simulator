@@ -8,11 +8,14 @@ import {
 import { selectRechargeStationForDrone } from '@/sim/mission/rechargeStations'
 import { offsetLatLng } from '@/utils/geometry'
 import type { DispatchPriority, LatLng, RouteSuggestion, ScenarioConfig, ThermalDetection, Waypoint } from '@/types'
+import { assuranceForScenario } from '@/assurance/trainingAssurance'
 
 export interface OperatorRouteValidation {
   accepted: boolean
   findings: ReturnType<typeof auditScenarioRoutes>
   terrainWarnings: ReturnType<typeof auditTerrainClearance>
+  trainingChecksPassed: boolean
+  trainingWarnings: string[]
   route: Waypoint[]
 }
 
@@ -59,18 +62,27 @@ export function validateOperatorRoute(
     },
   )
 
+  const assurance = assuranceForScenario(scenario)
+  const trainingWarnings = [
+    ...assurance.blockers,
+    ...terrainWarnings.map((warning) => warning.reason),
+  ]
   return {
     // Terrain coverage/clearance remains advisory. Only the established geofence audit rejects.
     accepted: findings.length === 0,
+    trainingChecksPassed: assurance.trainingRunAllowed
+      && findings.length === 0
+      && terrainWarnings.length === 0,
+    trainingWarnings,
     findings,
     terrainWarnings,
     route,
   }
 }
 
-/** Altitude band an operator-authored waypoint must fall within: 20–400 ft AGL (inclusive).
- *  Used by the custom-mission designer to reject waypoints below rooftop clearance or above
- *  the Part 107 ceiling before a mission is compiled. */
+/** Simulator envelope only: 20 ft is the modeled emergency surface threshold, not a planning
+ * clearance or obstacle-avoidance guarantee. 400 ft is the training ceiling; real rules and
+ * permitted structure-relative exceptions must be evaluated for the specific operation. */
 export const MIN_OPERATOR_ALTITUDE_FT = 20
 export const MAX_OPERATOR_ALTITUDE_FT = 400
 

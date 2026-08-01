@@ -24,6 +24,7 @@ export type MissionState =
   | 'hover'
   | 'inspect'
   | 'thermal_hold'
+  | 'lost_link_hold'
   | 'route_complete_loiter'
   | 'avoid'
   | 'return_to_base'
@@ -70,6 +71,8 @@ export interface DroneState {
   avoidStartSec?: number        // elapsedSec when drone entered 'avoid' for a traffic conflict
   avoidHeadingDeg?: number      // divergence heading held during the avoid maneuver
   avoidReturnState?: MissionState  // missionState to restore once the conflict clears
+  lostLinkReturnState?: MissionState
+  lostLinkAction?: 'continue' | 'hold' | 'land' | 'rtb' | 'hold_then_rtb'
 
   // ─── GNSS (REALISM_ROADMAP WP-7) ───────────────────────────────────────────
   // `position` above stays GROUND TRUTH and is what the sim flies. These describe what the
@@ -596,6 +599,14 @@ export interface ObservedWeather {
   gustKts: number
   tempF: number
   cloudCoverPct?: number
+  provenance?: {
+    source: string
+    sourceScenarioId: string
+    observedDate: string
+    sourceLocation: LatLng
+    proxyForScenarioId?: string
+    isProxy: boolean
+  }
 }
 
 // Real published FAA UAS Facility Map ceilings frozen from a fixture (REALISM_ROADMAP WP-3).
@@ -714,8 +725,6 @@ export interface HistoricalCase {
   capabilityGap: string
   documentedContribution?: string
   sources: Array<{ label: string; url: string }>
-  instructorNotes?: string
-  discussionPrompts?: string[]
 }
 
 // ─── Scenario ──────────────────────────────────────────────────────────────────
@@ -786,6 +795,19 @@ export interface ScenarioConfig {
   authoredRoutes?: Record<string, Waypoint[]>       // droneId → operator-authored waypoints
   defaultLaunchAssignments?: Record<string, string> // droneId → siteId, seeds the launch plan
   defaultRecoveryAssignments?: Record<string, string> // droneId → recovery siteId
+  /** Fail-closed assurance envelope. Omitted catalog scenarios are synthetic training. */
+  assuranceMode?: import('@/assurance/trainingAssurance').TrainingAssuranceMode
+  assuranceEvidence?: import('@/assurance/trainingAssurance').TrainingEvidence[]
+  /** Lost-link behavior must be explicit for any non-training release. */
+  lostLinkPolicy?: LostLinkPolicy
+  /** Required for fleets above four aircraft; identifies an advanced, supervised exercise. */
+  advancedFleetExercise?: boolean
+}
+
+export interface LostLinkPolicy {
+  action: 'continue' | 'hold' | 'land' | 'rtb' | 'hold_then_rtb'
+  holdSec?: number
+  explicitlyAcknowledged?: boolean
 }
 
 // ─── Mission lifecycle ───────────────────────────────────────────────────────────
@@ -833,6 +855,8 @@ export interface CustomMissionDefinition {
   launchAssignments: Record<string, string>     // droneId → siteId
   recoveryAssignments: Record<string, string>   // droneId → siteId
   routes: Record<string, Waypoint[]>            // droneId → authored waypoints (≤24 each)
+  geographicMode?: 'synthetic_training' | 'real_coordinate_familiarization'
+  advancedFleetAcknowledged?: boolean
   createdAt: number
   updatedAt: number
 }
@@ -1074,6 +1098,8 @@ export interface AfterActionPackage {
   outcome: MissionOutcomeSummary
   compliance: ComplianceState
   utm: UTMAirspaceState
+  assurance: import('@/assurance/trainingAssurance').TrainingAssuranceDecision
+  weatherProvenance?: ObservedWeather['provenance']
   evidence: {
     chainHash: string
     chainVerified: boolean   // result of verifyChain() over the full event log at export time

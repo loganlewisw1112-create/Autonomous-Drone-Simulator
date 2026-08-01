@@ -3,13 +3,16 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import {
   putAccount, putRun, putRunDetail, putMission,
+  putClassroom, putClassroomSession,
   exportBackup, importBackup,
-  getAccountByUsername, listRuns, listRunDetails, listMissions, deleteRun, clearRuns,
+  getAccountByUsername, listRuns, listRunDetails, listMissions,
+  listClassrooms, listClassroomSessions, deleteRun, clearRuns,
 } from '@/account/accountDb'
 import { MAX_CUSTOM_MISSIONS } from '@/account/types'
 import type {
   AccountRecord, RunRecord, RunRecordV2, CustomMissionRecord, BackupEnvelope,
 } from '@/account/types'
+import type { ClassroomRecord, ClassroomSessionRecord } from '@/account/classroomTypes'
 
 // Backup v2 carries account + runs + runDetails + missions. Legacy v1 envelopes
 // still import (runs only); a schemaVersion the app doesn't understand is
@@ -42,6 +45,26 @@ function makeDetail(id: string, accountId: string, completedAt: number): RunReco
 
 function makeMission(id: string, accountId: string, updatedAt: number): CustomMissionRecord {
   return { schemaVersion: 2, id, accountId, updatedAt, blob: DUMMY_BLOB }
+}
+
+function makeClassroom(id: string, accountId: string): ClassroomRecord {
+  return { schemaVersion: 1, id, accountId, updatedAt: 1000, blob: DUMMY_BLOB }
+}
+
+function makeClassroomSession(
+  id: string,
+  classroomId: string,
+  accountId: string,
+): ClassroomSessionRecord {
+  return {
+    schemaVersion: 1,
+    id,
+    classroomId,
+    classId: 'B2CD3F',
+    accountId,
+    endedAt: 1000,
+    blob: DUMMY_BLOB,
+  }
 }
 
 beforeEach(() => {
@@ -81,17 +104,21 @@ describe('backup v2', () => {
     expect(await listMissions('acct-1')).toHaveLength(0)
   })
 
-  it('exports v2 and round-trips runs + runDetails + missions', async () => {
+  it('exports v2 and round-trips every account-owned store', async () => {
     await putAccount(makeAccount())
     await putRun(makeRun('r1', 'acct-1', 1000))
     await putRunDetail(makeDetail('r1', 'acct-1', 1000))
     await putMission(makeMission('m1', 'acct-1', 1000))
+    await putClassroom(makeClassroom('classroom-1', 'acct-1'))
+    await putClassroomSession(makeClassroomSession('session-1', 'classroom-1', 'acct-1'))
 
     const envelope = await exportBackup('acct-1')
     expect(envelope?.schemaVersion).toBe(2)
     expect(envelope?.runs).toHaveLength(1)
     expect(envelope?.runDetails).toHaveLength(1)
     expect(envelope?.missions).toHaveLength(1)
+    expect(envelope?.classrooms).toHaveLength(1)
+    expect(envelope?.classroomSessions).toHaveLength(1)
 
     globalThis.indexedDB = new IDBFactory() // simulate a wiped device
     const result = await importBackup(envelope)
@@ -100,6 +127,8 @@ describe('backup v2', () => {
     expect(await listRuns('acct-1')).toHaveLength(1)
     expect(await listRunDetails('acct-1')).toHaveLength(1)
     expect(await listMissions('acct-1')).toHaveLength(1)
+    expect(await listClassrooms('acct-1')).toHaveLength(1)
+    expect(await listClassroomSessions('acct-1')).toHaveLength(1)
   })
 
   it('rejects a newer schemaVersion with a clear message', async () => {

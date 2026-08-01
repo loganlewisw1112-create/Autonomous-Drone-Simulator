@@ -1,4 +1,9 @@
-import { decryptJson, encryptJson } from '@/account/crypto'
+import {
+  accountCipherAad,
+  decryptJson,
+  encryptJson,
+  isLegacyCipherBlob,
+} from '@/account/crypto'
 import { MAX_CUSTOM_MISSIONS } from '@/account/types'
 import type {
   AccountRecord,
@@ -28,6 +33,7 @@ import type { ClassroomRecord, ClassroomSessionRecord } from '@/account/classroo
 
 const DB_NAME = 'drone-sim-accounts'
 const DB_VERSION = 3
+const readOnlyAccounts = new Set<string>()
 
 type StoreName = 'accounts' | 'runs' | 'runDetails' | 'missions' | 'classrooms' | 'classroomSessions'
 
@@ -138,7 +144,18 @@ function isTimestamp(value: unknown): value is number {
 function isCipherBlob(value: unknown): value is CipherBlob {
   if (typeof value !== 'object' || value === null) return false
   const blob = value as Partial<CipherBlob>
-  return isNonEmptyString(blob.iv) && isNonEmptyString(blob.ct)
+  if (!isNonEmptyString(blob.iv) || !isNonEmptyString(blob.ct)) return false
+  if (blob.version === 2) return isNonEmptyString(blob.aad)
+  return blob.version === undefined || blob.version === 1
+}
+
+export function setAccountStorageReadOnly(accountId: string, readOnly: boolean): void {
+  if (readOnly) readOnlyAccounts.add(accountId)
+  else readOnlyAccounts.delete(accountId)
+}
+
+export function isAccountStorageReadOnly(accountId: string): boolean {
+  return readOnlyAccounts.has(accountId)
 }
 
 function isAccountRecord(v: unknown): v is AccountRecord {
@@ -192,9 +209,24 @@ function hasUniqueIds(records: Array<{ id: string }>): boolean {
   return new Set(records.map((record) => record.id)).size === records.length
 }
 
+type CipherStoreName = 'runs' | 'runDetails' | 'missions' | 'classrooms' | 'classroomSessions'
+type StoredCipherRecord = { id: string; accountId: string; blob: CipherBlob }
+
+function aadForStoredRecord(name: CipherStoreName, record: StoredCipherRecord): string {
+  const kind = {
+    runs: 'run-summary',
+    runDetails: 'run-detail',
+    missions: 'custom-mission',
+    classrooms: 'classroom-meta',
+    classroomSessions: 'classroom-session',
+  } as const
+  return accountCipherAad(kind[name], record.accountId, record.id)
+}
+
 // ── Accounts ──────────────────────────────────────────────────────────────────
 
 export async function putAccount(record: AccountRecord): Promise<boolean> {
+  if (isAccountStorageReadOnly(record.id)) return false
   const ok = await withStore('accounts', 'readwrite', async (store) => {
     await requestToPromise(store.put(record))
     return true
@@ -218,6 +250,7 @@ export async function listAccounts(): Promise<AccountRecord[]> {
 }
 
 export async function deleteAccount(accountId: string): Promise<boolean> {
+  if (isAccountStorageReadOnly(accountId)) return false
   const db = await openDb()
   if (!db) return false
   return new Promise((resolve) => {
@@ -249,6 +282,7 @@ export async function deleteAccount(accountId: string): Promise<boolean> {
 // ── Runs (schemaVersion 1 summaries) ────────────────────────────────────────────
 
 export async function putRun(record: RunRecord): Promise<boolean> {
+  if (isAccountStorageReadOnly(record.accountId)) return false
   const ok = await withStore('runs', 'readwrite', async (store) => {
     await requestToPromise(store.put(record))
     return true
@@ -271,6 +305,7 @@ export async function putRunBundle(
   summary: RunRecord,
   detail: RunRecordV2 | null,
 ): Promise<PutRunBundleResult> {
+  if (isAccountStorageReadOnly(summary.accountId)) return { ok: false }
   if (!isRunRecord(summary)) return { ok: false }
   if (detail && (!isRunRecordV2(detail)
     || detail.id !== summary.id
@@ -324,6 +359,8 @@ export async function listRuns(accountId: string): Promise<RunRecord[]> {
 }
 
 export async function deleteRun(id: string): Promise<boolean> {
+  const existing = await getRun(id)
+  if (existing && isAccountStorageReadOnly(existing.accountId)) return false
   const db = await openDb()
   if (!db) return false
   return new Promise((resolve) => {
@@ -342,6 +379,7 @@ export async function deleteRun(id: string): Promise<boolean> {
 }
 
 export async function clearRuns(accountId: string): Promise<boolean> {
+  if (isAccountStorageReadOnly(accountId)) return false
   const db = await openDb()
   if (!db) return false
   return new Promise((resolve) => {
@@ -366,6 +404,48 @@ export async function clearRuns(accountId: string): Promise<boolean> {
   })
 }
 
+/**
+ * Approved pilot default: operational run detail and classroom session archives are
+ * retained for seven days on the device, then removed atomically on successful sign-in.
+ * User-downloaded exports are outside application storage and remain institution-managed.
+ */
+export async function purgeExpiredOperationalRecords(
+  accountId: string,
+  now = Date.now(),
+  retentionMs = 7 * 24 * 60 * 60 * 1000,
+): Promise<boolean> {
+  if (isAccountStorageReadOnly(accountId) || !Number.isFinite(now) || !Number.isFinite(retentionMs) || retentionMs < 0) return false
+  const cutoff = now - retentionMs
+  const db = await openDb()
+  if (!db) return false
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(['runs', 'runDetails', 'classroomSessions'], 'readwrite')
+      const purge = (storeName: 'runs' | 'runDetails' | 'classroomSessions', timestamp: 'completedAt' | 'endedAt') => {
+        const request = tx.objectStore(storeName).index('byAccount').openCursor(accountRange(accountId))
+        request.onsuccess = () => {
+          const cursor = request.result
+          if (!cursor) return
+          const record = cursor.value as Record<string, unknown>
+          if (record.accountId === accountId && typeof record[timestamp] === 'number' && record[timestamp] < cutoff) {
+            cursor.delete()
+          }
+          cursor.continue()
+        }
+      }
+      purge('runs', 'completedAt')
+      purge('runDetails', 'completedAt')
+      purge('classroomSessions', 'endedAt')
+      tx.oncomplete = () => { db.close(); resolve(true) }
+      tx.onerror = () => { db.close(); resolve(false) }
+      tx.onabort = () => { db.close(); resolve(false) }
+    } catch {
+      db.close()
+      resolve(false)
+    }
+  })
+}
+
 // ── Run details (schemaVersion 2 immutable drill-down) ───────────────────────────
 
 // Quota-aware: a full detail can be large. If the device rejects the write with
@@ -374,6 +454,7 @@ export async function clearRuns(accountId: string): Promise<boolean> {
 export async function putRunDetail(
   rec: RunRecordV2,
 ): Promise<{ ok: true } | { ok: false; quota: true } | { ok: false }> {
+  if (isAccountStorageReadOnly(rec.accountId)) return { ok: false }
   const db = await openDb()
   if (!db) return { ok: false }
   return new Promise((resolve) => {
@@ -412,6 +493,8 @@ export async function listRunDetails(accountId: string): Promise<RunRecordV2[]> 
 }
 
 export async function deleteRunDetail(id: string): Promise<boolean> {
+  const existing = await getRunDetail(id)
+  if (existing && isAccountStorageReadOnly(existing.accountId)) return false
   const ok = await withStore('runDetails', 'readwrite', async (store) => {
     await requestToPromise(store.delete(id))
     return true
@@ -420,6 +503,7 @@ export async function deleteRunDetail(id: string): Promise<boolean> {
 }
 
 export async function clearRunDetails(accountId: string): Promise<boolean> {
+  if (isAccountStorageReadOnly(accountId)) return false
   const details = await listRunDetails(accountId)
   const ok = await withStore('runDetails', 'readwrite', async (store) => {
     for (const d of details) await requestToPromise(store.delete(d.id))
@@ -441,6 +525,7 @@ export async function putMission(
   | { ok: false; reason: 'quota' }
   | { ok: false }
 > {
+  if (isAccountStorageReadOnly(rec.accountId)) return { ok: false }
   const db = await openDb()
   if (!db) return { ok: false }
   return new Promise((resolve) => {
@@ -503,6 +588,8 @@ export async function listMissions(accountId: string): Promise<CustomMissionReco
 }
 
 export async function deleteMission(id: string): Promise<boolean> {
+  const existing = await getMission(id)
+  if (existing && isAccountStorageReadOnly(existing.accountId)) return false
   const ok = await withStore('missions', 'readwrite', async (store) => {
     await requestToPromise(store.delete(id))
     return true
@@ -511,6 +598,7 @@ export async function deleteMission(id: string): Promise<boolean> {
 }
 
 export async function clearMissions(accountId: string): Promise<boolean> {
+  if (isAccountStorageReadOnly(accountId)) return false
   const missions = await listMissions(accountId)
   const ok = await withStore('missions', 'readwrite', async (store) => {
     for (const m of missions) await requestToPromise(store.delete(m.id))
@@ -520,6 +608,112 @@ export async function clearMissions(accountId: string): Promise<boolean> {
 }
 
 // ── Atomic re-key (change password) ─────────────────────────────────────────────
+
+export type AccountCipherMigrationResult = 'current' | 'migrated' | 'failed'
+
+/**
+ * Authenticates every account-owned ciphertext to its store and record id.
+ * All legacy blobs are upgraded in one transaction. A corrupt/misbound row
+ * aborts the transaction, leaving every legacy row byte-for-byte unchanged.
+ */
+export async function migrateAccountCipherBlobs(
+  accountId: string,
+  key: Uint8Array,
+): Promise<AccountCipherMigrationResult> {
+  if (!isNonEmptyString(accountId)) return 'failed'
+  const db = await openDb()
+  if (!db) return 'failed'
+
+  return new Promise((resolve) => {
+    let migrated = false
+    let failed = false
+    try {
+      const tx = db.transaction(
+        ['accounts', 'runs', 'runDetails', 'missions', 'classrooms', 'classroomSessions'],
+        'readwrite',
+      )
+      const fail = () => {
+        if (failed) return
+        failed = true
+        try { tx.abort() } catch { /* already finishing */ }
+      }
+
+      const accountStore = tx.objectStore('accounts')
+      const accountReq = accountStore.get(accountId)
+      accountReq.onsuccess = () => {
+        const account = accountReq.result
+        if (!isAccountRecord(account) || account.id !== accountId) {
+          fail()
+          return
+        }
+        try {
+          const checkAad = accountCipherAad('check', accountId)
+          const check = decryptJson(key, account.checkBlob, checkAad)
+          const next: AccountRecord = { ...account }
+          if (isLegacyCipherBlob(account.checkBlob)) {
+            next.checkBlob = encryptJson(key, check, checkAad)
+            migrated = true
+          }
+          if (account.prefsBlob) {
+            const prefsAad = accountCipherAad('prefs', accountId)
+            const prefs = decryptJson(key, account.prefsBlob, prefsAad)
+            if (isLegacyCipherBlob(account.prefsBlob)) {
+              next.prefsBlob = encryptJson(key, prefs, prefsAad)
+              migrated = true
+            }
+          }
+          if (next !== account && migrated) accountStore.put(next)
+        } catch {
+          fail()
+        }
+      }
+      accountReq.onerror = () => fail()
+
+      const migrateStore = (name: CipherStoreName) => {
+        const cursorReq = tx.objectStore(name).index('byAccount').openCursor(accountRange(accountId))
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result
+          if (!cursor) return
+          try {
+            const record = cursor.value as StoredCipherRecord
+            if (record.accountId !== accountId || !isCipherBlob(record.blob)) {
+              fail()
+              return
+            }
+            const aad = aadForStoredRecord(name, record)
+            const value = decryptJson(key, record.blob, aad)
+            if (isLegacyCipherBlob(record.blob)) {
+              cursor.update({ ...record, blob: encryptJson(key, value, aad) })
+              migrated = true
+            }
+          } catch {
+            fail()
+            return
+          }
+          cursor.continue()
+        }
+        cursorReq.onerror = () => fail()
+      }
+
+      migrateStore('runs')
+      migrateStore('runDetails')
+      migrateStore('missions')
+      migrateStore('classrooms')
+      migrateStore('classroomSessions')
+
+      tx.oncomplete = () => {
+        db.close()
+        setAccountStorageReadOnly(accountId, false)
+        resolve(migrated ? 'migrated' : 'current')
+      }
+      tx.onerror = () => { db.close(); resolve('failed') }
+      tx.onabort = () => { db.close(); resolve('failed') }
+    } catch {
+      db.close()
+      resolve('failed')
+    }
+  })
+}
 
 // Re-encrypts every account-owned blob under `newKey` in a SINGLE transaction
 // spanning all stores. The caller passes a fully-rebuilt AccountRecord
@@ -534,7 +728,8 @@ export async function rekeyAllRecords(
 ): Promise<boolean> {
   if (!isNonEmptyString(accountId)
     || !isAccountRecord(newAccountRecord)
-    || newAccountRecord.id !== accountId) return false
+    || newAccountRecord.id !== accountId
+    || isAccountStorageReadOnly(accountId)) return false
   const db = await openDb()
   if (!db) return false
   return new Promise((resolve) => {
@@ -552,15 +747,16 @@ export async function rekeyAllRecords(
 
       tx.objectStore('accounts').put(newAccountRecord)
 
-      const rekeyStore = (name: 'runs' | 'runDetails' | 'missions' | 'classrooms' | 'classroomSessions') => {
+      const rekeyStore = (name: CipherStoreName) => {
         const cursorReq = tx.objectStore(name).index('byAccount').openCursor(accountRange(accountId))
         cursorReq.onsuccess = () => {
           const cursor = cursorReq.result
           if (!cursor) return
           try {
-            const rec = cursor.value as { blob: CipherBlob }
-            const obj = decryptJson(oldKey, rec.blob)
-            cursor.update({ ...rec, blob: encryptJson(newKey, obj) })
+            const rec = cursor.value as StoredCipherRecord
+            const aad = aadForStoredRecord(name, rec)
+            const obj = decryptJson(oldKey, rec.blob, aad)
+            cursor.update({ ...rec, blob: encryptJson(newKey, obj, aad) })
           } catch {
             fail()
             return
@@ -598,6 +794,8 @@ export async function exportBackup(accountId: string): Promise<BackupEnvelopeV2 
   const runs = await listRuns(accountId)
   const runDetails = await listRunDetails(accountId)
   const missions = await listMissions(accountId)
+  const classrooms = await listClassrooms(accountId)
+  const classroomSessions = await listClassroomSessions(accountId)
   return {
     kind: 'drone-sim-backup',
     schemaVersion: 2,
@@ -606,6 +804,8 @@ export async function exportBackup(accountId: string): Promise<BackupEnvelopeV2 
     runs,
     runDetails,
     missions,
+    classrooms,
+    classroomSessions,
   }
 }
 
@@ -625,6 +825,9 @@ export async function importBackup(envelope: unknown): Promise<{ ok: boolean; re
   // ── Validate the ENTIRE envelope up-front; only then touch storage. ──
   if (!isAccountRecord(env.account)) return { ok: false, reason: 'Backup account record is invalid' }
   const account = env.account
+  if (isAccountStorageReadOnly(account.id)) {
+    return { ok: false, reason: 'That profile is read-only; export it before attempting repair' }
+  }
   if (!isTimestamp(env.exportedAt)) return { ok: false, reason: 'Backup export timestamp is invalid' }
   if (!Array.isArray(env.runs) || !env.runs.every(isRunRecord)) return { ok: false, reason: 'Backup runs list is invalid' }
   const runs = env.runs
@@ -635,17 +838,31 @@ export async function importBackup(envelope: unknown): Promise<{ ok: boolean; re
 
   let runDetails: RunRecordV2[] = []
   let missions: CustomMissionRecord[] = []
+  let classrooms: ClassroomRecord[] = []
+  let classroomSessions: ClassroomSessionRecord[] = []
   if (version === 2) {
     const v2 = env as Partial<BackupEnvelopeV2>
     if (!Array.isArray(v2.runDetails) || !v2.runDetails.every(isRunRecordV2)) return { ok: false, reason: 'Backup runDetails list is invalid' }
     if (!Array.isArray(v2.missions) || !v2.missions.every(isCustomMissionRecord)) return { ok: false, reason: 'Backup missions list is invalid' }
     runDetails = v2.runDetails
     missions = v2.missions
+    classrooms = v2.classrooms ?? []
+    classroomSessions = v2.classroomSessions ?? []
+    if (!Array.isArray(classrooms) || !classrooms.every(isClassroomRecord)) return { ok: false, reason: 'Backup classrooms list is invalid' }
+    if (!Array.isArray(classroomSessions) || !classroomSessions.every(isClassroomSessionRecord)) return { ok: false, reason: 'Backup classroomSessions list is invalid' }
     if (!hasUniqueIds(runDetails)) return { ok: false, reason: 'Backup contains duplicate run-detail ids' }
     if (!hasUniqueIds(missions)) return { ok: false, reason: 'Backup contains duplicate mission ids' }
+    if (!hasUniqueIds(classrooms)) return { ok: false, reason: 'Backup contains duplicate classroom ids' }
+    if (!hasUniqueIds(classroomSessions)) return { ok: false, reason: 'Backup contains duplicate classroom-session ids' }
     if (runDetails.some((record) => record.accountId !== account.id)
-      || missions.some((record) => record.accountId !== account.id)) {
+      || missions.some((record) => record.accountId !== account.id)
+      || classrooms.some((record) => record.accountId !== account.id)
+      || classroomSessions.some((record) => record.accountId !== account.id)) {
       return { ok: false, reason: 'Backup contains data owned by another account' }
+    }
+    const classroomIds = new Set(classrooms.map((record) => record.id))
+    if (classroomSessions.some((record) => !classroomIds.has(record.classroomId))) {
+      return { ok: false, reason: 'Backup contains an orphan classroom session' }
     }
     const summariesById = new Map(runs.map((record) => [record.id, record]))
     if (runDetails.some((detail) => {
@@ -665,7 +882,10 @@ export async function importBackup(envelope: unknown): Promise<{ ok: boolean; re
   let missionLimitExceeded = false
   const ok = await new Promise<boolean>((resolve) => {
     try {
-      const tx = db.transaction(['accounts', 'runs', 'runDetails', 'missions'], 'readwrite')
+      const tx = db.transaction(
+        ['accounts', 'runs', 'runDetails', 'missions', 'classrooms', 'classroomSessions'],
+        'readwrite',
+      )
       const missionStore = tx.objectStore('missions')
       const existingReq = missionStore.index('byAccount').getAllKeys(accountRange(account.id))
       existingReq.onsuccess = () => {
@@ -681,6 +901,10 @@ export async function importBackup(envelope: unknown): Promise<{ ok: boolean; re
         for (const r of runs) tx.objectStore('runs').put(r)
         for (const d of runDetails) tx.objectStore('runDetails').put(d)
         for (const m of missions) missionStore.put(m)
+        for (const classroom of classrooms) tx.objectStore('classrooms').put(classroom)
+        for (const session of classroomSessions) {
+          tx.objectStore('classroomSessions').put(session)
+        }
       }
       tx.oncomplete = () => { db.close(); resolve(true) }
       tx.onerror = () => { db.close(); resolve(false) }
@@ -725,7 +949,7 @@ function isClassroomSessionRecord(v: unknown): v is ClassroomSessionRecord {
 }
 
 export async function putClassroom(record: ClassroomRecord): Promise<boolean> {
-  if (!isClassroomRecord(record)) return false
+  if (!isClassroomRecord(record) || isAccountStorageReadOnly(record.accountId)) return false
   const result = await withStore('classrooms', 'readwrite', async (store) => {
     store.put(record)
     return true
@@ -747,6 +971,8 @@ export async function getClassroom(id: string): Promise<ClassroomRecord | null> 
 }
 
 export async function deleteClassroom(id: string): Promise<boolean> {
+  const existing = await getClassroom(id)
+  if (existing && isAccountStorageReadOnly(existing.accountId)) return false
   const result = await withStore('classrooms', 'readwrite', async (store) => {
     store.delete(id)
     return true
@@ -755,7 +981,7 @@ export async function deleteClassroom(id: string): Promise<boolean> {
 }
 
 export async function putClassroomSession(record: ClassroomSessionRecord): Promise<boolean> {
-  if (!isClassroomSessionRecord(record)) return false
+  if (!isClassroomSessionRecord(record) || isAccountStorageReadOnly(record.accountId)) return false
   const result = await withStore('classroomSessions', 'readwrite', async (store) => {
     store.put(record)
     return true

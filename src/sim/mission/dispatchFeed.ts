@@ -133,7 +133,7 @@ function derivedEventEntries(input: MissionStatusFeedInput): DispatchFeedEntry[]
           message: `${droneLabel} has aircraft spacing conflict with ${String(event.payload.conflictWith ?? 'another unit')}; altitude/route separation required.`,
         })
         break
-      case 'rtb_triggered':
+      case 'rtb_triggered': {
         const rtbStationLabel = stringPayload(event.payload.rechargeStationLabel)
         const rtbReason = String(event.payload.reason ?? 'route_complete').replace(/_/g, ' ')
         entries.push({
@@ -147,6 +147,7 @@ function derivedEventEntries(input: MissionStatusFeedInput): DispatchFeedEntry[]
             : `${droneLabel} executing return-to-base (${rtbReason}).`,
         })
         break
+      }
       case 'waypoint_reached':
         entries.push({
           ...base,
@@ -157,7 +158,7 @@ function derivedEventEntries(input: MissionStatusFeedInput): DispatchFeedEntry[]
           message: `${droneLabel} reached tactical waypoint ${String(event.payload.waypointIndex ?? '')}; next route leg active.`,
         })
         break
-      case 'recharge_start':
+      case 'recharge_start': {
         const rechargeStationLabel = stringPayload(event.payload.rechargeStationLabel)
         entries.push({
           ...base,
@@ -170,6 +171,7 @@ function derivedEventEntries(input: MissionStatusFeedInput): DispatchFeedEntry[]
             : `${droneLabel} on recharge cycle; sortie ${String(event.payload.sortieNum ?? '')} turnaround in progress.`,
         })
         break
+      }
       case 'sortie_launch':
         entries.push({
           ...base,

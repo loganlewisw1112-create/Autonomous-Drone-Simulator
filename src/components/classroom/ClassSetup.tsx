@@ -1,13 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { getScenarioOptions } from '@/scenarios/registry'
 import { startClass } from '@/classroom/classroomClient'
 import { useClassroomStore } from '@/classroom/classroomStore'
 import { useAuthStore } from '@/store/authStore'
 import { createClassroom, touchClassroomOpened } from '@/account/classroomArchive'
-import { instructorAccessIsConfigured } from '@/account/instructorAccess'
+import { fetchInstructorAccessStatus } from '@/account/instructorAccessRemote'
+import { getClassroomDesktopBridge } from '@/licensing/desktopBridge'
 import type { ClassConfig } from '@/classroom/protocol'
 import type { ScenarioVariantConfig } from '@/types'
+import { useUsagePolicy } from '@/licensing/UsagePolicyGate'
+import { USAGE_POLICY } from '@/licensing/usagePolicy'
+import { assuranceForScenario } from '@/assurance/trainingAssurance'
 
 function defaultVariant(seed: number): ScenarioVariantConfig {
   return {
@@ -26,12 +30,17 @@ export function ClassSetup({
 }: {
   onOpenSaved?: () => void
 }) {
+  const usagePolicy = useUsagePolicy()
   const options = useMemo(() => getScenarioOptions(), [])
   const [scenarioId, setScenarioId] = useState(options[0]?.id ?? '')
   const scenario = options.find((o) => o.id === scenarioId)?.config
+  const assurance = useMemo(() => assuranceForScenario(scenario ?? null), [scenario])
   const [seed, setSeed] = useState(scenario?.seed ?? 1)
+  const [durationMinutes, setDurationMinutes] = useState(USAGE_POLICY.defaultClassDurationMin)
   const [graded, setGraded] = useState(true)
   const [accessCode, setAccessCode] = useState('')
+  const [relayAccessConfigured, setRelayAccessConfigured] = useState<boolean | null>(null)
+  const [relayAuthenticated, setRelayAuthenticated] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
@@ -53,7 +62,27 @@ export function ClassSetup({
   })))
 
   const unlocked = activeAccount?.instructorUnlocked === true
-  const schoolUnlockConfigured = instructorAccessIsConfigured()
+  const sessionReady = unlocked && relayAuthenticated === true
+  const desktopBridge = getClassroomDesktopBridge()
+  let desktopOwnsRelay = false
+  try {
+    desktopOwnsRelay = desktopBridge?.getState().serverOwned === true
+  } catch { /* unavailable bridge state behaves like a browser/external relay */ }
+  const accessConfigured = relayAccessConfigured === true
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchInstructorAccessStatus().then((status) => {
+      if (cancelled) return
+      setRelayAccessConfigured(status?.configured ?? null)
+      setRelayAuthenticated(status?.authenticated ?? false)
+    })
+    return () => { cancelled = true }
+  }, [activeAccount?.id])
+
+  useEffect(() => {
+    if (error === 'instructor-session-required') setRelayAuthenticated(false)
+  }, [error])
 
   function pick(id: string) {
     setScenarioId(id)
@@ -67,15 +96,39 @@ export function ClassSetup({
     setLocalError(null)
     clearAuthError()
     try {
-      const ok = await unlockInstructor(accessCode)
-      if (ok) setAccessCode('')
+      let ok = await unlockInstructor(accessCode)
+      if (!ok && desktopBridge) {
+        const remote = await fetchInstructorAccessStatus()
+        if (remote && !remote.configured) {
+          const provisioned = await desktopBridge.provisionInstructorAccess(accessCode)
+          if (provisioned.ok) {
+            clearAuthError()
+            ok = await unlockInstructor(accessCode)
+          } else if (provisioned.error !== 'cancelled') {
+            setLocalError(
+              provisioned.error === 'relay-not-owned'
+                ? 'This relay was started outside the desktop host. Provision it from the process that owns its administrator token.'
+                : 'The local classroom relay could not provision the instructor access code.',
+            )
+          }
+        }
+      }
+      if (ok) {
+        setAccessCode('')
+        setRelayAccessConfigured(true)
+        setRelayAuthenticated(true)
+      }
     } finally {
       setBusy(false)
     }
   }
 
   async function create() {
-    if (!scenario || !unlocked || !activeAccount || !sessionKey || busy) return
+    if (!scenario || !sessionReady || !activeAccount || !sessionKey || busy) return
+    if (!usagePolicy.canBeginNewActivity) {
+      setLocalError('The pilot/demo window is in debrief-only mode. New classes are disabled; saved records remain available.')
+      return
+    }
     setBusy(true)
     setLocalError(null)
     try {
@@ -94,8 +147,8 @@ export function ClassSetup({
         setActiveClassroomId(classroomId)
       }
       await touchClassroomOpened(activeAccount.id, sessionKey, classroomId)
-      const config: ClassConfig = { kind: 'catalog', scenarioId, variant: defaultVariant(seed) }
-      startClass(config)
+      const config: ClassConfig = { kind: 'catalog', scenarioId, variant: defaultVariant(seed), durationMinutes }
+      startClass(config, graded)
     } finally {
       setBusy(false)
     }
@@ -107,13 +160,15 @@ export function ClassSetup({
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>Start a training class</div>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
-            {unlocked
+            {sessionReady
               ? 'Students join from their own device with a 6-character code.'
-              : 'Finish instructor setup with the supervised access code, then create the class.'}
+              : unlocked
+                ? 'Re-authenticate this relay session with the supervised access code.'
+                : 'Finish instructor setup with the supervised access code, then create the class.'}
           </div>
         </div>
 
-        {!unlocked && (
+        {!sessionReady && (
           <div
             data-testid="instructor-unlock-section"
             style={{
@@ -128,9 +183,11 @@ export function ClassSetup({
           >
             <div style={{ fontSize: 13, fontWeight: 700 }}>Insert access code here</div>
             <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.45 }}>
-              {schoolUnlockConfigured
-                ? 'Enter the school access code for this classroom. One-time per instructor account — after it succeeds, this field will not appear again.'
-                : 'Type the access code you want for this school. The first code entered here becomes the unlock code automatically — you do not create folders or hex digests.'}
+              {accessConfigured
+                ? 'Enter the school access code for this classroom. Relay sessions expire after eight hours and after logout, rotation, or reset.'
+                : desktopOwnsRelay
+                  ? 'Type the code you want for this school. The Windows host will ask for confirmation before provisioning its local relay.'
+                  : 'The local classroom relay administrator must provision an access code before instructor accounts can unlock.'}
             </div>
             <input
               className="cls-input"
@@ -151,7 +208,7 @@ export function ClassSetup({
               disabled={busy || !accessCode.trim()}
               onClick={() => void handleUnlock()}
             >
-              {busy ? 'Unlocking…' : 'Finish account setup'}
+              {busy ? 'Authenticating…' : unlocked ? 'Authenticate instructor' : 'Finish account setup'}
             </button>
             {(localError || authError) && (
               <div style={{ color: '#ff8080', fontSize: 12 }} data-testid="auth-error">
@@ -161,7 +218,7 @@ export function ClassSetup({
           </div>
         )}
 
-        {unlocked && (
+        {sessionReady && (
           <>
             <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>
               Scenario
@@ -185,11 +242,38 @@ export function ClassSetup({
               </label>
             </div>
 
+            <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+              Class time limit (minutes)
+              <input
+                className="cls-input"
+                type="number"
+                min={USAGE_POLICY.classDurationRangeMin[0]}
+                max={USAGE_POLICY.classDurationRangeMin[1]}
+                step={5}
+                value={durationMinutes}
+                onChange={(event) => setDurationMinutes(Math.max(
+                  USAGE_POLICY.classDurationRangeMin[0],
+                  Math.min(USAGE_POLICY.classDurationRangeMin[1], Number(event.target.value)),
+                ))}
+              />
+              <span style={{ display: 'block', marginTop: 4 }}>
+                30-180 minutes; default 60. Expiry blocks new mission starts but never deletes records or interrupts recovery/export.
+              </span>
+            </label>
+
+            <div role="status" style={{ border: '1px solid var(--border-color)', padding: 10, fontSize: 11, color: 'var(--text-dim)' }}>
+              <strong style={{ display: 'block', color: assurance.trainingRunAllowed ? 'var(--accent-green)' : 'var(--accent-yellow)' }}>
+                TRAINING ASSURANCE: {assurance.launchDisposition.replaceAll('_', ' ').toUpperCase()}
+              </strong>
+              {assurance.disclaimer}
+              {assurance.blockers.length > 0 && <div>{assurance.blockers.length} required training input(s) are missing, stale, or invalid.</div>}
+            </div>
+
             <button
               type="button"
               className="cls-btn"
               data-testid="create-new-class"
-              disabled={!scenario || busy || status === 'connecting'}
+              disabled={!scenario || busy || status === 'connecting' || !usagePolicy.canBeginNewActivity}
               onClick={() => void create()}
             >
               {status === 'connecting' || busy ? 'Creating…' : 'Create class'}
@@ -214,6 +298,9 @@ export function ClassSetup({
               <div style={{ color: '#ff8080', fontSize: 12 }}>
                 {error === 'not-instructor' ? 'That code is already running on this relay. Reroll and create again.'
                   : error === 'server-full' ? 'This relay is already hosting its maximum number of classes.'
+                    : error === 'invalid-class-duration' ? 'Class duration must be between 30 and 180 minutes.'
+                    : error === 'secure-transport-required' ? 'Trusted HTTPS/WSS is required for graded classroom sessions.'
+                      : error === 'instructor-session-required' ? 'Your relay instructor session expired. Enter the school access code again.'
                     : 'Could not reach the classroom relay. Is the server running on this machine?'}
               </div>
             )}

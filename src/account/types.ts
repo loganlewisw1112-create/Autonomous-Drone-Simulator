@@ -1,4 +1,5 @@
 import type { PlatformId } from '@/sim/drone/platformCatalog'
+import type { ClassroomRecord, ClassroomSessionRecord } from '@/account/classroomTypes'
 import type {
   AfterActionPackage,
   CustomMissionDefinition,
@@ -27,10 +28,24 @@ export interface KdfParams {
   salt: string          // base64
 }
 
-export interface CipherBlob {
+export interface LegacyCipherBlob {
+  version?: 1
   iv: string            // base64, 12-byte AES-GCM nonce, unique per record
   ct: string            // base64 ciphertext (includes GCM auth tag)
 }
+
+export interface CipherBlobV2 {
+  version: 2
+  iv: string            // base64, 12-byte AES-GCM nonce, unique per record
+  ct: string            // base64 ciphertext (includes GCM auth tag)
+  /**
+   * Record identity authenticated as AES-GCM additional data. This is not
+   * secret; it prevents a valid ciphertext being moved to another row/type.
+   */
+  aad: string
+}
+
+export type CipherBlob = LegacyCipherBlob | CipherBlobV2
 
 /** Classroom roles. Absent on Mobile/Windows solo operator profiles (legacy). */
 export type AccountRole = 'instructor' | 'student'
@@ -68,7 +83,7 @@ export interface AccountPrefs {
 
 // Trimmed, encrypted per-run summary (~2-4 KB). Full 300-frame sessions stay
 // in memory and export via the ControlBar downloads; profiles keep the compact
-// evidence-grade digest for analytics.
+// integrity-linked application digest for local analytics; not a complete evidence/custody process.
 export interface StoredRunSummary {
   scenarioId: string
   scenarioVariant: ScenarioVariantConfig
@@ -185,6 +200,9 @@ export interface BackupEnvelopeV2 {
   runs: RunRecord[]
   runDetails: RunRecordV2[]
   missions: CustomMissionRecord[]
+  /** Optional only for compatibility with early v2 exports. New exports include both. */
+  classrooms?: ClassroomRecord[]
+  classroomSessions?: ClassroomSessionRecord[]
 }
 
 export type AnyBackupEnvelope = BackupEnvelope | BackupEnvelopeV2

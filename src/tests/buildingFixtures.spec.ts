@@ -4,7 +4,10 @@ import {
   buildingIndexFor,
   scenariosWithBuildings,
 } from '@/scenarios/buildingFixtures'
-import { occlusionServiceFor } from '@/scenarios/terrainFixtures'
+import { occlusionServiceFor, prepareScenarioTerrain } from '@/scenarios/terrainFixtures'
+
+const terrainPreparation = await prepareScenarioTerrain('demo_wildfire')
+if (!terrainPreparation.ok) throw new Error(terrainPreparation.reason)
 
 const KNOWN_FOOTPRINT = { lat: 37.89146, lng: -122.2665625 }
 

@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { recordRun } from '@/account/runRecorder'
 import { listRuns, listRunDetails } from '@/account/accountDb'
-import { decryptJson } from '@/account/crypto'
+import { accountCipherAad, decryptJson } from '@/account/crypto'
 import { useAuthStore } from '@/store/authStore'
 import { useDroneStore } from '@/store/droneStore'
 import type { MissionReplaySession, ScenarioConfig } from '@/types'
@@ -72,7 +72,7 @@ afterEach(() => {
 
 describe('runRecorder quota fallback', () => {
   it('keeps the summary (flagged quota-limited) when the detail write hits quota', async () => {
-    await useAuthStore.getState().signUp('recorder', '', 'password123', false)
+    await useAuthStore.getState().signUp('recorder', '', 'password123')
 
     // Force ONLY the runDetails write to fail with a quota error; the summary
     // write targets the `runs` store and stays untouched.
@@ -91,7 +91,11 @@ describe('runRecorder quota fallback', () => {
     const { activeAccount, sessionKey } = useAuthStore.getState()
     const runs = await listRuns(activeAccount!.id)
     expect(runs).toHaveLength(1)
-    const summary = decryptJson<StoredRunSummary>(sessionKey!, runs[0].blob)
+    const summary = decryptJson<StoredRunSummary>(
+      sessionKey!,
+      runs[0].blob,
+      accountCipherAad('run-summary', activeAccount!.id, runs[0].id),
+    )
     expect(summary.scenarioId).toBe('wildfire')
     expect(summary.detailState).toBe('quota-limited')
 
@@ -100,13 +104,17 @@ describe('runRecorder quota fallback', () => {
   })
 
   it('flags the summary saved and writes the detail when storage accepts it', async () => {
-    await useAuthStore.getState().signUp('recorder', '', 'password123', false)
+    await useAuthStore.getState().signUp('recorder', '', 'password123')
 
     expect(await recordRun(makeSession())).toBe(true)
 
     const { activeAccount, sessionKey } = useAuthStore.getState()
     const runs = await listRuns(activeAccount!.id)
-    const summary = decryptJson<StoredRunSummary>(sessionKey!, runs[0].blob)
+    const summary = decryptJson<StoredRunSummary>(
+      sessionKey!,
+      runs[0].blob,
+      accountCipherAad('run-summary', activeAccount!.id, runs[0].id),
+    )
     expect(summary.detailState).toBe('saved')
     // Detail row persisted under the same id as the summary.
     const details = await listRunDetails(activeAccount!.id)

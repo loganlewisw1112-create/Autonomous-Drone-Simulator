@@ -75,7 +75,7 @@ export function buildInvestorDemoChapters(input: BuildInvestorDemoChaptersInput)
       phase: 'recovery',
       title: 'Safe Recovery',
       operatorCue: 'Show RTB, recharge, ground unit, or recovery-team behavior.',
-      successSignal: 'Recovery actions preserve route safety, battery reserve, and chain of custody.',
+      successSignal: 'Recovery actions preserve route discipline, battery reserve, and the application event-custody record.',
       status: chapterStatus('safe-recovery', complete.recovery, activeId),
     },
     {
@@ -83,7 +83,7 @@ export function buildInvestorDemoChapters(input: BuildInvestorDemoChaptersInput)
       phase: 'review',
       title: 'After Action Package',
       operatorCue: 'Stop the mission and open replay/report export.',
-      successSignal: 'Replay, KPIs, compliance, UTM, and evidence export are report ready.',
+      successSignal: 'Replay, KPIs, training compliance, scripted traffic, and evidence export are report ready.',
       status: chapterStatus('after-action', complete.review, activeId),
     },
   ]
