@@ -84,13 +84,22 @@ export function ClassroomAuthForm({
   const activeRole = fixedRole ?? role
 
   useEffect(() => {
-    void listAccounts().then((accounts) => {
-      const matching = allowRoleSwitch
-        ? accounts.filter((a) => a.role === 'instructor' || a.role === 'student')
-        : accounts.filter((a) => a.role === activeRole)
-      setProfiles(matching)
-      setMode(matching.length === 0 ? 'signup' : 'signin')
-    })
+    let cancelled = false
+    void listAccounts()
+      .then((accounts) => {
+        if (cancelled) return
+        const matching = allowRoleSwitch
+          ? accounts.filter((a) => a.role === 'instructor' || a.role === 'student')
+          : accounts.filter((a) => a.role === activeRole)
+        setProfiles(matching)
+        setMode(matching.length === 0 ? 'signup' : 'signin')
+      })
+      .catch(() => {
+        if (cancelled) return
+        setProfiles([])
+        setMode('signup')
+      })
+    return () => { cancelled = true }
   }, [activeRole, allowRoleSwitch])
 
   async function handleSubmit() {
