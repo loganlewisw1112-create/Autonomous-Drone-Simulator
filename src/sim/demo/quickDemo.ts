@@ -6,6 +6,7 @@ import { observedWeatherFor } from '@/scenarios/observedWeather'
 import { buildAutoLaunchBayPlan } from '@/sim/mission/launchBayPlanning'
 import { buildLaunchSlotsForPlan } from '@/sim/mission/launchPlanGeometry'
 import { PREFLIGHT_CHECKLIST } from '@/sim/mission/preflightChecklist'
+import { prepareScenarioTerrain } from '@/scenarios/terrainFixtures'
 
 export interface QuickDemoResult {
   ok: boolean
@@ -17,9 +18,12 @@ export interface QuickDemoResult {
 // launch) without opening any modals. Lives outside droneStore because the store
 // and SimulationLoop import each other's counterpart lazily — a store action
 // calling startSimLoop would create a hard circular import.
-export function runQuickDemo(scenarioId: string = 'demo_basic'): QuickDemoResult {
+export async function runQuickDemo(scenarioId: string = 'demo_basic'): Promise<QuickDemoResult> {
   const found = getScenarioById(scenarioId)
   if (!found) return { ok: false, reason: `unknown scenario: ${scenarioId}` }
+
+  const terrain = await prepareScenarioTerrain(found.config)
+  if (!terrain.ok) return { ok: false, reason: terrain.reason }
 
   // Mirror ControlBar scenario swap: cancel the driver WITHOUT finalizing (no ghost record).
   useDroneStore.getState().setRunning(false)

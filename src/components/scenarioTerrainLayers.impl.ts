@@ -110,7 +110,12 @@ export function removeScenarioTerrainLayer(map: maplibregl.Map): void {
   } catch {
     /* map may already be gone */
   }
-  if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID)
+  try {
+    if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID)
+  } catch {
+    // Responsive shell changes and React cleanup can run after MapLibre has
+    // destroyed its style object. Teardown must remain safe and repeatable.
+  }
 }
 
 /**

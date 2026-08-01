@@ -20,7 +20,11 @@ import {
 import { checkThermalDetections } from '@/sim/sensors/ThermalSim'
 import { evaluateGnss } from '@/sim/nav/gnss'
 import { occlusionEpoch, type TerrainOcclusionService } from '@/sim/terrain/OcclusionService'
-import { occlusionServiceFor, resolveTerrainFixtureId } from '@/scenarios/terrainFixtures'
+import {
+  occlusionServiceFor,
+  requireScenarioTerrainPrepared,
+  resolveTerrainFixtureId,
+} from '@/scenarios/terrainFixtures'
 import { ensureSurfaceClearanceAglFt } from '@/sim/terrain/altitude'
 import { constellationAt, constellationFor, type ConstellationFixture } from '@/scenarios/constellationFixtures'
 import { laneForScenario } from '@/scenarios/nistLanes'
@@ -31,11 +35,12 @@ import {
   type NistLaneDefinition,
 } from '@/sim/mission/laneScoring'
 import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
+import { resolveLostLinkPolicy } from '@/sim/safety/lostLink'
 import { exceedsGustLimit, gustAtTick } from '@/sim/weather/dryden'
 import { tickGroundUnit, computeGroundUnitEta } from '@/sim/mission/groundUnits'
 import { tickRecoveryTeam, tickRecoveryExtraction, needsRecovery, recoveryTransitionState, createRecoveryTeam } from '@/sim/mission/recoveryManager'
 import { bearingDeg, haversineDistanceM } from '@/utils/geometry'
-import type { DroneState, EventType, FullMissionFrame, LatLng, LaunchBayPlan, MissionCompletionReason, Waypoint } from '@/types'
+import type { DroneState, EventType, FullMissionFrame, LatLng, LaunchBayPlan, MissionCompletionReason, ScenarioConfig, Waypoint } from '@/types'
 
 const THERMAL_CHECK_INTERVAL = 50
 const SNAPSHOT_INTERVAL = 40
@@ -135,6 +140,10 @@ export function tick() {
       const batteryProfile = batteryProfileForDrone(scenario, drone.id)
       // Apply weather battery drain multiplier
       const batteryDrainRatePerSec = effectiveBatteryDrainRateForDrone(scenario, drone.id) * weatherState.batteryDrainMultiplier
+      const platform = platformForDrone(scenario, drone.id)
+      const distanceHomeM = haversineDistanceM(drone.position, basePos)
+      const conservativeGroundSpeedMs = Math.max(1, platform.maxSpeedMs * 0.6 * weatherState.speedCapMultiplier)
+      const batteryRequiredToHomePct = Math.min(100, (distanceHomeM / conservativeGroundSpeedMs) * batteryDrainRatePerSec + 8)
       const mm: MissionManagerState = {
         waypoints: scenario.waypoints,
         basePosition: baseWaypoint,
@@ -145,6 +154,7 @@ export function tick() {
         rechargeTimeSec: scenario.rechargeTimeSec,
         maxSorties: scenario.maxSorties,
         batteryReservePct: batteryReservePctForDrone(scenario, drone.id),
+        batteryRequiredToHomePct,
         weatherForceRtb: isWeatherForceRtb(weatherState),
         weatherHazard: weatherState.activeHazards[0],
         launchCommandedSec: launchCommandedSec ?? undefined,
@@ -407,16 +417,31 @@ export function tick() {
       }
     })
 
-    // Track comms loss duration on each drone; snapshot position at first dropout.
-    // Drones continue their flight plan during comms loss — no loiter/hover injected here.
-    // When signal restores, emit comms_restored so command knows the drone is still on task.
+    // Track comms loss duration and enforce the scenario doctrine. The default is a short
+    // hold followed by RTB only when the route is valid against every available terrain and
+    // geofence check; otherwise the aircraft enters the modeled emergency landing behavior.
     const withCommsTracking: DroneState[] = withDeconflict.map((drone) => {
       if (drone.signalDbm < -90 && !['landed', 'idle', 'recovered'].includes(drone.missionState)) {
         const firstDrop = (drone.commsLostSec ?? 0) === 0
+        const policy = resolveLostLinkPolicy(scenario)
+        const lostSec = (drone.commsLostSec ?? 0) + FIXED_DT
+        let missionState = drone.missionState
+        let lostLinkReturnState = drone.lostLinkReturnState
+        if (firstDrop) {
+          lostLinkReturnState = drone.missionState
+          if (policy.action === 'hold' || policy.action === 'hold_then_rtb') missionState = 'lost_link_hold'
+          if (policy.action === 'rtb') missionState = validatedLostLinkRtb(scenario, drone) ? 'return_to_base' : 'emergency'
+          if (policy.action === 'land') missionState = 'emergency'
+        } else if (policy.action === 'hold_then_rtb' && lostSec >= policy.holdSec) {
+          missionState = validatedLostLinkRtb(scenario, drone) ? 'return_to_base' : 'emergency'
+        }
         return {
           ...drone,
-          commsLostSec: (drone.commsLostSec ?? 0) + FIXED_DT,
+          missionState,
+          commsLostSec: lostSec,
           lastKnownPosition: firstDrop ? drone.position : drone.lastKnownPosition,
+          lostLinkReturnState,
+          lostLinkAction: policy.action,
         }
       }
 
@@ -438,7 +463,16 @@ export function tick() {
         })
       }
 
-      return { ...drone, commsLostSec: 0, lastKnownPosition: undefined }
+      return {
+        ...drone,
+        missionState: drone.missionState === 'lost_link_hold'
+          ? drone.lostLinkReturnState ?? 'return_to_base'
+          : drone.missionState,
+        commsLostSec: 0,
+        lastKnownPosition: undefined,
+        lostLinkReturnState: undefined,
+        lostLinkAction: undefined,
+      }
     })
 
     // Emit conflict events (throttled)
@@ -484,6 +518,8 @@ export function tick() {
         tick: currentTick,
         payload: {
           signalDbm: Math.round(commsDrone.signalDbm),
+          doctrine: commsDrone.lostLinkAction,
+          lostDurationSec: Math.round(commsDrone.commsLostSec ?? 0),
           ...(eventType === 'comms_lost' ? { position: commsDrone.lastKnownPosition ?? commsDrone.position } : {}),
         },
       })
@@ -829,6 +865,10 @@ export function tick() {
       useDroneStore.getState().addReplayFrame(frame)
     }
 
+    if (finalDrones.some((drone) => drone.missionState === 'emergency')
+      && useDroneStore.getState().ui.simSpeed === 20) {
+      useDroneStore.getState().setSimSpeed(1)
+    }
     useDroneStore.getState().setDrones(finalDrones)
     useDroneStore.getState().incrementTick()
 
@@ -840,6 +880,16 @@ export function tick() {
       break
     }
   }
+}
+
+function validatedLostLinkRtb(scenario: ScenarioConfig, drone: DroneState): boolean {
+  const route = [{
+    id: 'lost-link-rtb',
+    position: scenario.startPosition,
+    altitudeFt: Math.max(20, drone.altitudeFt),
+  }]
+  const validation = validateOperatorRoute(scenario, drone.id, route, drone.position)
+  return validation.accepted && validation.terrainWarnings.length === 0
 }
 
 // ─── Loop driver: fixed-timestep accumulator on requestAnimationFrame ─────────
@@ -963,6 +1013,10 @@ export function stopSimLoop() {
 
 export function initFleet() {
   const { scenario, launchPlan, weatherState, scenarioVariant, siteOverrides } = useDroneStore.getState()
+  // Mission physics is synchronous once initialized. Every async scenario-entry path must
+  // prepare its committed DEM first; a missing package is a hard error, never flat-terrain
+  // fallback. Scenarios without an authored terrain package remain valid.
+  requireScenarioTerrainPrepared(scenario)
   missionOcclusion = scenario
     ? (() => {
         const fixtureId = resolveTerrainFixtureId(scenario)

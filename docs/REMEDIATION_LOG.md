@@ -5,6 +5,10 @@ against the 8-phase remediation plan executed on the `remediation/audit-10s` bra
 findings (team, market validation, moat) were explicitly out of scope for this pass — see the audit's
 Phase 5 section for those; they require business work, not code.
 
+> **Historical evidence, not current release status.** Counts, bundle sizes, and audit results
+> below describe that remediation branch at the time it was completed. Use
+> [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md) and the current CI run for the present gate.
+
 | Finding | Severity | Disposition | Phase |
 |---|---|---|---|
 | C1 — Hash chain broken at runtime (`verifyChain` returns false) | Critical | **Fixed.** Synchronous SHA-256, atomic `emitEvent` action, integration test drives the real production loop and asserts the chain verifies + no duplicate `prevHash`. | 1 |
@@ -15,11 +19,11 @@ Phase 5 section for those; they require business work, not code.
 | H4 — Unselected 20Hz store subscriptions re-render on every mutation | High | **Fixed.** `useShallow` selectors on all 10 always-mounted components; tab-gated derived state in TelemetryPanel; UTM state throttled to the existing 10fps interval instead of a per-render `useMemo`. | 5 |
 | H5 — No LICENSE; `outputs/` GTM kit untracked but not gitignored | High | **Fixed.** Source-available LICENSE added; `outputs/` gitignored (contents untouched, per scope decision). | 0 |
 | H6.1 — Remote ID conflated with C2 comms link | High | **Fixed.** Remote ID status now derives from mission state (independent broadcast), not `signalDbm`. Regression test asserts RID stays broadcasting through a comms window. | 2 |
-| H6.2 — Preflight checklist text contradicts actual lost-link behavior | High | **Fixed.** Checklist text now matches the sim's real doctrine (continue task, reconnect on restore, RTB on reserve/geofence). | 2 |
+| H6.2 — Preflight checklist text contradicts actual lost-link behavior | High | **Fixed.** Checklist now requires review of the scenario-specific doctrine and displays the resolved action. The fail-closed default is hold, then validated RTB, else simulated emergency landing. | 2 |
 | H6.3 — Deconfliction detects but never acts; dead `avoid` state/events | High | **Fixed.** Give-way drone flies a timed divergence maneuver; `avoidance_start`/`avoidance_complete` emitted through the chain. Dead `obstacle_detected` event type removed. | 4 |
 | H6.4 — Thermal model overly conservative range, no localization error, fake IR overlay | High | **Fixed.** Seeded localization error added; model assumptions documented in-code and in `ARCHITECTURE_NOTES.md`; fake screen-anchored IR blobs removed (the already-correct geolocated layer is now the only thermal overlay). | 4 |
 | H6.6 — Regex/template-generated ops text leaks into operator UI | High | **Fixed.** `routePatternFor` matches drone role before scenario text; "Explicit simulated…" filler rewritten; `deriveAgencies` uses a token scan instead of a fragile name-prefix split. | 4 |
-| H7 — `npm audit`: 5 vulnerabilities (1 critical, 1 high) in dev toolchain | High | **Fixed.** vitest 2→4 major upgrade; `npm audit` now reports 0 vulnerabilities. | 0 |
+| H7 — `npm audit`: 5 vulnerabilities (1 critical, 1 high) in dev toolchain | High | **Fixed in that remediation snapshot.** Vitest 2→4 removed the findings then present. Current audit output is re-evaluated independently and is a fatal release gate. | 0 |
 | M1 — After-action export during replay scrub reflects stale frame state | Medium | **Fixed.** `MissionReplaySession` snapshots final fleet/thermal/weather state at stop time; exports prefer the snapshot over live (scrub-contaminated) store fields. | 3 |
 | M2 — Route suggestion fallback can silently replace a route with no diff shown | Medium | **Fixed** (build-update pass, July 2026). Every pending suggestion card shows a current-vs-suggested route diff (waypoints, distance, first→last labels); regression test in `operatorCommandPanel.spec.tsx`. |  |
 | M3 — All geofences render identical red regardless of type/authority | Medium | **Fixed.** Styled by authority (no-fly / restricted / authorized-bypass) with an on-map legend. | 4 |
@@ -37,9 +41,9 @@ Phase 5 section for those; they require business work, not code.
 | M15 — Map occlusion below ~1300px viewport width | Low | **Fixed** (build-update pass, July 2026). 1300px breakpoint narrows shell columns and ops-hub/status-feed overlays; verified at 1280px. |  |
 | M16 — Windows launcher echoes exceptions; stray runtime files in the release tree | Low | **Fixed** (build-update pass, July 2026). Launcher promoted to tracked source (`scripts/windows/Start-DroneSimulator.ps1`) with a packaging script; 500s return a generic body, runtime markers write to a temp rundir cleaned on exit. Verified live: 200/404 correct, package tree stays pristine. |  |
 
-## Net result
+## Net result for that remediation snapshot
 
-- `npm audit`: 5 vulnerabilities → **0**
+- `npm audit`: 5 vulnerabilities → **0 at that point in time**
 - ESLint: 6 warnings → **0**
 - Tests: 178 → **242** (27 → 42 files as of the public-launch pass), now spanning node unit
   tests, jsdom component tests, and fake-timer production-loop integration tests (previously

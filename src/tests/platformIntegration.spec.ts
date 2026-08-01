@@ -12,10 +12,14 @@ import { useDroneStore } from '@/store/droneStore'
 import { startSimLoop, stopSimLoop, endMission, initFleet } from '@/sim/SimulationLoop'
 import { getDefaultWeatherState } from '@/sim/weather/weatherEngine'
 import { PLATFORM_CATALOG, LEGACY_PLATFORM } from '@/sim/drone/platformCatalog'
+import { prepareScenarioTerrain } from '@/scenarios/terrainFixtures'
 import type { ScenarioConfig } from '@/types'
 
 const TICK_MS = 50
 const CLOCK_ORIGIN = new Date('2026-01-01T00:00:00Z')
+
+const terrainPreparation = await prepareScenarioTerrain('demo_wildfire')
+if (!terrainPreparation.ok) throw new Error(terrainPreparation.reason)
 
 /** Runs `scenario` for `ticks` and returns the peak speed observed per drone. */
 function peakSpeeds(scenario: ScenarioConfig, ticks: number): Record<string, number> {

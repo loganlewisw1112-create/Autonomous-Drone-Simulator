@@ -1,5 +1,12 @@
 # Coordinator Console — build plan v3
 
+> **Archived implementation plan.** This document records the original
+> coordinator design and is not the current classroom security or operating
+> contract. Protocol v3, signed-entitlement enforcement, relay-owned instructor sessions, trusted HTTPS/WSS,
+> and current limits are documented in
+> [`../SECURITY_THREAT_MODEL.md`](../SECURITY_THREAT_MODEL.md) and
+> [`../CLASSROOM_ADMIN.md`](../CLASSROOM_ADMIN.md).
+
 **Autonomous Drone Mission Simulator · 21 July 2026**
 
 Instructor dashboard with a **live screen wall** showing every student's simulator in real
@@ -27,10 +34,9 @@ Read before planning. Most of this feature is assembly, not invention.
 
 Two facts that shape everything below:
 
-**`crypto.ts` deliberately avoids `crypto.subtle`.** SubtleCrypto requires a secure context.
-Because it was avoided, **encrypted accounts already work over plain HTTP on a LAN** — no
-certificates, no HTTPS setup, no browser warnings. This is why the plan is LAN-first and why
-it is a two-week build rather than a two-month one.
+**Historical decision:** `crypto.ts` avoided `crypto.subtle`, so the original client could run
+over plain HTTP. That is no longer an approved graded/live-class transport. The v1.1 contract
+requires trusted HTTPS/WSS and fails closed without it.
 
 **There are zero `fetch` / `WebSocket` / `XHR` calls in `src/` today.** Verified. Adding a
 network path is the largest architectural change in the project's history and must be
@@ -275,13 +281,14 @@ vendor-stability conversation — precisely the obligations a solo developer can
 ends the FERPA/CJIS discussion because nothing leaves the building. It works air-gapped. And
 live streaming is where LAN genuinely wins: ~1 ms latency, free bandwidth.
 
-**`server/classroom.mjs`** — Node 20, one new dependency (`ws`):
+**`server/classroom.mjs`** — originally planned for Node 20 with one new dependency (`ws`);
+the current supported toolchain is Node 24:
 
 - In-memory `Map<classId, {pubKey, config, instructorSock, students: Map}>`
 - Routes purely on the cleartext envelope
 - Serves `dist/` statically
-- Prints LAN IP + join URL on boot (QR is rendered client-side in `ClassSetup.tsx` — no
-  server-side QR dependency)
+- Prints LAN IP + join URL on boot; `CoordinatorConsole.tsx` renders the
+  fingerprint-pinned join URL as a client-side QR code.
 - Run submissions also written to `./classroom-runs/<classId>/<studentId>-<ts>.json` as
   ciphertext — a backup against a crashed instructor tab
 - Limits: 40 students/class, 256 KB max message, heartbeat timeout 30 s
@@ -305,7 +312,7 @@ Cloud (Supabase, RLS, instructor accounts) is a later, separate build. Not in sc
 | 5 | `src/classroom/classroomClient.ts` | WS lifecycle, publishers, run submit | 200 |
 | 6 | `src/store/classroomStore.ts` | Roster, latest frame per student, focus | 120 |
 | 7 | `src/components/classroom/JoinGate.tsx` | Student: code + name | 80 |
-| 8 | `src/components/classroom/ClassSetup.tsx` | Scenario picker, create class, code + QR | 180 |
+| 8 | `src/components/classroom/ClassSetup.tsx` and `CoordinatorConsole.tsx` | Scenario picker, create class, fingerprint-pinned join URL + QR | 180 |
 | 9 | `src/components/classroom/CoordinatorConsole.tsx` | Wall, roster, alert strip, focus pane | 260 |
 | 10 | `src/components/classroom/StudentTile.tsx` | Canvas 2D tile + alert border | 160 |
 | 11 | `src/components/classroom/tileRenderer.ts` | Backdrop bitmap, projection, glyphs | 170 |

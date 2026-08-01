@@ -9,6 +9,8 @@ You MAY:
 - View, read, and clone this source code for personal evaluation of the
   author's work.
 - Run the simulator locally for non-commercial evaluation.
+- Access the copyright holder's authorized public demonstration deployments on
+  Vercel under their displayed demo time limits.
 
 You MAY NOT, without the prior written permission of the copyright holder:
 - Copy, redistribute, resell, sublicense, or publicly host this software or
@@ -16,6 +18,11 @@ You MAY NOT, without the prior written permission of the copyright holder:
 - Modify or create derivative works for distribution.
 - Use this software or its source, in whole or in part, for any commercial
   purpose.
+
+The copyright holder, Logan Lewis-Whitfield, is the legal publisher and has
+authorized the project's own Mobile, Windows-demo, and Classroom-showcase
+Vercel deployments. That authorization does not grant third parties a hosting
+or redistribution right.
 
 Third-party open-source components included via package dependencies remain
 governed by their own respective licenses. Those licenses apply only to those

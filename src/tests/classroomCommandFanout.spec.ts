@@ -25,13 +25,15 @@ const STUDENTS = [
 ] as const
 
 interface WireEnvelope {
-  v: 1
+  v: 3
   type: string
   classId: ClassId
   studentId?: string | null
   instructorToken?: string
   classPubKey?: string
   sealed?: Sealed
+  commandKind?: string
+  items?: Array<{ studentId: string; sealed: Sealed }>
 }
 
 class FakeWs {
@@ -62,7 +64,6 @@ beforeEach(async () => {
   client.teardown()
   useClassroomStore.getState().reset()
 })
-
 afterEach(() => {
   client.teardown()
   vi.unstubAllGlobals()
@@ -79,11 +80,11 @@ describe('classroom encrypted command fan-out', () => {
     const socket = sockets[0]
     socket.onopen?.()
     const instructorPublicKey = socket.sent[0].classPubKey!
-    socket.deliver({ v: 1, type: 'class.ok', classId, instructorToken: 'TOKEN' })
+    socket.deliver({ v: 3, type: 'class.ok', classId, instructorToken: 'TOKEN' })
 
     const keyPairs = STUDENTS.map(() => generateKeyPair())
     socket.deliver({
-      v: 1,
+      v: 3,
       type: 'roster.update',
       classId,
       students: STUDENTS.map((student, index) => ({
@@ -99,31 +100,40 @@ describe('classroom encrypted command fan-out', () => {
 
     expect(client.sendCommand(null, command('broadcast-1'))).toEqual(STUDENTS.map((student) => student.studentId))
 
-    const first = socket.sent.filter((message) => message.type === 'class.command')
+    const firstBatch = socket.sent.find((message) => message.type === 'class.command.batch')!
+    const first = firstBatch.items!
     expect(first).toHaveLength(2)
     expect(first.map((message) => message.studentId)).toEqual(STUDENTS.map((student) => student.studentId))
     expect(first).toEqual(expect.arrayContaining(STUDENTS.map((student) => expect.objectContaining({
-      type: 'class.command',
-      classId,
       studentId: student.studentId,
-      instructorToken: 'TOKEN',
     }))))
+    expect(firstBatch).toMatchObject({
+      type: 'class.command.batch', classId, instructorToken: 'TOKEN', commandKind: 'pause',
+    })
 
     const adaCipher = studentCiphers.get('stu-ada')!
     const boCipher = studentCiphers.get('stu-bo')!
     const adaFirst = first.find((message) => message.studentId === 'stu-ada')!
     const boFirst = first.find((message) => message.studentId === 'stu-bo')!
-    expect(adaCipher.open<SealedPayload<InstructorCommand>>(adaFirst.sealed!)).toEqual({
+    expect(adaCipher.open<SealedPayload<InstructorCommand>>(adaFirst.sealed!, {
+      direction: 'instructor-to-student', type: 'class.command',
+    })).toEqual({
       seq: 1,
       body: command('broadcast-1'),
     })
-    expect(boCipher.open<SealedPayload<InstructorCommand>>(boFirst.sealed!)).toEqual({
+    expect(boCipher.open<SealedPayload<InstructorCommand>>(boFirst.sealed!, {
+      direction: 'instructor-to-student', type: 'class.command',
+    })).toEqual({
       seq: 1,
       body: command('broadcast-1'),
     })
     expect(adaFirst.sealed?.ct).not.toBe(boFirst.sealed?.ct)
-    expect(() => adaCipher.open(boFirst.sealed!)).toThrow()
-    expect(() => boCipher.open(adaFirst.sealed!)).toThrow()
+    expect(() => adaCipher.open(boFirst.sealed!, {
+      direction: 'instructor-to-student', type: 'class.command',
+    })).toThrow()
+    expect(() => boCipher.open(adaFirst.sealed!, {
+      direction: 'instructor-to-student', type: 'class.command',
+    })).toThrow()
 
     expect(useClassroomStore.getState().commands).toMatchObject(STUDENTS.map((student) => ({
       commandId: 'broadcast-1',
@@ -132,11 +142,13 @@ describe('classroom encrypted command fan-out', () => {
     })))
 
     expect(client.sendCommand(null, command('broadcast-2'))).toEqual(STUDENTS.map((student) => student.studentId))
-    const second = socket.sent.filter((message) => message.type === 'class.command').slice(2)
+    const second = socket.sent.filter((message) => message.type === 'class.command.batch')[1].items!
     expect(second).toHaveLength(2)
     for (const message of second) {
       const cipher = studentCiphers.get(message.studentId!)!
-      expect(cipher.open<SealedPayload<InstructorCommand>>(message.sealed!)).toEqual({
+      expect(cipher.open<SealedPayload<InstructorCommand>>(message.sealed!, {
+        direction: 'instructor-to-student', type: 'class.command',
+      })).toEqual({
         seq: 2,
         body: command('broadcast-2'),
       })

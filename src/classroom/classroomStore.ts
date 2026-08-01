@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { FullMissionFrame } from '@/types'
 import type { StoredRunSummary } from '@/account/types'
-import type { ClassConfig, ClassId, RosterEntry, StudentId } from '@/classroom/protocol'
+import type { ClassConfig, ClassId, RelayClassTiming, RosterEntry, StudentId } from '@/classroom/protocol'
 import type { GridFrame } from '@/classroom/gridFrame'
 import type { MissionAssessment } from '@/classroom/missionAssessment'
 import type { InstructorCommand } from '@/classroom/commandRegistry'
@@ -81,6 +81,7 @@ interface ClassroomStore {
   /** Durable instructor classroom (Phase 2). Live classId is separate. */
   activeClassroomId: string | null
   sessionStartedAt: number | null
+  classTiming: RelayClassTiming | null
 
   // Instructor view
   roster: RosterEntry[]
@@ -94,6 +95,7 @@ interface ClassroomStore {
   integrity: IntegrityCounters
   commands: ClassroomCommandRecord[]
   commandAcks: ClassroomCommandAck[]
+  lastCommandDelivery: { commandKind: string; queued: number; unavailable: number } | null
 
   // Student view
   studentId: StudentId | null
@@ -106,6 +108,7 @@ interface ClassroomStore {
   setActiveClassroomId: (classroomId: string | null) => void
   setInstructorClass: (classId: ClassId, config: ClassConfig) => void
   setStudentJoined: (classId: ClassId, studentId: StudentId, config: ClassConfig) => void
+  setClassTiming: (timing: RelayClassTiming) => void
   setRoster: (roster: RosterEntry[]) => void
   setFrame: (studentId: StudentId, frame: GridFrame) => void
   removeStudent: (studentId: StudentId) => void
@@ -117,6 +120,7 @@ interface ClassroomStore {
   noteIntegrityFailure: (kind: 'decrypt' | 'replay') => void
   addCommand: (command: ClassroomCommandRecord) => void
   addCommandAck: (ack: ClassroomCommandAck) => void
+  setCommandDelivery: (result: { commandKind: string; queued: number; unavailable: number }) => void
   addIntervention: (intervention: ClassroomIntervention) => void
   showTakeover: (notice: TakeoverNotice) => void
   clearTakeover: (commandId?: string) => void
@@ -132,6 +136,7 @@ const initial = {
   config: null,
   activeClassroomId: null as string | null,
   sessionStartedAt: null as number | null,
+  classTiming: null as RelayClassTiming | null,
   roster: [] as RosterEntry[],
   frames: {} as Record<StudentId, GridFrame>,
   focusedStudentId: null,
@@ -142,6 +147,7 @@ const initial = {
   integrity: { decryptFailures: 0, replayRejects: 0, lastAt: null } as IntegrityCounters,
   commands: [] as ClassroomCommandRecord[],
   commandAcks: [] as ClassroomCommandAck[],
+  lastCommandDelivery: null as { commandKind: string; queued: number; unavailable: number } | null,
   studentId: null,
   beingFocused: false,
   interventions: [] as ClassroomIntervention[],
@@ -162,6 +168,11 @@ export const useClassroomStore = create<ClassroomStore>((set, get) => ({
 
   setStudentJoined: (classId, studentId, config) =>
     set({ role: 'student', status: 'live', classId, studentId, config }),
+
+  setClassTiming: (timing) => set((state) => ({
+    classTiming: timing,
+    status: timing.phase === 'closed' ? 'closed' : state.status,
+  })),
 
   setRoster: (roster) => set((s) => {
     // Drop frames for students no longer on the roster so the wall never renders a ghost tile.
@@ -223,6 +234,8 @@ export const useClassroomStore = create<ClassroomStore>((set, get) => ({
       ? { ...command, status: ack.ok ? 'acknowledged' : 'failed' }
       : command),
   })),
+
+  setCommandDelivery: (result) => set({ lastCommandDelivery: result }),
 
   addIntervention: (intervention) => set((s) => ({ interventions: [...s.interventions, intervention] })),
 

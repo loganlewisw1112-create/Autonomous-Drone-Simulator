@@ -26,9 +26,14 @@ START_HERE.md
 TASKS.md
 PROJECT_PLAN.md
 Build Plan for Autonomous Drone Mission Simulator.txt
+WORKING_RULES.docx
+test-out*.txt
+tmp-*.html
+tmp-*.js
 
 # Launch/GTM kit + packaged distributables — built locally, not part of the source repo
 outputs/
+desktop/licensing/public-config.generated.json
 .vercel
 .env*
 # Vercel CLI appends .env* above — keep the example tracked (rule order matters)

@@ -16,11 +16,14 @@ import { getAssignedAltitude } from '@/sim/safety/DeconflictEngine'
 import { createTerrainOcclusionService, occlusionEpoch } from '@/sim/terrain/OcclusionService'
 import type { TerrainOcclusionService } from '@/sim/terrain/OcclusionService'
 import type { Point3D } from '@/sim/terrain/terrainRaster'
-import { terrainRasterFor } from '@/scenarios/terrainFixtures'
+import { prepareScenarioTerrain, terrainRasterFor } from '@/scenarios/terrainFixtures'
 import type { MissionManagerState } from '@/sim/mission/MissionManager'
 import type { DroneState, Waypoint } from '@/types'
 
 const SEED = 7331
+
+const terrainPreparation = await prepareScenarioTerrain('demo_wildfire')
+if (!terrainPreparation.ok) throw new Error(terrainPreparation.reason)
 const BASE = { lat: 37.7694, lng: -122.4862 }
 const BASE_WP: Waypoint = { id: 'base', position: BASE, altitudeFt: 0, label: 'Base' }
 const THERMAL_ENV = {

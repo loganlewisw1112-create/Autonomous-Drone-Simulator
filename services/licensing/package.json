@@ -1,0 +1,30 @@
+{
+  "name": "@adms/licensing-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --maxWorkers=2",
+    "test:integration": "vitest run src/tests/postgres.integration.spec.ts --maxWorkers=1",
+    "verify": "npm run typecheck && npm test",
+    "migrate": "tsx src/cli.ts migrate",
+    "publisher": "tsx src/cli.ts",
+    "purge-retention": "tsx src/cli.ts purge-retention --confirm PURGE"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@vercel/node": "^5.5.26",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

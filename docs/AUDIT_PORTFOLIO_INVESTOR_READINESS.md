@@ -1,5 +1,9 @@
 # Portfolio & Investor-Readiness Audit — Autonomous Drone Mission Simulator
 
+> **Historical audit snapshot.** Findings, counts, bundle sizes, and completion
+> percentages describe the repository at the audit cutoff. They are not the
+> current release verdict. See `PROJECT_STATUS.md` and the latest CI run.
+
 **Audit date:** 2026-07-02 · **Version audited:** v1.0.0 (commit `68da937` + uncommitted README/media working-tree changes)
 **Method:** Full source read of all architecturally central modules, independent re-run of the verification suite (`tsc -b`, `eslint src`, `vitest run`, `vite build`, `npm audit`), and a live end-to-end walkthrough of the README "Investor Demo Script" in a running instance (scenario load → preflight → launch bays → mission → retask → thermal dispatch → replay → after-action export), including live execution of the shipped chain verifier against a real mission's event log.
 

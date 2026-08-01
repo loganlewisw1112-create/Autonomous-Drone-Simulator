@@ -11,6 +11,7 @@ import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/components/designer/designerValidation'
 import { LoadingScreen } from '@/components/LoadingScreen'
 import { WelcomeOverlay } from '@/components/WelcomeOverlay'
+import { BuildInfoFooter } from '@/components/BuildInfoFooter'
 import { Drawer } from '@/components/mobile/Drawer'
 import {
   BottomDock,
@@ -246,6 +247,7 @@ export function MobileShell() {
             <ScenarioSheet
               onScenarioSelected={closeSurface}
               onOpenCustomMissions={() => { closeSurface(); setShowDesigner(true) }}
+              customMissionsLocked={!activeAccount}
             />
           </SurfacePane>
           <SurfacePane active={activeSurface === 'mission'}><MissionSheet /></SurfacePane>
@@ -256,7 +258,7 @@ export function MobileShell() {
               disabled without a replaySession, so the old "no replay available" stub was dead. */}
           <SurfacePane active={activeSurface === 'more'}>
             <div className="mobile-more-grid">
-              <button onClick={() => { closeSurface(); setShowDesigner(true) }}>CUSTOM MISSIONS</button>
+              <button onClick={() => { closeSurface(); setShowDesigner(true) }}>{activeAccount ? 'CUSTOM MISSIONS' : '🔒 CUSTOM MISSIONS'}</button>
               <button onClick={() => openSurface('dispatch')} disabled={!scenario?.missionBrief}>DISPATCH</button>
               <button onClick={() => openSurface('replay')} disabled={!replaySession}>REPLAY</button>
               <button onClick={() => openSurface('exports')}>EXPORTS</button>
@@ -282,6 +284,7 @@ export function MobileShell() {
 
       {loadingDone && <WelcomeOverlay />}
       {!loadingDone && <LoadingScreen mapReady={mapReady} onComplete={() => setLoadingDone(true)} />}
+      <BuildInfoFooter />
     </div>
   )
 }

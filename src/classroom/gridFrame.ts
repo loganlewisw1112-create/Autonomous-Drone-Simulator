@@ -55,6 +55,7 @@ export const MISSION_STATE_CODES: MissionState[] = [
   'idle', 'preflight', 'launch', 'navigate', 'sar_grid', 'hover', 'inspect', 'thermal_hold',
   'route_complete_loiter', 'avoid', 'return_to_base', 'emergency', 'landed', 'recharge',
   'remote_landed', 'stranded', 'recovery_requested', 'recovery_enroute', 'recovered', 'unrecoverable_sim',
+  'lost_link_hold',
 ]
 
 export function stateToCode(state: MissionState): number {

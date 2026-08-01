@@ -1,4 +1,4 @@
-export type AppTarget = 'universal' | 'mobile' | 'windows'
+export type AppTarget = 'universal' | 'mobile' | 'windows' | 'classroom'
 
 export const MOBILE_APP_URL = import.meta.env.VITE_MOBILE_APP_URL
   ?? 'https://autonomous-drone-simulator-mobile.vercel.app/'
@@ -7,7 +7,7 @@ export const WINDOWS_APP_URL = import.meta.env.VITE_WINDOWS_APP_URL
   ?? 'https://autonomous-drone-simulator.vercel.app/'
 
 export function resolveAppTarget(value: unknown): AppTarget {
-  return value === 'mobile' || value === 'windows' ? value : 'universal'
+  return value === 'mobile' || value === 'windows' || value === 'classroom' ? value : 'universal'
 }
 
 export const APP_TARGET = resolveAppTarget(import.meta.env.VITE_APP_TARGET)

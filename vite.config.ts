@@ -1,36 +1,89 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
-import { existsSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 import { resolve } from 'path'
+import type { Plugin } from 'vite'
 
-/** Local-only unlock material from gitignored `local-secrets/`. Never commit that folder. */
-function loadLocalInstructorAccessHash(cwd: string): string | undefined {
+function gitSha(cwd: string): string {
+  const injected = process.env.VITE_GIT_SHA
+    ?? process.env.VERCEL_GIT_COMMIT_SHA
+    ?? process.env.GITHUB_SHA
+  if (injected && /^[0-9a-f]{7,40}$/i.test(injected.trim())) return injected.trim().toLowerCase()
   try {
-    const filePath = resolve(cwd, 'local-secrets', 'instructor-access-hash.txt')
-    if (!existsSync(filePath)) return undefined
-    const lines = readFileSync(filePath, 'utf8').split(/\r?\n/)
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('#')) continue
-      if (/^[0-9a-fA-F]{64}$/.test(trimmed)) return trimmed.toLowerCase()
-    }
+    return execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim().toLowerCase()
   } catch {
-    /* missing or unreadable — build continues without instructor unlock */
+    return 'unknown'
   }
-  return undefined
+}
+
+function targetParityArtifactPlugin(buildInfo: {
+  version: string
+  target: 'windows' | 'mobile' | 'classroom'
+  gitSha: string
+}): Plugin {
+  let outDir = resolve(process.cwd(), 'dist')
+  const harnessFile = 'target-parity-harness.js'
+
+  return {
+    name: 'target-parity-artifact',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir)
+    },
+    buildStart() {
+      this.emitFile({
+        type: 'chunk',
+        id: resolve(process.cwd(), 'src/parity/artifactParity.ts'),
+        fileName: harnessFile,
+        preserveSignature: 'strict',
+      })
+    },
+    async closeBundle() {
+      // Import the code Rollup actually emitted, not its TypeScript source. A successful build
+      // therefore leaves an executable target-parity.json inside every deployed artifact.
+      const harnessUrl = `${pathToFileURL(resolve(outDir, harnessFile)).href}?target=${buildInfo.target}`
+      const harness = await import(harnessUrl) as {
+        default(input: typeof buildInfo): Promise<unknown>
+      }
+      const manifest = await harness.default(buildInfo)
+      writeFileSync(
+        resolve(outDir, 'target-parity.json'),
+        `${JSON.stringify(manifest, null, 2)}\n`,
+        'utf8',
+      )
+    },
+  }
 }
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const appTarget = process.env.VITE_APP_TARGET ?? env.VITE_APP_TARGET ?? 'universal'
+  const target = mode === 'classroom' || env.VITE_CLASSROOM_ENABLED === 'true'
+    ? 'classroom'
+    : appTarget === 'mobile'
+      ? 'mobile'
+      : 'windows'
+  const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')) as { version?: string }
+  const version = packageJson.version ?? '0.0.0'
+  const commit = gitSha(process.cwd())
+  const buildInfo = {
+    version,
+    target: target as 'windows' | 'mobile' | 'classroom',
+    gitSha: commit,
+    distributionChannel: env.VITE_DISTRIBUTION_CHANNEL ?? (process.env.VERCEL === '1' ? 'public_demo' : 'development'),
+    licenseExpiresAt: env.VITE_LICENSE_EXPIRES_AT ?? null,
+  }
   const buildingLayerModule = appTarget === 'mobile'
     ? 'scenarioBuildingLayers.mobile.ts'
     : appTarget === 'windows'
       ? 'scenarioBuildingLayers.windows.ts'
       : 'scenarioBuildingLayers.target.ts'
-  const terrainFixtureModule = appTarget === 'mobile'
-    ? 'terrainFixtures.mobile.ts'
-    : 'terrainFixtures.ts'
   const terrainLayerModule = appTarget === 'mobile'
     ? 'scenarioTerrainLayers.mobile.ts'
     : appTarget === 'windows'
@@ -38,26 +91,34 @@ export default defineConfig(({ mode }) => {
       : 'scenarioTerrainLayers.target.ts'
 
   const defineEnv: Record<string, string> = {}
+  defineEnv['import.meta.env.VITE_APP_VERSION'] = JSON.stringify(version)
+  defineEnv['import.meta.env.VITE_BUILD_TARGET'] = JSON.stringify(target)
+  defineEnv['import.meta.env.VITE_GIT_HASH'] = JSON.stringify(commit)
+  defineEnv['import.meta.env.VITE_DISTRIBUTION_CHANNEL'] = JSON.stringify(
+    env.VITE_DISTRIBUTION_CHANNEL ?? (process.env.VERCEL === '1' ? 'public_demo' : 'development'),
+  )
   if (mode === 'classroom') {
     defineEnv['import.meta.env.VITE_CLASSROOM_ENABLED'] = JSON.stringify('true')
   }
-  // Prefer process/dashboard env (e.g. Vercel), else local-secrets file for LAN builds.
-  const instructorHash = (process.env.VITE_INSTRUCTOR_ACCESS_HASH
-    ?? env.VITE_INSTRUCTOR_ACCESS_HASH
-    ?? loadLocalInstructorAccessHash(process.cwd()))?.trim()
-  if (instructorHash && /^[0-9a-fA-F]{64}$/.test(instructorHash)) {
-    const hex = instructorHash.toLowerCase()
-    // Expose via Vite env and a bare define identifier so every chunk sees the digest.
-    defineEnv['import.meta.env.VITE_INSTRUCTOR_ACCESS_HASH'] = JSON.stringify(hex)
-    defineEnv.__INSTRUCTOR_ACCESS_HASH__ = JSON.stringify(hex)
-  }
-
   return ({
   // Project Pages site — assets resolve under /<repo>/ on GitHub Pages.
   // Local dev/preview and the packaged offline build are unaffected because
   // GITHUB_PAGES is only set in the deploy workflow.
   base: process.env.GITHUB_PAGES ? '/Autonomous-Drone-Simulator/' : '/',
-  plugins: [react()],
+  plugins: [
+    react(),
+    targetParityArtifactPlugin(buildInfo),
+    {
+      name: 'release-build-info',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'build-info.json',
+          source: `${JSON.stringify(buildInfo, null, 2)}\n`,
+        })
+      },
+    },
+  ],
   // `vite build --mode classroom` turns on the classroom build without needing an env file.
   // The per-mode .env files Vite would normally use for this are gitignored (.env.* with only
   // .env.example excepted), so a committed one would not survive a clone — and an inline
@@ -76,10 +137,6 @@ export default defineConfig(({ mode }) => {
       {
         find: '@/components/scenarioTerrainLayers.target',
         replacement: resolve(__dirname, 'src/components', terrainLayerModule),
-      },
-      {
-        find: '@/scenarios/terrainFixtures',
-        replacement: resolve(__dirname, 'src/scenarios', terrainFixtureModule),
       },
       { find: '@', replacement: resolve(__dirname, 'src') },
     ],

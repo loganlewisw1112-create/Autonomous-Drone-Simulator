@@ -18,6 +18,35 @@ describe('classroom serverLifecycle', () => {
     expect(without.ELECTRON_RUN_AS_NODE).toBeUndefined()
   })
 
+  it('forces production relay semantics and strips inherited authority overrides', () => {
+    const env = buildServerEnv({
+      PATH: '/x',
+      NODE_ENV: 'test',
+      NODE_OPTIONS: '--require attacker.js',
+      NODE_PATH: '/untrusted',
+      CLASSROOM_TEST_SOCKET_AUTH: '1',
+      CLASSROOM_TEST_SPOOF_IP: '1',
+      CLASSROOM_ALLOW_INSECURE_LAN: '1',
+      CLASSROOM_ALLOW_MISSING_ORIGIN: '1',
+      CLASSROOM_TLS: '0',
+      CLASSROOM_TLS_DIR: '/untrusted-tls',
+      CLASSROOM_SECRETS_DIR: '/untrusted-secrets',
+      CLASSROOM_RUNS_DIR: '/untrusted-runs',
+      CLASSROOM_ADMIN_TOKEN: 'inherited',
+      CLASSROOM_ENTITLEMENT_REQUIRED: '0',
+      CLASSROOM_ENTITLEMENT_PUBLIC_KEYS_JSON: '{"evil":{}}',
+    }, { electronAsNode: true, productionRelay: true })
+
+    expect(env).toMatchObject({ PATH: '/x', NODE_ENV: 'production', ELECTRON_RUN_AS_NODE: '1' })
+    for (const name of [
+      'NODE_OPTIONS', 'NODE_PATH', 'CLASSROOM_TEST_SOCKET_AUTH', 'CLASSROOM_TEST_SPOOF_IP',
+      'CLASSROOM_ALLOW_INSECURE_LAN', 'CLASSROOM_ALLOW_MISSING_ORIGIN', 'CLASSROOM_TLS',
+      'CLASSROOM_TLS_DIR', 'CLASSROOM_SECRETS_DIR', 'CLASSROOM_RUNS_DIR',
+      'CLASSROOM_ADMIN_TOKEN', 'CLASSROOM_ENTITLEMENT_REQUIRED',
+      'CLASSROOM_ENTITLEMENT_PUBLIC_KEYS_JSON',
+    ]) expect(env[name]).toBeUndefined()
+  })
+
   it('spawns the classroom script with the expected args', () => {
     const spawnFn = vi.fn(() => ({ pid: 42 }))
     spawnClassroomServer({
