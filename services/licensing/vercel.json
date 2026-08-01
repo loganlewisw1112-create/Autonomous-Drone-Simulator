@@ -3,7 +3,6 @@
   "framework": null,
   "functions": {
     "api/**/*.ts": {
-      "runtime": "nodejs24.x",
       "maxDuration": 30
     }
   },
