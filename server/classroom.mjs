@@ -1,52 +1,83 @@
-// Classroom WebSocket relay — store-and-forward for ciphertext ONLY.
-//
-// Security model (why this file never touches `sealed`):
-//   - Every student payload arrives already encrypted to the instructor's key.
-//     This relay routes envelopes by their plaintext string fields (type/classId)
-//     and forwards the opaque `sealed` blob untouched. It must NEVER inspect,
-//     parse, or open `sealed` — the crypto is the real trust boundary.
-//   - The 6-char class code is the ONLY join token. Anyone on the LAN who knows
-//     the code can join as a student; that is by design (it is a room name, not
-//     a secret). But nobody — including this server or a LAN eavesdropper —
-//     can read a student's work without the instructor tab's private key.
-//   - "No auth" (build plan §5) applies to STUDENTS, not to becoming the
-//     instructor. Whoever owns `classPubKey` receives every student's sealed
-//     telemetry and graded submission, so re-binding a live class costs a
-//     server-minted token — see onCreate.
-//   - State is in-memory only; the persisted run backups are ciphertext on disk,
-//     useless without the instructor key. Losing the process loses nothing that
-//     was secret.
+// Classroom protocol-v2 relay. Mission data remains opaque ciphertext; the relay
+// owns instructor authorization, transport admission, routing and bounded backups.
 
 import http from 'node:http'
-import { readFileSync, existsSync } from 'node:fs'
-import { readFile, mkdir, writeFile, unlink } from 'node:fs/promises'
+import https from 'node:https'
+import { existsSync, readFileSync, utimesSync } from 'node:fs'
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  unlink,
+  writeFile,
+} from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import os from 'node:os'
 import crypto from 'node:crypto'
 import { WebSocketServer, WebSocket } from 'ws'
 
-const PORT = Number(process.argv[2] || process.env.PORT || 8080)
+/**
+ * @typedef {WebSocket & {
+ *   instructorSessionAuthorized?: boolean,
+ *   instructorSessionToken?: string,
+ *   connectionIp: string,
+ *   transportTrusted: boolean,
+ *   isAlive: boolean,
+ *   lastPong: number,
+ *   messageTokens: number,
+ *   messageTokenAt: number,
+ *   role?: string,
+ *   classId?: string,
+ *   studentId?: string
+ * }} ClassroomSocket
+ */
 
-// Resolve relative to the repo root (this file lives in ./server).
+const PORT = Number(process.argv[2] || process.env.PORT || 8080)
+const PROTOCOL_VERSION = 2
+const SESSION_COOKIE = 'dsim_instructor_session'
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000
+const VERIFY_WINDOW_MS = 15 * 60 * 1000
+const VERIFY_PER_IP = 5
+const VERIFY_GLOBAL = 30
+const MAX_SOCKETS = 96
+const MAX_SOCKETS_PER_IP = 12
+const MAX_UPGRADES_PER_IP_PER_MIN = 30
+const HANDSHAKE_TIMEOUT_MS = 10_000
+const MESSAGE_RATE_PER_SEC = 16
+const MESSAGE_BURST = 24
+const BACKUP_WRITES_PER_MIN = 4
+const BACKUP_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+const BACKUP_QUOTA_BYTES = 256 * 1024 * 1024
+const SCRYPT_PARAMS = Object.freeze({
+  N: 32_768,
+  r: 8,
+  p: 1,
+  maxmem: 64 * 1024 * 1024,
+})
+
 const distDir = fileURLToPath(new URL('../dist', import.meta.url))
-const runsDir = fileURLToPath(new URL('../classroom-runs', import.meta.url))
-// Gitignored school unlock material — written automatically on first typed code.
-// Tests may point CLASSROOM_SECRETS_DIR at a temp folder so they never touch a
-// developer's real local-secrets/.
+const runsDir = process.env.CLASSROOM_RUNS_DIR
+  ? path.resolve(process.env.CLASSROOM_RUNS_DIR)
+  : fileURLToPath(new URL('../classroom-runs', import.meta.url))
 const secretsDir = process.env.CLASSROOM_SECRETS_DIR
   ? path.resolve(process.env.CLASSROOM_SECRETS_DIR)
   : fileURLToPath(new URL('../local-secrets', import.meta.url))
-const instructorHashPath = path.join(secretsDir, 'instructor-access-hash.txt')
-const instructorCodePath = path.join(secretsDir, 'instructor-access-code.txt')
+const instructorVerifierPath = path.join(secretsDir, 'instructor-access-v2.json')
+const legacyInstructorHashPath = path.join(secretsDir, 'instructor-access-hash.txt')
+const legacyInstructorCodePath = path.join(secretsDir, 'instructor-access-code.txt')
+const provisionLockPath = path.join(secretsDir, '.instructor-provision.lock')
+const administratorTokenWasGenerated = !process.env.CLASSROOM_ADMIN_TOKEN
+const administratorToken = process.env.CLASSROOM_ADMIN_TOKEN
+  || crypto.randomBytes(32).toString('base64url')
 
-// Single source of truth for the guardrails and the class-code alphabet, shared with
-// src/classroom/protocol.ts. This file is plain ESM JS and cannot import the TS module,
-// so both sides read the same JSON rather than re-declaring literals — which is exactly
-// how the server ended up enforcing MAX_STUDENTS while knowing nothing about the code
-// alphabet, and therefore never validating a classId at all. Read synchronously and
-// unguarded on purpose: a relay that cannot see its own limits must not boot.
-export const LIMITS = JSON.parse(readFileSync(fileURLToPath(new URL('../src/classroom/limits.json', import.meta.url)), 'utf8'))
+export const LIMITS = JSON.parse(readFileSync(
+  fileURLToPath(new URL('../src/classroom/limits.json', import.meta.url)),
+  'utf8',
+))
 const {
   MAX_STUDENTS,
   MAX_CLASSES,
@@ -57,6 +88,20 @@ const {
   CLASS_ID_ALPHABET,
   CLASS_ID_LENGTH,
 } = LIMITS
+// Read-only acceptance surface for live relay boundary tests. Production code
+// continues to consume the module constants directly.
+export const RELAY_BOUNDARIES = Object.freeze({
+  MAX_SOCKETS,
+  MAX_SOCKETS_PER_IP,
+  MAX_UPGRADES_PER_IP_PER_MIN,
+  MAX_MESSAGE_BYTES,
+  HANDSHAKE_TIMEOUT_MS,
+  MESSAGE_RATE_PER_SEC,
+  MESSAGE_BURST,
+  BACKUP_WRITES_PER_MIN,
+  BACKUP_RETENTION_MS,
+  BACKUP_QUOTA_BYTES,
+})
 const HEARTBEAT_PING_MS = Math.floor(HEARTBEAT_TIMEOUT_MS / 2)
 
 const TYPES = {
@@ -70,33 +115,64 @@ const TYPES = {
   '.map': 'application/json',
 }
 
-// classId -> { classPubKey, config, instructorSock, instructorToken, focusedStudentId,
-//              students, commandTimestamps, cleanupTimer }
-// students: studentId -> { sock, entry }
-export const classes = new Map()
+const STATIC_SECURITY_HEADERS = Object.freeze({
+  'content-security-policy': [
+    "default-src 'self'",
+    "base-uri 'none'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https://tiles.openfreemap.org",
+    "font-src 'self' data: https://tiles.openfreemap.org",
+    "connect-src 'self' https://tiles.openfreemap.org",
+    "worker-src 'self' blob:",
+  ].join('; '),
+  'cross-origin-opener-policy': 'same-origin',
+  'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+  'referrer-policy': 'no-referrer',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+})
 
-// Mirrors isValidClassId() in src/classroom/protocol.ts over the same shared alphabet.
-// `typeof classId === 'string'` was the whole check before, which let `../../x` through
-// to path.join() in persistRun and escape classroom-runs/.
+// classId -> live relay state. No decrypted mission data is ever stored here.
+export const classes = new Map()
+const instructorSessions = new Map()
+const failedVerificationsByIp = new Map()
+let failedVerificationsGlobal = []
+const backupWriteTimes = new Map()
+let credentialMigrationDeletionFailureForTests = null
+
 export function isValidClassId(value) {
   return typeof value === 'string'
     && value.length === CLASS_ID_LENGTH
-    && [...value].every((c) => CLASS_ID_ALPHABET.includes(c))
+    && [...value].every(char => CLASS_ID_ALPHABET.includes(char))
 }
 
-// Only send when the socket can actually take bytes; a half-closed peer is common.
-function send(sock, msg) {
-  if (sock && sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify(msg))
+function isLoopbackAddress(value) {
+  const address = String(value || '').toLowerCase()
+  return address === '::1'
+    || address === '127.0.0.1'
+    || address.startsWith('127.')
+    || address.startsWith('::ffff:127.')
 }
 
-// The roster the instructor sees is exactly the stored entries (no secrets in them).
-function sendRoster(cls, classId) {
-  const students = [...cls.students.values()].map(s => s.entry)
-  send(cls.instructorSock, { v: 1, type: 'roster.update', classId, students })
+function requestIp(req) {
+  const actual = String(req?.socket?.remoteAddress || req?.connection?.remoteAddress || '')
+  const testIp = req?.headers?.['x-classroom-test-ip']
+  if (
+    process.env.NODE_ENV === 'test'
+    && process.env.CLASSROOM_TEST_SPOOF_IP === '1'
+    && isLoopbackAddress(actual)
+    && typeof testIp === 'string'
+    && /^[0-9a-f:.]{3,45}$/i.test(testIp)
+  ) {
+    return testIp
+  }
+  return actual
 }
 
-// Constant-time token compare. Length is not secret (it is always 43 base64url chars),
-// but timingSafeEqual throws on a length mismatch, so screen for that first.
 function tokenMatches(expected, given) {
   if (typeof expected !== 'string' || typeof given !== 'string') return false
   const a = Buffer.from(expected, 'utf8')
@@ -104,55 +180,112 @@ function tokenMatches(expected, given) {
   return a.length === b.length && crypto.timingSafeEqual(a, b)
 }
 
+function send(sock, msg) {
+  if (sock && sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify(msg))
+}
+
+function fingerprintPublicKey(publicKey) {
+  return crypto.createHash('sha256')
+    .update(Buffer.from(String(publicKey), 'base64'))
+    .digest('base64url')
+}
+
+function sendRoster(cls, classId) {
+  const students = [...cls.students.values()].map(student => student.entry)
+  send(cls.instructorSock, {
+    v: PROTOCOL_VERSION,
+    type: 'roster.update',
+    classId,
+    students,
+  })
+}
+
 function bindInstructor(sock, cls, classId) {
-  if (cls.cleanupTimer) {
-    clearTimeout(cls.cleanupTimer)
-    cls.cleanupTimer = null
-  }
+  if (cls.cleanupTimer) clearTimeout(cls.cleanupTimer)
+  cls.cleanupTimer = null
   sock.role = 'instructor'
   sock.classId = classId
-  send(sock, { v: 1, type: 'class.ok', classId, instructorToken: cls.instructorToken })
+  send(sock, {
+    v: PROTOCOL_VERSION,
+    type: 'class.ok',
+    classId,
+    instructorToken: cls.instructorToken,
+  })
   sendRoster(cls, classId)
 }
 
-// class.create is both "open a room" and "my instructor tab reconnected". The second
-// case is the dangerous one: it used to accept ANY socket that named a live classId and
-// silently reassigned instructorSock/classPubKey/config, so anyone who heard the six
-// characters read aloud could seize the room — and every student who joined afterwards
-// sealed their telemetry AND their graded submission to the attacker's key. That is a
-// direct contradiction of the E2EE guarantee in §4, so re-binding now costs the
-// 256-bit token the server mints at creation and hands only to the creating socket.
-// Students still need no credential of any kind (§5) — only instructors do.
 function onCreate(sock, msg) {
   const { classId, classPubKey, config } = msg
-  const cls = classes.get(classId)
+  if (!activeInstructorSocketSession(sock)) {
+    return send(sock, {
+      v: PROTOCOL_VERSION,
+      type: 'class.err',
+      classId,
+      reason: 'instructor-session-required',
+    })
+  }
+  const insecureDevelopmentAllowed = process.env.CLASSROOM_ALLOW_INSECURE_LAN === '1'
+    && msg.graded === false
+  if (sock.transportTrusted === false && !insecureDevelopmentAllowed) {
+    return send(sock, {
+      v: PROTOCOL_VERSION,
+      type: 'class.err',
+      classId,
+      reason: 'secure-transport-required',
+    })
+  }
 
+  const cls = classes.get(classId)
   if (cls) {
     if (!tokenMatches(cls.instructorToken, msg.instructorToken)) {
-      return send(sock, { v: 1, type: 'class.err', classId, reason: 'not-instructor' })
+      return send(sock, {
+        v: PROTOCOL_VERSION,
+        type: 'class.err',
+        classId,
+        reason: 'not-instructor',
+      })
     }
-    // Legitimate reconnect: proven same instructor, new socket. Keep the live roster.
     cls.instructorSock = sock
-    if (classPubKey) cls.classPubKey = classPubKey
+    if (classPubKey) {
+      cls.classPubKey = classPubKey
+      cls.classKeyFingerprint = fingerprintPublicKey(classPubKey)
+    }
     if (config !== undefined) cls.config = config
     return bindInstructor(sock, cls, classId)
   }
 
-  // Nothing capped the class map, so any LAN client could mint rooms until the process
-  // died — MAX_STUDENTS bounded a class but nothing bounded the number of classes.
   if (classes.size >= MAX_CLASSES) {
-    return send(sock, { v: 1, type: 'class.err', classId, reason: 'server-full' })
+    return send(sock, {
+      v: PROTOCOL_VERSION,
+      type: 'class.err',
+      classId,
+      reason: 'server-full',
+    })
+  }
+
+  const durationMinutes = Number(config?.durationMinutes ?? 60)
+  if (!Number.isFinite(durationMinutes) || durationMinutes < 30 || durationMinutes > 180) {
+    return send(sock, {
+      v: PROTOCOL_VERSION,
+      type: 'class.err',
+      classId,
+      reason: 'invalid-class-duration',
+    })
   }
 
   const created = {
     classPubKey,
+    classKeyFingerprint: fingerprintPublicKey(classPubKey),
     config,
+    graded: msg.graded !== false,
     instructorSock: sock,
     instructorToken: crypto.randomBytes(32).toString('base64url'),
     focusedStudentId: null,
     students: new Map(),
     commandTimestamps: [],
     cleanupTimer: null,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + durationMinutes * 60_000,
   }
   classes.set(classId, created)
   bindInstructor(sock, created, classId)
@@ -161,8 +294,38 @@ function onCreate(sock, msg) {
 function onJoin(sock, msg) {
   const { classId, displayName, studentPubKey, accountId } = msg
   const cls = classes.get(classId)
-  if (!cls) return send(sock, { v: 1, type: 'join.err', classId, reason: 'no-such-class' })
-  if (cls.students.size >= MAX_STUDENTS) return send(sock, { v: 1, type: 'join.err', classId, reason: 'class-full' })
+  if (!cls) {
+    return send(sock, {
+      v: PROTOCOL_VERSION,
+      type: 'join.err',
+      classId,
+      reason: 'no-such-class',
+    })
+  }
+  if (Date.now() >= cls.expiresAt) {
+    return send(sock, {
+      v: PROTOCOL_VERSION,
+      type: 'join.err',
+      classId,
+      reason: 'class-time-limit-reached',
+    })
+  }
+  if (sock.transportTrusted === false && process.env.CLASSROOM_ALLOW_INSECURE_LAN !== '1') {
+    return send(sock, {
+      v: PROTOCOL_VERSION,
+      type: 'join.err',
+      classId,
+      reason: 'secure-transport-required',
+    })
+  }
+  if (cls.students.size >= MAX_STUDENTS) {
+    return send(sock, {
+      v: PROTOCOL_VERSION,
+      type: 'join.err',
+      classId,
+      reason: 'class-full',
+    })
+  }
   const studentId = crypto.randomUUID().slice(0, 8)
   const entry = {
     studentId,
@@ -175,48 +338,135 @@ function onJoin(sock, msg) {
   sock.role = 'student'
   sock.classId = classId
   sock.studentId = studentId
-  send(sock, { v: 1, type: 'join.ok', classId, studentId, classPubKey: cls.classPubKey, config: cls.config })
+  send(sock, {
+    v: PROTOCOL_VERSION,
+    type: 'join.ok',
+    classId,
+    studentId,
+    classPubKey: cls.classPubKey,
+    classKeyFingerprint: cls.classKeyFingerprint,
+    config: cls.config,
+  })
   sendRoster(cls, classId)
 }
 
-// Ciphertext crash-backup for the instructor tab. Best-effort: a disk fault must
-// never take down the relay, so failures are swallowed after logging.
-//
-// This is the one place that turns network input into a filesystem path. classId is
-// already validated at the WS entry point and studentId is a server-minted UUID slice,
-// but both are re-checked here and the resolved path is proven to stay inside
-// classroom-runs/ — the same containment test the static file handler applies to dist/.
-async function persistRun(classId, studentId, envelope) {
-  if (!isValidClassId(classId) || !/^[0-9a-f-]{1,36}$/.test(String(studentId))) return
+function backupWarning(classId, reason) {
+  const cls = classes.get(classId)
+  send(cls?.instructorSock, {
+    v: PROTOCOL_VERSION,
+    type: 'backup.warn',
+    classId,
+    reason,
+  })
+}
+
+function consumeBackupCapacity(classId, studentId, now = Date.now()) {
+  const key = `${classId}:${studentId}`
+  const cutoff = now - 60_000
+  const timestamps = (backupWriteTimes.get(key) || []).filter(stamp => stamp > cutoff)
+  if (timestamps.length >= BACKUP_WRITES_PER_MIN) {
+    backupWriteTimes.set(key, timestamps)
+    return false
+  }
+  timestamps.push(now)
+  backupWriteTimes.set(key, timestamps)
+  return true
+}
+
+async function directoryBytes(directory) {
+  let total = 0
+  const entries = await readdir(directory, { withFileTypes: true }).catch(() => [])
+  for (const entry of entries) {
+    const child = path.join(directory, entry.name)
+    if (entry.isDirectory()) total += await directoryBytes(child)
+    else total += (await stat(child).catch(() => null))?.size || 0
+  }
+  return total
+}
+
+async function closedClassDirectories() {
+  const entries = await readdir(runsDir, { withFileTypes: true }).catch(() => [])
+  const candidates = []
+  for (const entry of entries) {
+    if (!entry.isDirectory() || classes.has(entry.name)) continue
+    const directory = path.join(runsDir, entry.name)
+    const info = await stat(directory).catch(() => null)
+    if (info) candidates.push({ directory, mtimeMs: info.mtimeMs })
+  }
+  return candidates.sort((a, b) => a.mtimeMs - b.mtimeMs)
+}
+
+async function pruneBackups(now = Date.now()) {
+  const closed = await closedClassDirectories()
+  for (const candidate of closed) {
+    if (candidate.mtimeMs < now - BACKUP_RETENTION_MS) {
+      await rm(candidate.directory, { recursive: true, force: true }).catch(() => {})
+    }
+  }
+  let bytes = await directoryBytes(runsDir)
+  if (bytes <= BACKUP_QUOTA_BYTES) return bytes
+  for (const candidate of await closedClassDirectories()) {
+    const removed = await directoryBytes(candidate.directory)
+    await rm(candidate.directory, { recursive: true, force: true }).catch(() => {})
+    bytes = Math.max(0, bytes - removed)
+    if (bytes <= BACKUP_QUOTA_BYTES) break
+  }
+  return bytes
+}
+
+async function atomicWrite(file, contents, options = {}) {
+  await mkdir(path.dirname(file), { recursive: true })
+  const temporary = `${file}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`
   try {
-    const dir = path.join(runsDir, classId)
-    if (!dir.startsWith(runsDir + path.sep)) return
-    const file = path.join(dir, `${studentId}-${Date.now()}.json`)
-    if (!file.startsWith(dir + path.sep)) return
-    await mkdir(dir, { recursive: true })
-    await writeFile(file, JSON.stringify(envelope))
-  } catch (err) {
-    console.error('run backup failed', err)
+    await writeFile(temporary, contents, options)
+    await rename(temporary, file)
+  } finally {
+    await unlink(temporary).catch(() => {})
   }
 }
 
-// student.grid / student.focus / student.run: tag with `from` and hand to the
-// instructor. `sealed` is forwarded by reference, never opened.
+async function persistRun(classId, studentId, envelope) {
+  if (!isValidClassId(classId) || !/^[0-9a-f-]{1,36}$/.test(String(studentId))) return
+  if (!consumeBackupCapacity(classId, studentId)) {
+    backupWarning(classId, 'rate-limited')
+    return
+  }
+  const directory = path.resolve(runsDir, classId)
+  const file = path.resolve(directory, `${studentId}.json`)
+  if (!directory.startsWith(path.resolve(runsDir) + path.sep) || !file.startsWith(directory + path.sep)) return
+
+  try {
+    await pruneBackups()
+    await atomicWrite(file, JSON.stringify(envelope), { encoding: 'utf8', mode: 0o600 })
+    const bytes = await pruneBackups()
+    if (bytes > BACKUP_QUOTA_BYTES) {
+      await unlink(file).catch(() => {})
+      backupWarning(classId, 'quota-limited')
+    }
+  } catch (error) {
+    console.error('run backup failed', error instanceof Error ? error.message : 'unknown')
+    backupWarning(classId, 'write-failed')
+  }
+}
+
 function onStudentMsg(sock, msg) {
   const cls = classes.get(sock.classId)
   if (!cls || sock.role !== 'student' || msg.classId !== sock.classId) return
   const from = sock.studentId
   const student = from && cls.students.get(from)
   if (!student || student.sock !== sock) return
-  if (msg.type === 'student.run' || msg.type === 'student.session') persistRun(sock.classId, from, msg)
-  const type = msg.type === 'student.ack' ? 'student.ack' : msg.type
-  send(cls.instructorSock, { v: 1, type, classId: sock.classId, from, sealed: msg.sealed })
+  if (msg.type === 'student.run' || msg.type === 'student.session') {
+    void persistRun(sock.classId, from, msg)
+  }
+  send(cls.instructorSock, {
+    v: PROTOCOL_VERSION,
+    type: msg.type,
+    classId: sock.classId,
+    from,
+    sealed: msg.sealed,
+  })
 }
 
-// Sliding one-second window, scoped to the class. Only an authenticated command to
-// a live named student consumes capacity; malformed targets and token probes do not
-// let an attacker exhaust the instructor's budget. Over-limit commands are dropped
-// deterministically before any student receives bytes.
 function consumeCommandCapacity(cls, now = Date.now()) {
   const cutoff = now - 1000
   cls.commandTimestamps = cls.commandTimestamps.filter(stamp => stamp > cutoff)
@@ -225,31 +475,44 @@ function consumeCommandCapacity(cls, now = Date.now()) {
   return true
 }
 
-// Instructor -> one named student. The relay authenticates and routes only; the
-// sealed command remains opaque and is forwarded unchanged, without the instructor
-// token or target id attached to the student-visible envelope.
 function onClassCommand(sock, msg) {
   const cls = classes.get(msg.classId)
   if (!cls || cls.instructorSock !== sock || sock.role !== 'instructor') return
   if (!tokenMatches(cls.instructorToken, msg.instructorToken)) return
   if (typeof msg.studentId !== 'string') return
   const target = cls.students.get(msg.studentId)
-  if (!target) return
-  if (!consumeCommandCapacity(cls)) return
-  send(target.sock, { v: 1, type: 'command', classId: msg.classId, sealed: msg.sealed })
+  if (!target || !consumeCommandCapacity(cls)) return
+  send(target.sock, {
+    v: PROTOCOL_VERSION,
+    type: 'command',
+    classId: msg.classId,
+    sealed: msg.sealed,
+  })
 }
 
 function onFocus(sock, msg) {
   const cls = classes.get(sock.classId)
   if (!cls || cls.instructorSock !== sock) return
-  const prev = cls.focusedStudentId
+  const previous = cls.focusedStudentId
   const next = msg.studentId ?? null
-  if (prev === next) return
+  if (previous === next) return
   cls.focusedStudentId = next
-  const prevStudent = prev && cls.students.get(prev)
-  if (prevStudent) send(prevStudent.sock, { v: 1, type: 'focus.off', classId: sock.classId })
+  const previousStudent = previous && cls.students.get(previous)
+  if (previousStudent) {
+    send(previousStudent.sock, {
+      v: PROTOCOL_VERSION,
+      type: 'focus.off',
+      classId: sock.classId,
+    })
+  }
   const nextStudent = next && cls.students.get(next)
-  if (nextStudent) send(nextStudent.sock, { v: 1, type: 'focus.on', classId: sock.classId })
+  if (nextStudent) {
+    send(nextStudent.sock, {
+      v: PROTOCOL_VERSION,
+      type: 'focus.on',
+      classId: sock.classId,
+    })
+  }
 }
 
 function removeStudent(sock) {
@@ -257,8 +520,14 @@ function removeStudent(sock) {
   const studentId = sock.studentId
   if (!cls || !studentId || !cls.students.has(studentId)) return
   cls.students.delete(studentId)
+  backupWriteTimes.delete(`${sock.classId}:${studentId}`)
   if (cls.focusedStudentId === studentId) cls.focusedStudentId = null
-  send(cls.instructorSock, { v: 1, type: 'student.gone', classId: sock.classId, from: studentId })
+  send(cls.instructorSock, {
+    v: PROTOCOL_VERSION,
+    type: 'student.gone',
+    classId: sock.classId,
+    from: studentId,
+  })
   sendRoster(cls, sock.classId)
 }
 
@@ -266,8 +535,21 @@ function closeClass(classId) {
   const cls = classes.get(classId)
   if (!cls) return
   if (cls.cleanupTimer) clearTimeout(cls.cleanupTimer)
-  for (const { sock } of cls.students.values()) send(sock, { v: 1, type: 'class.closed', classId })
+  for (const { sock } of cls.students.values()) {
+    send(sock, { v: PROTOCOL_VERSION, type: 'class.closed', classId })
+  }
   classes.delete(classId)
+  try {
+    const directory = path.resolve(runsDir, classId)
+    if (directory.startsWith(path.resolve(runsDir) + path.sep)) {
+      const closedAt = new Date()
+      utimesSync(directory, closedAt, closedAt)
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      console.warn('backup closure timestamp failed', error instanceof Error ? error.message : 'unknown')
+    }
+  }
 }
 
 function onClassClose(sock) {
@@ -276,30 +558,28 @@ function onClassClose(sock) {
 }
 
 export function onClose(sock) {
-  if (sock.role === 'student') removeStudent(sock)
-  else if (sock.role === 'instructor') {
-    // Keep the room and roster through a temporary instructor disconnect so the
-    // server-minted token can rebind the tab. Cleanup is bounded; explicit
-    // class.close still calls closeClass immediately.
-    const cls = classes.get(sock.classId)
-    if (cls && cls.instructorSock === sock) {
-      cls.instructorSock = null
-      if (cls.cleanupTimer) clearTimeout(cls.cleanupTimer)
-      cls.cleanupTimer = setTimeout(() => {
-        if (classes.get(sock.classId) === cls && cls.instructorSock === null) closeClass(sock.classId)
-      }, INSTRUCTOR_RECONNECT_GRACE_MS)
-      cls.cleanupTimer.unref?.()
-    }
+  if (sock.role === 'student') {
+    removeStudent(sock)
+    return
   }
+  if (sock.role !== 'instructor') return
+  const cls = classes.get(sock.classId)
+  if (!cls || cls.instructorSock !== sock) return
+  cls.instructorSock = null
+  if (cls.cleanupTimer) clearTimeout(cls.cleanupTimer)
+  cls.cleanupTimer = setTimeout(() => {
+    if (classes.get(sock.classId) === cls && cls.instructorSock === null) {
+      closeClass(sock.classId)
+    }
+  }, INSTRUCTOR_RECONNECT_GRACE_MS)
+  cls.cleanupTimer.unref?.()
 }
 
-// A socket's role is fixed by its first meaningful message.
 export function handle(sock, msg) {
-  if (!msg || msg.v !== 1 || typeof msg.type !== 'string') return
-  // Validate the classId at EVERY entry point, not only the two that key the class map
-  // with it. Drop silently rather than echoing a reason: a well-formed client cannot
-  // produce a malformed code (JoinGate gates on the same predicate), so anything that
-  // arrives here is hostile and gets no oracle.
+  if (!msg || msg.v !== PROTOCOL_VERSION || typeof msg.type !== 'string') {
+    if (msg?.v === 1) sock.close?.(4001, 'refresh-required')
+    return
+  }
   if (msg.classId !== undefined && !isValidClassId(msg.classId)) return
   switch (msg.type) {
     case 'class.create': return onCreate(sock, msg)
@@ -316,28 +596,49 @@ export function handle(sock, msg) {
   }
 }
 
-// Serving the built app from the same origin lets students just open the URL.
+function securityHeaders(req, api = false) {
+  const headers = {
+    ...STATIC_SECURITY_HEADERS,
+    ...(api ? { 'cache-control': 'no-store, max-age=0' } : {}),
+  }
+  if (req?.socket?.encrypted) {
+    headers['strict-transport-security'] = 'max-age=31536000'
+  }
+  return headers
+}
+
 async function serveStatic(req, res) {
   try {
     const urlPath = decodeURIComponent(new URL(req.url || '/', 'http://x').pathname)
-    const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '')
-    const filePath = path.join(distDir, rel)
-    // Reject path traversal that would escape dist.
-    if (filePath !== distDir && !filePath.startsWith(distDir + path.sep)) {
-      res.writeHead(403)
+    const relative = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '')
+    const file = path.resolve(distDir, relative)
+    if (file !== path.resolve(distDir) && !file.startsWith(path.resolve(distDir) + path.sep)) {
+      res.writeHead(403, securityHeaders(req))
       return res.end('forbidden')
     }
-    const data = await readFile(filePath)
-    res.writeHead(200, { 'content-type': TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream' })
+    const data = await readFile(file)
+    const contentType = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream'
+    const cache = path.basename(file) === 'index.html'
+      ? 'no-store, max-age=0'
+      : 'public, max-age=31536000, immutable'
+    res.writeHead(200, {
+      ...securityHeaders(req),
+      'cache-control': cache,
+      'content-type': contentType,
+    })
     res.end(data)
   } catch {
-    res.writeHead(404)
+    res.writeHead(404, securityHeaders(req))
     res.end('not found')
   }
 }
 
-function sendJson(res, status, body) {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
+function sendJson(req, res, status, body, extraHeaders = {}) {
+  res.writeHead(status, {
+    ...securityHeaders(req, true),
+    'content-type': 'application/json; charset=utf-8',
+    ...extraHeaders,
+  })
   res.end(JSON.stringify(body))
 }
 
@@ -352,11 +653,93 @@ async function readRequestBody(req, limit = 4096) {
   return Buffer.concat(chunks).toString('utf8')
 }
 
-/** Read the school unlock digest from gitignored local-secrets (if present). */
+async function readJsonBody(req, res) {
+  const raw = await readRequestBody(req)
+  if (raw === null) {
+    sendJson(req, res, 413, { ok: false, error: 'too-large' })
+    return null
+  }
+  try {
+    return JSON.parse(raw || '{}')
+  } catch {
+    sendJson(req, res, 400, { ok: false, error: 'bad-json' })
+    return null
+  }
+}
+
+function normalizeAccessCode(value) {
+  if (typeof value !== 'string') return null
+  const normalized = value.normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+  const length = [...normalized].length
+  return length >= 12 && length <= 128 ? normalized : null
+}
+
+function normalizeLegacyAccessCode(value) {
+  if (typeof value !== 'string') return null
+  const normalized = value
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, '')
+    .trim()
+  return normalized || null
+}
+
+function scrypt(code, salt) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(code, salt, 32, SCRYPT_PARAMS, (error, derived) => {
+      if (error) reject(error)
+      else resolve(derived)
+    })
+  })
+}
+
+async function makeVerifier(code, allowLegacy = false) {
+  const normalized = allowLegacy
+    ? String(code).normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim()
+    : normalizeAccessCode(code)
+  if (!normalized || [...normalized].length > 128) return null
+  const salt = crypto.randomBytes(16)
+  const derived = await scrypt(normalized, salt)
+  return {
+    version: 2,
+    kdf: 'scrypt',
+    N: SCRYPT_PARAMS.N,
+    r: SCRYPT_PARAMS.r,
+    p: SCRYPT_PARAMS.p,
+    maxmem: SCRYPT_PARAMS.maxmem,
+    salt: salt.toString('base64'),
+    hash: derived.toString('base64'),
+  }
+}
+
+function validVerifier(value) {
+  return value
+    && value.version === 2
+    && value.kdf === 'scrypt'
+    && value.N === SCRYPT_PARAMS.N
+    && value.r === SCRYPT_PARAMS.r
+    && value.p === SCRYPT_PARAMS.p
+    && value.maxmem === SCRYPT_PARAMS.maxmem
+    && typeof value.salt === 'string'
+    && typeof value.hash === 'string'
+}
+
+export function loadInstructorAccessVerifierFromDisk() {
+  try {
+    if (!existsSync(instructorVerifierPath)) return null
+    const parsed = JSON.parse(readFileSync(instructorVerifierPath, 'utf8'))
+    return validVerifier(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+// Legacy diagnostic export retained for migration tests and administrators.
 export function loadInstructorAccessHashFromDisk() {
   try {
-    if (!existsSync(instructorHashPath)) return null
-    const lines = readFileSync(instructorHashPath, 'utf8').split(/\r?\n/)
+    if (!existsSync(legacyInstructorHashPath)) return null
+    const lines = readFileSync(legacyInstructorHashPath, 'utf8').split(/\r?\n/)
     for (const line of lines) {
       const trimmed = line.trim()
       if (!trimmed || trimmed.startsWith('#')) continue
@@ -368,154 +751,389 @@ export function loadInstructorAccessHashFromDisk() {
   return null
 }
 
-function hashAccessCode(code) {
-  const normalized = String(code).replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, '').trim()
-  if (!normalized) return null
-  return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex')
-}
-
-function codesMatchExpected(code, expectedHash) {
-  if (!expectedHash || typeof code !== 'string') return false
-  const normalized = code.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, '').trim()
-  if (!normalized) return false
-  const asHex = normalized.toLowerCase()
-  if (/^[0-9a-f]{64}$/.test(asHex)) {
-    const a = Buffer.from(asHex, 'utf8')
-    const b = Buffer.from(expectedHash, 'utf8')
-    return a.length === b.length && crypto.timingSafeEqual(a, b)
+function legacyPlaintextFromDisk() {
+  try {
+    if (!existsSync(legacyInstructorCodePath)) return null
+    const lines = readFileSync(legacyInstructorCodePath, 'utf8').split(/\r?\n/)
+    return lines.find(line => line.trim() && !line.trim().startsWith('#'))?.trim() || null
+  } catch {
+    return null
   }
-  const digest = hashAccessCode(normalized)
-  if (!digest) return false
-  const a = Buffer.from(digest, 'utf8')
-  const b = Buffer.from(expectedHash, 'utf8')
-  return a.length === b.length && crypto.timingSafeEqual(a, b)
 }
 
-/**
- * Health probe for the desktop shell / web Yes dialog.
- *   GET/HEAD /api/health → { ok: true, service: 'classroom-relay' }
- */
+async function writeVerifier(verifier) {
+  await atomicWrite(
+    instructorVerifierPath,
+    `${JSON.stringify(verifier, null, 2)}\n`,
+    { encoding: 'utf8', mode: 0o600 },
+  )
+}
+
+export function injectCredentialMigrationDeletionFailureForTests(fileName = null) {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('credential migration fault injection is test-only')
+  }
+  credentialMigrationDeletionFailureForTests = fileName
+}
+
+async function deleteMigratedCredential(file) {
+  if (
+    process.env.NODE_ENV === 'test'
+    && credentialMigrationDeletionFailureForTests === path.basename(file)
+  ) {
+    const error = Object.assign(
+      new Error('injected credential migration deletion failure'),
+      { code: 'EACCES' },
+    )
+    throw error
+  }
+  try {
+    await unlink(file)
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+}
+
+async function rollbackMigratedVerifier() {
+  try {
+    await unlink(instructorVerifierPath)
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+}
+
+async function migratePlaintextCredential() {
+  if (loadInstructorAccessVerifierFromDisk()) return false
+  const plaintext = legacyPlaintextFromDisk()
+  if (!plaintext) return false
+  const verifier = await makeVerifier(plaintext, true)
+  if (!verifier) return false
+  await writeVerifier(verifier)
+  try {
+    // Delete the optional hash first so the plaintext source is still available
+    // if either cleanup step fails.
+    await deleteMigratedCredential(legacyInstructorHashPath)
+    await deleteMigratedCredential(legacyInstructorCodePath)
+  } catch (error) {
+    await rollbackMigratedVerifier()
+    throw error
+  }
+  return true
+}
+
+async function verifyCredential(code) {
+  await migratePlaintextCredential()
+  const verifier = loadInstructorAccessVerifierFromDisk()
+  if (verifier) {
+    const normalized = String(code || '').normalize('NFKC')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .trim()
+    if (!normalized || [...normalized].length > 128) return false
+    const actual = await scrypt(normalized, Buffer.from(verifier.salt, 'base64'))
+    const expected = Buffer.from(verifier.hash, 'base64')
+    return actual.length === expected.length && crypto.timingSafeEqual(actual, expected)
+  }
+
+  const legacyHash = loadInstructorAccessHashFromDisk()
+  const legacyCode = normalizeLegacyAccessCode(code)
+  if (!legacyHash || !legacyCode) return false
+  const actual = crypto.createHash('sha256').update(legacyCode, 'utf8').digest()
+  const expected = Buffer.from(legacyHash, 'hex')
+  if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return false
+  const upgraded = await makeVerifier(code, true)
+  if (!upgraded) return false
+  await writeVerifier(upgraded)
+  try {
+    await deleteMigratedCredential(legacyInstructorCodePath)
+    await deleteMigratedCredential(legacyInstructorHashPath)
+  } catch (error) {
+    await rollbackMigratedVerifier()
+    throw error
+  }
+  return true
+}
+
+function credentialConfigured() {
+  return Boolean(
+    loadInstructorAccessVerifierFromDisk()
+    || loadInstructorAccessHashFromDisk()
+    || legacyPlaintextFromDisk(),
+  )
+}
+
+function cookieMap(req) {
+  const values = new Map()
+  for (const part of String(req?.headers?.cookie || '').split(';')) {
+    const separator = part.indexOf('=')
+    if (separator < 1) continue
+    values.set(part.slice(0, separator).trim(), part.slice(separator + 1).trim())
+  }
+  return values
+}
+
+function instructorSession(req, now = Date.now()) {
+  const token = cookieMap(req).get(SESSION_COOKIE)
+  const session = token && instructorSessions.get(token)
+  if (!session) return null
+  if (session.expiresAt <= now) {
+    instructorSessions.delete(token)
+    return null
+  }
+  return { token, ...session }
+}
+
+function activeInstructorSocketSession(sock, now = Date.now()) {
+  // Direct fake-socket tests do not perform an HTTP upgrade. This flag is never
+  // enabled by the CLI/Electron launchers and cannot be supplied over the wire.
+  if (
+    process.env.CLASSROOM_TEST_SOCKET_AUTH === '1'
+    && sock.instructorSessionAuthorized === true
+  ) {
+    return { token: 'test-only', ip: sock.connectionIp || 'test', expiresAt: now + 1 }
+  }
+  const token = sock.instructorSessionToken
+  const session = token && instructorSessions.get(token)
+  if (!session) return null
+  if (session.expiresAt <= now) {
+    instructorSessions.delete(token)
+    return null
+  }
+  if (session.ip !== sock.connectionIp) return null
+  return { token, ...session }
+}
+
+export function authenticateInstructorSocket(sock, req) {
+  const session = instructorSession(req)
+  sock.connectionIp = requestIp(req)
+  if (!session || session.ip !== sock.connectionIp) {
+    delete sock.instructorSessionToken
+    return false
+  }
+  sock.instructorSessionToken = session.token
+  return true
+}
+
+function mintInstructorSession(ip, now = Date.now()) {
+  const token = crypto.randomBytes(32).toString('base64url')
+  instructorSessions.set(token, { ip, expiresAt: now + SESSION_TTL_MS })
+  return token
+}
+
+function sessionCookie(token, secure = false) {
+  return [
+    `${SESSION_COOKIE}=${token}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Strict',
+    `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+    ...(secure ? ['Secure'] : []),
+  ].join('; ')
+}
+
+function clearSessionCookie(secure = false) {
+  return [
+    `${SESSION_COOKIE}=`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Strict',
+    'Max-Age=0',
+    ...(secure ? ['Secure'] : []),
+  ].join('; ')
+}
+
+function failedVerificationLimited(ip, now = Date.now()) {
+  const cutoff = now - VERIFY_WINDOW_MS
+  failedVerificationsGlobal = failedVerificationsGlobal.filter(stamp => stamp > cutoff)
+  const perIp = (failedVerificationsByIp.get(ip) || []).filter(stamp => stamp > cutoff)
+  failedVerificationsByIp.set(ip, perIp)
+  return perIp.length >= VERIFY_PER_IP || failedVerificationsGlobal.length >= VERIFY_GLOBAL
+}
+
+function recordFailedVerification(ip, now = Date.now()) {
+  const existing = failedVerificationsByIp.get(ip) || []
+  existing.push(now)
+  failedVerificationsByIp.set(ip, existing)
+  failedVerificationsGlobal.push(now)
+}
+
+function adminAuthorized(req) {
+  return tokenMatches(administratorToken, req?.headers?.['x-classroom-admin-token'])
+}
+
+function revokeInstructorAuthority() {
+  instructorSessions.clear()
+  for (const classId of [...classes.keys()]) closeClass(classId)
+}
+
+async function deleteCredentialFiles() {
+  for (const credentialPath of [
+    instructorVerifierPath,
+    legacyInstructorHashPath,
+    legacyInstructorCodePath,
+  ]) {
+    try {
+      await unlink(credentialPath)
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
+  }
+}
+
 export async function handleHealthHttp(req, res) {
   const url = new URL(req.url || '/', 'http://localhost')
   if (url.pathname !== '/api/health') return false
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    sendJson(res, 405, { ok: false, error: 'method-not-allowed' })
+    sendJson(req, res, 405, { ok: false, error: 'method-not-allowed' })
     return true
   }
-  sendJson(res, 200, { ok: true, service: 'classroom-relay' })
+  sendJson(req, res, 200, { ok: true, service: 'classroom-relay', protocol: PROTOCOL_VERSION })
   return true
 }
 
-/**
- * Option A unlock APIs:
- *   GET    /api/instructor-access           → { configured }
- *   POST   /api/instructor-access/verify    → { ok }  (never returns the hash)
- *   POST   /api/instructor-access/provision → first writer wins; 409 if already set
- *   DELETE /api/instructor-access           → intentional admin reset of disk secrets
- */
 export async function handleInstructorAccessHttp(req, res) {
-  const url = new URL(req.url || '/', 'http://x')
+  const url = new URL(req.url || '/', 'http://localhost')
   if (!url.pathname.startsWith('/api/instructor-access')) return false
-
-  if (url.pathname === '/api/instructor-access' && req.method === 'GET') {
-    sendJson(res, 200, { configured: loadInstructorAccessHashFromDisk() !== null })
+  if (!isLoopbackAddress(requestIp(req))) {
+    sendJson(req, res, 403, { ok: false, error: 'loopback-only' })
     return true
   }
 
-  if (url.pathname === '/api/instructor-access' && req.method === 'DELETE') {
-    try {
-      if (existsSync(instructorHashPath)) await unlink(instructorHashPath)
-      if (existsSync(instructorCodePath)) await unlink(instructorCodePath)
-    } catch (err) {
-      console.error('instructor-access reset failed', err)
-      sendJson(res, 500, { ok: false, error: 'reset-failed' })
-      return true
-    }
-    sendJson(res, 200, { ok: true })
+  if (url.pathname === '/api/instructor-access/status' && req.method === 'GET') {
+    await migratePlaintextCredential().catch(() => {})
+    sendJson(req, res, 200, {
+      configured: credentialConfigured(),
+      authenticated: instructorSession(req) !== null,
+    })
     return true
   }
 
-  if (url.pathname === '/api/instructor-access/verify' && req.method === 'POST') {
-    const raw = await readRequestBody(req)
-    if (raw === null) {
-      sendJson(res, 413, { ok: false, error: 'too-large' })
+  if (url.pathname === '/api/instructor-access/session' && req.method === 'POST') {
+    const ip = requestIp(req)
+    if (failedVerificationLimited(ip)) {
+      sendJson(req, res, 429, { ok: false, error: 'rate-limited' })
       return true
     }
-    let body
+    const body = await readJsonBody(req, res)
+    if (!body) return true
+    let verified
     try {
-      body = JSON.parse(raw || '{}')
+      verified = await verifyCredential(body.code)
     } catch {
-      sendJson(res, 400, { ok: false, error: 'bad-json' })
+      sendJson(req, res, 500, { ok: false, error: 'verification-failed' })
       return true
     }
-    const expected = loadInstructorAccessHashFromDisk()
-    if (!expected) {
-      sendJson(res, 404, { ok: false, error: 'not-configured' })
+    if (!verified) {
+      recordFailedVerification(ip)
+      sendJson(req, res, 401, { ok: false, error: 'invalid-code' })
       return true
     }
-    sendJson(res, 200, { ok: codesMatchExpected(body?.code, expected) })
+    const token = mintInstructorSession(ip)
+    sendJson(req, res, 200, { ok: true }, {
+      'set-cookie': sessionCookie(token, req.socket?.encrypted === true),
+    })
+    return true
+  }
+
+  if (url.pathname === '/api/instructor-access/logout' && req.method === 'POST') {
+    const session = instructorSession(req)
+    if (session) instructorSessions.delete(session.token)
+    sendJson(req, res, 200, { ok: true }, {
+      'set-cookie': clearSessionCookie(req.socket?.encrypted === true),
+    })
     return true
   }
 
   if (url.pathname === '/api/instructor-access/provision' && req.method === 'POST') {
-    const raw = await readRequestBody(req)
-    if (raw === null) {
-      sendJson(res, 413, { ok: false, error: 'too-large' })
+    if (!adminAuthorized(req)) {
+      sendJson(req, res, 401, { ok: false, error: 'administrator-token-required' })
       return true
     }
-    let body
-    try {
-      body = JSON.parse(raw || '{}')
-    } catch {
-      sendJson(res, 400, { ok: false, error: 'bad-json' })
+    if (credentialConfigured()) {
+      sendJson(req, res, 409, { ok: false, error: 'already-configured' })
       return true
     }
-    const existing = loadInstructorAccessHashFromDisk()
-    if (existing) {
-      sendJson(res, 409, { ok: false, error: 'already-configured' })
+    const body = await readJsonBody(req, res)
+    if (!body) return true
+    const verifier = await makeVerifier(body.code).catch(() => null)
+    if (!verifier) {
+      sendJson(req, res, 400, { ok: false, error: 'invalid-code-policy' })
       return true
     }
-    const hash = typeof body?.hash === 'string' ? body.hash.trim().toLowerCase() : ''
-    if (!/^[0-9a-f]{64}$/.test(hash)) {
-      sendJson(res, 400, { ok: false, error: 'bad-hash' })
-      return true
-    }
+    let lockOwned = false
     try {
       await mkdir(secretsDir, { recursive: true })
-      const hashContents = [
-        '# School instructor unlock digest (SHA-256 hex). Auto-written on first typed code.',
-        '# Do not commit this folder. Delete this file (or DELETE /api/instructor-access) to reset.',
-        hash,
-        '',
-      ].join('\n')
-      await writeFile(instructorHashPath, hashContents, { encoding: 'utf8', flag: 'wx' })
-      if (typeof body?.code === 'string' && body.code.trim()) {
-        const plaintext = body.code.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, '').trim()
-        // Optional local-admin recovery only — never required of the instructor UI.
-        await writeFile(
-          instructorCodePath,
-          [
-            '# Optional plaintext recovery for this machine. Gitignored. Never commit.',
-            plaintext,
-            '',
-          ].join('\n'),
-          { encoding: 'utf8', flag: 'wx' },
-        ).catch(() => { /* recovery file is best-effort */ })
-      }
-    } catch (err) {
-      if (err && (err.code === 'EEXIST' || loadInstructorAccessHashFromDisk())) {
-        sendJson(res, 409, { ok: false, error: 'already-configured' })
+      await writeFile(provisionLockPath, String(process.pid), {
+        encoding: 'utf8',
+        flag: 'wx',
+        mode: 0o600,
+      })
+      lockOwned = true
+      if (credentialConfigured()) {
+        sendJson(req, res, 409, { ok: false, error: 'already-configured' })
         return true
       }
-      console.error('instructor-access provision failed', err)
-      sendJson(res, 500, { ok: false, error: 'provision-failed' })
-      return true
+      await writeVerifier(verifier)
+      await unlink(legacyInstructorCodePath).catch(() => {})
+      await unlink(legacyInstructorHashPath).catch(() => {})
+      sendJson(req, res, 201, { ok: true })
+    } catch (error) {
+      if (error?.code === 'EEXIST') {
+        sendJson(req, res, 409, { ok: false, error: 'provision-in-progress' })
+        return true
+      }
+      sendJson(req, res, 500, { ok: false, error: 'provision-failed' })
+    } finally {
+      if (lockOwned) await unlink(provisionLockPath).catch(() => {})
     }
-    sendJson(res, 201, { ok: true })
     return true
   }
 
-  sendJson(res, 404, { ok: false, error: 'not-found' })
+  if (url.pathname === '/api/instructor-access/rotate' && req.method === 'POST') {
+    if (!adminAuthorized(req)) {
+      sendJson(req, res, 401, { ok: false, error: 'administrator-token-required' })
+      return true
+    }
+    const body = await readJsonBody(req, res)
+    if (!body) return true
+    const verifier = await makeVerifier(body.code).catch(() => null)
+    if (!verifier) {
+      sendJson(req, res, 400, { ok: false, error: 'invalid-code-policy' })
+      return true
+    }
+    try {
+      await writeVerifier(verifier)
+      await unlink(legacyInstructorCodePath).catch(() => {})
+      await unlink(legacyInstructorHashPath).catch(() => {})
+      revokeInstructorAuthority()
+      sendJson(req, res, 200, { ok: true }, {
+        'set-cookie': clearSessionCookie(req.socket?.encrypted === true),
+      })
+    } catch {
+      sendJson(req, res, 500, { ok: false, error: 'rotate-failed' })
+    }
+    return true
+  }
+
+  if (url.pathname === '/api/instructor-access/reset' && req.method === 'POST') {
+    if (!adminAuthorized(req)) {
+      sendJson(req, res, 401, { ok: false, error: 'administrator-token-required' })
+      return true
+    }
+    revokeInstructorAuthority()
+    try {
+      await deleteCredentialFiles()
+      sendJson(req, res, 200, { ok: true }, {
+        'set-cookie': clearSessionCookie(req.socket?.encrypted === true),
+      })
+    } catch {
+      sendJson(req, res, 500, { ok: false, error: 'reset-failed' }, {
+        'set-cookie': clearSessionCookie(req.socket?.encrypted === true),
+      })
+    }
+    return true
+  }
+
+  sendJson(req, res, 404, { ok: false, error: 'not-found' })
   return true
 }
 
@@ -525,44 +1143,153 @@ async function handleHttp(req, res) {
   return serveStatic(req, res)
 }
 
-export function startRelay(port = PORT) {
-  const server = http.createServer((req, res) => {
-    void handleHttp(req, res)
-  })
-  const wss = new WebSocketServer({ server })
+function allowedHostnames() {
+  const names = new Set(['localhost', '127.0.0.1', '[::1]'])
+  for (const networks of Object.values(os.networkInterfaces())) {
+    for (const network of networks || []) {
+      if (network.family === 'IPv4') names.add(network.address.toLowerCase())
+    }
+  }
+  return names
+}
 
-  wss.on('connection', sock => {
-    sock.isAlive = true
-    sock.lastPong = Date.now()
-    sock.on('pong', () => {
-      sock.isAlive = true
-      sock.lastPong = Date.now()
+export function validateUpgradeRequest(req, allowed = allowedHostnames()) {
+  const host = String(req?.headers?.host || '').toLowerCase()
+  if (!host) return { ok: false, reason: 'missing-host' }
+  let hostname
+  try {
+    hostname = new URL(`http://${host}`).hostname.toLowerCase()
+  } catch {
+    return { ok: false, reason: 'invalid-host' }
+  }
+  if (!allowed.has(hostname) && !allowed.has(`[${hostname}]`)) {
+    return { ok: false, reason: 'untrusted-host' }
+  }
+
+  const origin = req?.headers?.origin
+  if (!origin) {
+    const allowedMissing = process.env.CLASSROOM_ALLOW_MISSING_ORIGIN === '1'
+      && isLoopbackAddress(requestIp(req))
+    return allowedMissing
+      ? { ok: true }
+      : { ok: false, reason: 'missing-origin' }
+  }
+  try {
+    const parsed = new URL(origin)
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.host.toLowerCase() !== host) {
+      return { ok: false, reason: 'cross-origin' }
+    }
+  } catch {
+    return { ok: false, reason: 'invalid-origin' }
+  }
+  return { ok: true }
+}
+
+function consumeMessageToken(sock, now = Date.now()) {
+  const elapsedSeconds = Math.max(0, now - sock.messageTokenAt) / 1000
+  sock.messageTokens = Math.min(
+    MESSAGE_BURST,
+    sock.messageTokens + elapsedSeconds * MESSAGE_RATE_PER_SEC,
+  )
+  sock.messageTokenAt = now
+  if (sock.messageTokens < 1) return false
+  sock.messageTokens -= 1
+  return true
+}
+
+export function startRelay(port = PORT, options = {}) {
+  const requestHandler = (req, res) => {
+    void handleHttp(req, res)
+  }
+  const server = options.server || (options.tls
+    ? https.createServer({
+        key: options.tls.key,
+        cert: options.tls.cert,
+      }, requestHandler)
+    : http.createServer(requestHandler))
+  const secureTransport = options.tls != null
+  const activeByIp = new Map()
+  const upgradesByIp = new Map()
+  const allowedHosts = allowedHostnames()
+  const wss = new WebSocketServer({
+    server,
+    maxPayload: MAX_MESSAGE_BYTES,
+    verifyClient(info, callback) {
+      const admission = validateUpgradeRequest(info.req, allowedHosts)
+      if (!admission.ok) return callback(false, 403, admission.reason)
+      const ip = requestIp(info.req)
+      const now = Date.now()
+      const cutoff = now - 60_000
+      const upgrades = (upgradesByIp.get(ip) || []).filter(stamp => stamp > cutoff)
+      if (
+        wss.clients.size >= MAX_SOCKETS
+        || (activeByIp.get(ip) || 0) >= MAX_SOCKETS_PER_IP
+        || upgrades.length >= MAX_UPGRADES_PER_IP_PER_MIN
+      ) {
+        return callback(false, 429, 'connection-limit')
+      }
+      upgrades.push(now)
+      upgradesByIp.set(ip, upgrades)
+      callback(true)
+    },
+  })
+
+  wss.on('connection', (sock, req) => {
+    /** @type {ClassroomSocket} */
+    const client = /** @type {ClassroomSocket} */ (/** @type {unknown} */ (sock))
+    const ip = requestIp(req)
+    activeByIp.set(ip, (activeByIp.get(ip) || 0) + 1)
+    authenticateInstructorSocket(client, req)
+    const encrypted = /** @type {import('node:tls').TLSSocket} */ (
+      /** @type {unknown} */ (req.socket)
+    ).encrypted === true
+    client.transportTrusted = encrypted
+    client.isAlive = true
+    client.lastPong = Date.now()
+    client.messageTokens = MESSAGE_BURST
+    client.messageTokenAt = Date.now()
+    const handshakeTimer = setTimeout(() => {
+      if (!client.role) client.close(4002, 'handshake-timeout')
+    }, HANDSHAKE_TIMEOUT_MS)
+    handshakeTimer.unref?.()
+
+    client.on('pong', () => {
+      client.isAlive = true
+      client.lastPong = Date.now()
     })
-    sock.on('message', raw => {
-      // Ignore oversize frames outright — never let one bad frame crash the relay.
-      if (raw.length > MAX_MESSAGE_BYTES) return
+    client.on('message', raw => {
+      if (!consumeMessageToken(client)) {
+        client.close(4008, 'message-rate-limit')
+        return
+      }
       let msg
       try {
-        msg = JSON.parse(raw)
+        msg = JSON.parse(raw.toString())
       } catch {
         return
       }
       try {
-        handle(sock, msg)
-      } catch (err) {
-        console.error('handler error', err)
+        handle(client, msg)
+        if (client.role) clearTimeout(handshakeTimer)
+      } catch (error) {
+        console.error('handler error', error instanceof Error ? error.message : 'unknown')
       }
     })
-    sock.on('close', () => onClose(sock))
-    sock.on('error', () => {})
+    client.on('close', () => {
+      clearTimeout(handshakeTimer)
+      activeByIp.set(ip, Math.max(0, (activeByIp.get(ip) || 1) - 1))
+      onClose(client)
+    })
+    client.on('error', () => {})
   })
 
-  // Heartbeat: ping every HEARTBEAT_PING_MS, drop a socket silent for the full timeout.
-  // isAlive flips false on each ping and true on the pong that answers it; lastPong
-  // gates the cutoff.
   const beat = setInterval(() => {
     const now = Date.now()
-    for (const sock of wss.clients) {
+    for (const rawSocket of wss.clients) {
+      /** @type {ClassroomSocket} */
+      const sock = /** @type {ClassroomSocket} */ (
+        /** @type {unknown} */ (rawSocket)
+      )
       if (!sock.isAlive && now - sock.lastPong > HEARTBEAT_TIMEOUT_MS) {
         sock.terminate()
         continue
@@ -573,30 +1300,67 @@ export function startRelay(port = PORT) {
   }, HEARTBEAT_PING_MS)
   wss.on('close', () => clearInterval(beat))
 
-  server.listen(port, () => {
-    console.log(`Classroom relay on http://localhost:${port}`)
-    // Print a LAN join URL per non-internal IPv4 so students can find the room.
-    for (const nets of Object.values(os.networkInterfaces())) {
-      for (const net of nets || []) {
-        if (net.family === 'IPv4' && !net.internal) console.log(`Classroom relay on http://${net.address}:${port}`)
+  if (!options.server) {
+    server.listen(port, () => {
+      const protocol = secureTransport ? 'https' : 'http'
+      console.log(`Classroom relay on ${protocol}://localhost:${port}`)
+      for (const networks of Object.values(os.networkInterfaces())) {
+        for (const network of networks || []) {
+          if (network.family === 'IPv4' && !network.internal) {
+            console.log(`Classroom relay on ${protocol}://${network.address}:${port}`)
+          }
+        }
+      }
+    })
+  }
+
+  return { server, wss, administratorToken }
+}
+
+export function resetRelayState() {
+  for (const cls of classes.values()) {
+    if (cls.cleanupTimer) clearTimeout(cls.cleanupTimer)
+  }
+  classes.clear()
+  instructorSessions.clear()
+  failedVerificationsByIp.clear()
+  failedVerificationsGlobal = []
+  backupWriteTimes.clear()
+  credentialMigrationDeletionFailureForTests = null
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const insecureDevelopment = process.env.CLASSROOM_ALLOW_INSECURE_LAN === '1'
+    && process.env.CLASSROOM_TLS === '0'
+  let tls
+  if (!insecureDevelopment) {
+    const { ensureClassroomCertificates } = await import('./classroomTls.mjs')
+    const applicationData = process.env.LOCALAPPDATA
+      || path.join(os.homedir(), '.local', 'share')
+    const tlsDirectory = path.resolve(
+      process.env.CLASSROOM_TLS_DIR
+        || path.join(applicationData, 'Autonomous Drone Simulator Classroom', 'tls'),
+    )
+    const hosts = []
+    for (const networks of Object.values(os.networkInterfaces())) {
+      for (const network of networks || []) {
+        if (network.family === 'IPv4' && !network.internal) hosts.push(network.address)
       }
     }
-  })
-
-  return { server, wss }
-}
-
-// Drops all rooms. Test-only: the routing spec drives `handle`/`onClose` with fake
-// sockets (build plan §10 requires the WS test to stay offline) and needs a clean map
-// between cases.
-export function resetRelayState() {
-  for (const cls of classes.values()) if (cls.cleanupTimer) clearTimeout(cls.cleanupTimer)
-  classes.clear()
-}
-
-// Bind a port only when run directly (`node server/classroom.mjs`). Importing this
-// module — which the routing tests do — must not open a socket or leave a heartbeat
-// timer running.
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  startRelay(PORT)
+    const certificates = await ensureClassroomCertificates({
+      directory: tlsDirectory,
+      hosts,
+    })
+    tls = {
+      key: certificates.leafPrivateKeyPem,
+      cert: `${certificates.leafCertificatePem}\n${certificates.caCertificatePem}`,
+    }
+    console.log(`[classroom] install this CA certificate on student profiles: ${certificates.caCertificatePath}`)
+  } else {
+    console.warn('[classroom] INSECURE DEVELOPMENT MODE — graded/live LAN classes are disabled')
+  }
+  if (administratorTokenWasGenerated) {
+    console.log(`[classroom] local administrator token (store securely): ${administratorToken}`)
+  }
+  startRelay(PORT, { tls })
 }

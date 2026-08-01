@@ -1,18 +1,22 @@
 /**
  * Electron main process — Windows classroom desktop shell.
  *
- * Pre-load dialog: start Classroom Server? Yes → spawn server/classroom.mjs
- * (Electron-as-Node), wait until healthy, open UI. No → probe; connect if
- * already up, otherwise show short setup and optionally open UI without a
- * live relay. App quit kills only a server this process started.
+ * Pre-load dialog: start Classroom Server? Start → spawn server/classroom.mjs
+ * (Electron-as-Node), wait until healthy, open UI. Quit → exit. The app never
+ * loads the renderer from file:// or attaches to an unowned relay. App quit
+ * kills only the server this process started.
  *
  * Browser / Vercel builds never load this file.
  */
 
-import { app, BrowserWindow, dialog, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import https from 'node:https'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { ensureClassroomCertificates } from '../../server/classroomTls.mjs'
 import {
   buildServerEnv,
   classroomBaseUrl,
@@ -24,44 +28,125 @@ import {
 } from './serverLifecycle.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const repoRoot = path.resolve(__dirname, '..', '..')
+const appRoot = app.getAppPath()
 
 const PORT = Number(process.env.PORT || process.env.CLASSROOM_PORT || DEFAULT_CLASSROOM_PORT)
-const BASE_URL = classroomBaseUrl(PORT)
+const BASE_URL = classroomBaseUrl(PORT, { secure: true })
 
 /** @type {import('node:child_process').ChildProcess | null} */
 let ownedServer = null
 let weStartedServer = false
+const administratorToken = randomBytes(32).toString('base64url')
+let relayCertificates = null
 
-/** @type {{ promptHandled: boolean, serverStarted: boolean, serverOwned: boolean, relayBaseUrl: string | null }} */
+/** @type {{ promptHandled: boolean, serverStarted: boolean, serverOwned: boolean, relayBaseUrl: string | null, relayJoinBaseUrl: string | null }} */
 let desktopState = {
   promptHandled: false,
   serverStarted: false,
   serverOwned: false,
   relayBaseUrl: null,
+  relayJoinBaseUrl: null,
+}
+const desktopWindowSenderIds = new Set()
+
+function lanHostnames() {
+  const hosts = new Set()
+  for (const networks of Object.values(os.networkInterfaces())) {
+    for (const network of networks || []) {
+      if (network.family === 'IPv4' && !network.internal) hosts.add(network.address)
+    }
+  }
+  return [...hosts].sort((a, b) => {
+    const rank = (value) => value.startsWith('192.168.') ? 0
+      : value.startsWith('10.') ? 1
+        : /^172\.(1[6-9]|2\d|3[01])\./.test(value) ? 2
+          : 3
+    return rank(a) - rank(b) || a.localeCompare(b)
+  })
+}
+
+function publicDesktopState() {
+  return {
+    isDesktop: true,
+    promptHandled: desktopState.promptHandled === true,
+    serverStarted: desktopState.serverStarted === true,
+    serverOwned: desktopState.serverOwned === true,
+    relayBaseUrl: typeof desktopState.relayBaseUrl === 'string' ? desktopState.relayBaseUrl : null,
+    relayJoinBaseUrl: typeof desktopState.relayJoinBaseUrl === 'string'
+      ? desktopState.relayJoinBaseUrl
+      : null,
+  }
+}
+
+ipcMain.on('classroom-desktop:get-state', (event) => {
+  if (!desktopWindowSenderIds.has(event.sender.id)) {
+    event.returnValue = null
+    return
+  }
+  event.returnValue = publicDesktopState()
+})
+
+ipcMain.handle('classroom-desktop:provision-instructor-access', async (event, code) => {
+  if (!desktopWindowSenderIds.has(event.sender.id)) return { ok: false, error: 'unauthorized-renderer' }
+  if (!weStartedServer || !ownedServer) return { ok: false, error: 'relay-not-owned' }
+  if (typeof code !== 'string' || code.normalize('NFKC').length < 12 || code.normalize('NFKC').length > 128) {
+    return { ok: false, error: 'invalid-code-policy' }
+  }
+
+  const confirmation = await dialog.showMessageBox({
+    type: 'warning',
+    buttons: ['Provision access code', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    title: 'Provision instructor access',
+    message: 'Set this as the school instructor access code?',
+    detail: 'This changes the local classroom relay credential. The code itself will not be displayed or stored by the desktop shell.',
+    noLink: true,
+  })
+  if (confirmation.response !== 0) return { ok: false, error: 'cancelled' }
+
+  try {
+    const status = await postOwnedRelayAdmin(
+      '/api/instructor-access/provision',
+      { code: code.normalize('NFKC') },
+    )
+    if (status >= 200 && status < 300) return { ok: true }
+    if (status === 409) return { ok: false, error: 'already-configured' }
+    if (status === 401 || status === 403) return { ok: false, error: 'administrator-rejected' }
+    return { ok: false, error: 'provision-failed' }
+  } catch {
+    return { ok: false, error: 'relay-unreachable' }
+  }
+})
+
+function postOwnedRelayAdmin(pathname, body) {
+  if (!relayCertificates) return Promise.reject(new Error('relay-certificate-unavailable'))
+  const encoded = Buffer.from(JSON.stringify(body), 'utf8')
+  return new Promise((resolve, reject) => {
+    const request = https.request(`${BASE_URL}${pathname}`, {
+      method: 'POST',
+      ca: relayCertificates.caCertificatePem,
+      rejectUnauthorized: true,
+      headers: {
+        'content-type': 'application/json',
+        'content-length': String(encoded.byteLength),
+        'x-classroom-admin-token': administratorToken,
+      },
+    }, (response) => {
+      response.resume()
+      response.on('end', () => resolve(response.statusCode ?? 500))
+    })
+    request.on('error', reject)
+    request.end(encoded)
+  })
 }
 
 function scriptPath() {
-  return path.join(repoRoot, 'server', 'classroom.mjs')
+  return path.join(appRoot, 'server', 'classroom.mjs')
 }
 
 function distIndexPath() {
-  return path.join(repoRoot, 'dist', 'index.html')
-}
-
-function setupInstructions() {
-  return [
-    'Classroom Server is not running on this PC.',
-    '',
-    'For a live multi-student class on your Wi‑Fi:',
-    '  • Relaunch this app and choose Yes, or',
-    '  • In a terminal from the repo: npm run classroom',
-    '',
-    'Hosted browser demos (GitHub / Vercel) cannot start the server.',
-    'Students join the LAN URL printed when the relay starts (Windows PCs only).',
-    '',
-    'Simulation only — no real aircraft.',
-  ].join('\n')
+  return path.join(appRoot, 'dist', 'index.html')
 }
 
 function ensureDistOrWarn() {
@@ -77,7 +162,11 @@ function ensureDistOrWarn() {
   return false
 }
 
-function createWindow(loadTarget) {
+/**
+ * @param {string} ownedRelayUrl
+ */
+function createWindow(ownedRelayUrl) {
+  const allowedOrigin = new URL(ownedRelayUrl).origin
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -89,44 +178,88 @@ function createWindow(loadTarget) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webSecurity: true,
     },
   })
+  desktopWindowSenderIds.add(win.webContents.id)
+  win.on('closed', () => desktopWindowSenderIds.delete(win.webContents.id))
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    try {
+      const target = new URL(url)
+      if (target.protocol === 'https:' && !target.username && !target.password) {
+        void shell.openExternal(target.toString())
+      }
+    } catch { /* invalid and non-HTTPS URLs stay blocked */ }
     return { action: 'deny' }
   })
 
-  win.webContents.on('dom-ready', () => {
-    void win.webContents.executeJavaScript(
-      `window.__CLASSROOM_DESKTOP_STATE__ = ${JSON.stringify(desktopState)};`,
-      true,
-    )
+  win.webContents.on('will-navigate', (event, url) => {
+    try {
+      const target = new URL(url)
+      if (target.origin !== allowedOrigin) event.preventDefault()
+    } catch {
+      event.preventDefault()
+    }
+  })
+  win.webContents.on('will-attach-webview', (event) => event.preventDefault())
+  win.webContents.session.setPermissionCheckHandler(() => false)
+  win.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
+  win.webContents.session.setCertificateVerifyProc((request, callback) => {
+    const expected = relayCertificates?.fingerprint256?.replaceAll(':', '').toLowerCase()
+    const received = request.certificate?.fingerprint?.replaceAll(':', '').toLowerCase()
+    const ownedHost = request.hostname === '127.0.0.1' || request.hostname === 'localhost'
+    if (ownedHost && expected && received === expected) {
+      callback(0)
+      return
+    }
+    callback(-3)
   })
 
-  if (loadTarget.kind === 'url') {
-    void win.loadURL(loadTarget.url)
-  } else {
-    void win.loadFile(loadTarget.file)
-  }
+  void win.loadURL(ownedRelayUrl)
   return win
 }
 
+/**
+ * @returns {Promise<
+ *   { ok: true, owned: true, baseUrl: string, joinBaseUrl: string }
+ *   | { ok: false, owned: false, reason: string }
+ * >}
+ */
 async function startOwnedServer() {
-  const already = await probeClassroomServer(BASE_URL)
+  const tlsDirectory = path.join(app.getPath('userData'), 'tls')
+  const secretsDirectory = path.join(app.getPath('userData'), 'secrets')
+  const runsDirectory = path.join(app.getPath('userData'), 'classroom-runs')
+  const classroomLanHosts = lanHostnames()
+  if (classroomLanHosts.length === 0) {
+    return { ok: false, owned: false, reason: 'no-private-lan-address' }
+  }
+  relayCertificates = await ensureClassroomCertificates({
+    directory: tlsDirectory,
+    hosts: classroomLanHosts,
+  })
+
+  const probeOwnedRelay = (baseUrl) => probeClassroomServer(baseUrl, {
+    ca: relayCertificates.caCertificatePem,
+  })
+  const already = await probeOwnedRelay(BASE_URL)
   if (already.ok) {
-    weStartedServer = false
-    ownedServer = null
-    return { ok: true, owned: false, baseUrl: BASE_URL }
+    return { ok: false, owned: false, reason: 'relay-port-already-in-use' }
   }
 
-  const child = spawnClassroomServer({
+  const child = /** @type {import('node:child_process').ChildProcess} */ (spawnClassroomServer({
     command: process.execPath,
     scriptPath: scriptPath(),
     args: [String(PORT)],
-    cwd: repoRoot,
-    env: buildServerEnv(process.env, { electronAsNode: true }),
-  })
+    cwd: app.getPath('userData'),
+    env: {
+      ...buildServerEnv(process.env, { electronAsNode: true }),
+      CLASSROOM_ADMIN_TOKEN: administratorToken,
+      CLASSROOM_TLS_DIR: tlsDirectory,
+      CLASSROOM_SECRETS_DIR: secretsDirectory,
+      CLASSROOM_RUNS_DIR: runsDirectory,
+    },
+  }))
   ownedServer = child
   weStartedServer = true
 
@@ -146,19 +279,27 @@ async function startOwnedServer() {
     process.stdout.write(buf)
   })
 
-  const ready = await waitForClassroomServer(BASE_URL, { timeoutMs: 45_000 })
-  if (!ready.ok) {
-    stopClassroomServer(child)
+  const ready = await waitForClassroomServer(BASE_URL, {
+    timeoutMs: 45_000,
+    probe: probeOwnedRelay,
+  })
+  if (ready.ok === false) {
+    stopClassroomServer(/** @type {any} */ (child))
     ownedServer = null
     weStartedServer = false
     return { ok: false, owned: false, reason: ready.reason }
   }
-  return { ok: true, owned: true, baseUrl: BASE_URL }
+  return {
+    ok: true,
+    owned: true,
+    baseUrl: BASE_URL,
+    joinBaseUrl: `https://${classroomLanHosts[0]}:${PORT}`,
+  }
 }
 
 function cleanupOwnedServer() {
   if (weStartedServer && ownedServer) {
-    stopClassroomServer(ownedServer)
+    stopClassroomServer(/** @type {any} */ (ownedServer))
     ownedServer = null
     weStartedServer = false
   }
@@ -167,14 +308,14 @@ function cleanupOwnedServer() {
 async function boot() {
   const choice = await dialog.showMessageBox({
     type: 'question',
-    buttons: ['Yes', 'No'],
+    buttons: ['Start server', 'Quit'],
     defaultId: 0,
     cancelId: 1,
     title: 'Classroom Server',
-    message: 'Start the Classroom Server?',
+    message: 'Start the owned Classroom Server?',
     detail:
-      'Yes starts the LAN relay on this PC and keeps it running until you close this app.\n'
-      + 'No skips auto-start (connects if a relay is already up, or shows short setup).',
+      'The desktop host starts and certificate-pins its own LAN relay on this PC, '
+      + 'then keeps it running until you close the app.',
     noLink: true,
   })
 
@@ -186,7 +327,7 @@ async function boot() {
       return
     }
     const started = await startOwnedServer()
-    if (!started.ok) {
+    if (started.ok === false) {
       await dialog.showMessageBox({
         type: 'error',
         buttons: ['OK'],
@@ -199,50 +340,18 @@ async function boot() {
       desktopState.serverStarted = false
       desktopState.serverOwned = false
       desktopState.relayBaseUrl = null
-      createWindow({ kind: 'file', file: distIndexPath() })
+      desktopState.relayJoinBaseUrl = null
+      app.quit()
       return
     }
     desktopState.serverStarted = true
     desktopState.serverOwned = started.owned
     desktopState.relayBaseUrl = started.baseUrl
-    createWindow({ kind: 'url', url: `${started.baseUrl}/` })
+    desktopState.relayJoinBaseUrl = started.joinBaseUrl
+    createWindow(`${started.baseUrl}/`)
     return
   }
-
-  // No — connect if already up; otherwise setup + optional continue without.
-  const probe = await probeClassroomServer(BASE_URL)
-  if (probe.ok) {
-    desktopState.serverStarted = true
-    desktopState.serverOwned = false
-    desktopState.relayBaseUrl = BASE_URL
-    createWindow({ kind: 'url', url: `${BASE_URL}/` })
-    return
-  }
-
-  const follow = await dialog.showMessageBox({
-    type: 'info',
-    buttons: ['Open UI without server', 'Quit'],
-    defaultId: 0,
-    cancelId: 1,
-    title: 'Classroom setup',
-    message: 'Continue without a live Classroom Server?',
-    detail: setupInstructions(),
-    noLink: true,
-  })
-
-  desktopState.serverStarted = false
-  desktopState.serverOwned = false
-  desktopState.relayBaseUrl = null
-
-  if (follow.response !== 0) {
-    app.quit()
-    return
-  }
-  if (!ensureDistOrWarn()) {
-    app.quit()
-    return
-  }
-  createWindow({ kind: 'file', file: distIndexPath() })
+  app.quit()
 }
 
 const gotLock = app.requestSingleInstanceLock()

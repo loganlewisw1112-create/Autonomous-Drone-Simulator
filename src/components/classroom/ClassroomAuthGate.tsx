@@ -79,7 +79,6 @@ export function ClassroomAuthForm({
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(true)
   const [busy, setBusy] = useState(false)
 
   const activeRole = fixedRole ?? role
@@ -98,12 +97,12 @@ export function ClassroomAuthForm({
     setBusy(true)
     try {
       if (mode === 'signup') {
-        const ok = await signUp(username, displayName, password, rememberMe, {
+        const ok = await signUp(username, displayName, password, {
           role: activeRole,
         })
         if (ok) onSignedIn?.()
       } else {
-        const ok = await signIn(username, password, rememberMe)
+        const ok = await signIn(username, password)
         if (!ok) return
         const signedRole = useAuthStore.getState().activeAccount?.role
         if (!allowRoleSwitch && signedRole !== activeRole) {
@@ -140,7 +139,7 @@ export function ClassroomAuthForm({
         <div style={{ fontSize: 18, fontWeight: 700 }}>{title}</div>
         <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
           {mode === 'signup' && activeRole === 'instructor'
-            ? 'Create username and password first. On Start a training class you will type the school access code once (first code on a fresh machine becomes the unlock automatically).'
+            ? 'Create username and password first. A local Electron or CLI relay administrator must provision the school access code; then enter it once on Start a training class.'
             : mode === 'signup'
               ? 'Anyone can create a student account on this device. Progress stays encrypted locally.'
               : 'Sign in with your classroom username and password.'}
@@ -196,6 +195,7 @@ export function ClassroomAuthForm({
         placeholder="Username"
         autoCapitalize="none"
         autoComplete="username"
+        maxLength={64}
         value={username}
         onChange={(e) => setUsername(e.target.value)}
       />
@@ -203,7 +203,8 @@ export function ClassroomAuthForm({
       {mode === 'signup' && (
         <input
           className="cls-input"
-          placeholder="Display name"
+          placeholder="Pseudonymous operator alias (no real names)"
+          maxLength={64}
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
         />
@@ -212,6 +213,7 @@ export function ClassroomAuthForm({
       <input
         className="cls-input"
         type="password"
+        maxLength={128}
         placeholder={mode === 'signup' ? 'Password (min 8 characters)' : 'Password'}
         autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
         value={password}
@@ -219,14 +221,9 @@ export function ClassroomAuthForm({
         onKeyDown={(e) => e.key === 'Enter' && !busy && void handleSubmit()}
       />
 
-      <label className="cls-consent">
-        <input
-          type="checkbox"
-          checked={rememberMe}
-          onChange={(e) => setRememberMe(e.target.checked)}
-        />
-        <span>Stay signed in on this device</span>
-      </label>
+      <div className="cls-consent">
+        Use a classroom pseudonym, not a real student name. The encryption key stays in memory. Reloading this page signs you out.
+      </div>
 
       {authError && (
         <div style={{ color: '#ff8080', fontSize: 12 }} data-testid="auth-error">

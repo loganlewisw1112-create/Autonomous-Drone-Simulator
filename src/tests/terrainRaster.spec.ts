@@ -30,8 +30,11 @@ import {
   terrariumToMeters,
   type TerrainHeader,
 } from '@/sim/terrain/terrainRaster'
-import { terrainFixtureFor, terrainRasterFor } from '@/scenarios/terrainFixtures'
+import { prepareScenarioTerrain, terrainFixtureFor, terrainRasterFor } from '@/scenarios/terrainFixtures'
 import refPoints from '@/scenarios/fixtures/demo_wildfire/terrain-refpoints.json'
+
+const terrainPreparation = await prepareScenarioTerrain('demo_wildfire')
+if (!terrainPreparation.ok) throw new Error(terrainPreparation.reason)
 
 const fixture = terrainFixtureFor('demo_wildfire')!
 const raster = terrainRasterFor('demo_wildfire')!

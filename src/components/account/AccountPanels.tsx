@@ -7,7 +7,14 @@ import {
   buildAggregates, buildTimeline, completionReasons, eventTypeTotals, runsByScenario, safetyTrend, sortiesByPlatform,
 } from '@/components/account/analyticsData'
 import { useAuthStore } from '@/store/authStore'
-import { decryptJson, deriveKey, encryptJson, makeCheckBlob, makeKdfParams, toBase64 } from '@/account/crypto'
+import {
+  accountCipherAad,
+  decryptJson,
+  deriveKey,
+  encryptJson,
+  makeCheckBlob,
+  makeKdfParams,
+} from '@/account/crypto'
 import {
   clearRunDetails, clearRuns, deleteAccount, exportBackup, getAccountByUsername, getRunDetail, importBackup, listRuns, rekeyAllRecords,
 } from '@/account/accountDb'
@@ -40,7 +47,14 @@ function useDecryptedRuns(open: boolean): { runs: DecryptedRunEntry[]; loading: 
       let corrupt = 0
       for (const record of records) {
         try {
-          decrypted.push({ id: record.id, summary: decryptJson<StoredRunSummary>(sessionKey, record.blob) })
+          decrypted.push({
+            id: record.id,
+            summary: decryptJson<StoredRunSummary>(
+              sessionKey,
+              record.blob,
+              accountCipherAad('run-summary', activeAccount.id, record.id),
+            ),
+          })
         } catch { corrupt++ }
       }
       setRuns(decrypted)
@@ -88,7 +102,13 @@ function AnalyticsPanel() {
     setDetailLoading(true)
     const record = await getRunDetail(entry.id)
     if (record) {
-      try { setDetail(decryptJson<StoredRunDetailV2>(sessionKey, record.blob)) } catch { setDetail(null) }
+      try {
+        setDetail(decryptJson<StoredRunDetailV2>(
+          sessionKey,
+          record.blob,
+          accountCipherAad('run-detail', record.accountId, record.id),
+        ))
+      } catch { setDetail(null) }
     }
     setDetailLoading(false)
   }
@@ -128,7 +148,7 @@ function AnalyticsPanel() {
             <StatTile label="THERMAL CONTACTS" value={aggregates.contacts} />
             <StatTile label="WAYPOINTS" value={aggregates.waypoints} />
             <StatTile label="AVG DURATION" value={`${Math.round(aggregates.avgDuration / 60)}m ${Math.round(aggregates.avgDuration % 60)}s`} />
-            <StatTile label="CHAIN VERIFIED" value={`${aggregates.verified}/${aggregates.total}`} />
+            <StatTile label="EVENT CHAIN VALID" value={`${aggregates.verified}/${aggregates.total}`} />
             {/* All five come from metrics already persisted on every run — no backfill. */}
             <StatTile label="CONFLICTS" value={aggregates.conflicts} />
             <StatTile label="GEOFENCE BREACHES" value={aggregates.geofenceBreaches} />
@@ -229,7 +249,7 @@ function AnalyticsPanel() {
               <span className="account-label">MISSION LOG (NEWEST LAST)</span>
               {runs.map((entry, i) => {
                 const r = entry.summary
-                const evidenceLabel = r.eventCount === 0 ? '○ no evidence' : r.chainVerified ? '✓ chain verified' : '⚠ unverified'
+                const evidenceLabel = r.eventCount === 0 ? '○ no evidence' : r.chainVerified ? '✓ event chain valid' : '⚠ event chain invalid'
                 return (
                   <button key={entry.id || `${r.completedAt}-${i}`} className={`account-run-row${selected?.id === entry.id ? ' active' : ''}`} onClick={() => void openRun(entry)} aria-label={`Open ${r.scenarioId} run from ${new Date(r.completedAt).toLocaleString()}`}>
                     <span>{new Date(r.completedAt).toLocaleString()}</span>
@@ -252,11 +272,12 @@ function AnalyticsPanel() {
 
 function SettingsPanel() {
   const {
-    showSettings, setShowSettings, activeAccount, sessionKey, prefs, savePrefs, signOut, setShowAnalytics,
+    showSettings, setShowSettings, activeAccount, sessionKey, storageReadOnly,
+    prefs, savePrefs, signOut, setShowAnalytics,
   } = useAuthStore(
     useShallow((s) => ({
       showSettings: s.showSettings, setShowSettings: s.setShowSettings,
-      activeAccount: s.activeAccount, sessionKey: s.sessionKey,
+      activeAccount: s.activeAccount, sessionKey: s.sessionKey, storageReadOnly: s.storageReadOnly,
       prefs: s.prefs, savePrefs: s.savePrefs, signOut: s.signOut, setShowAnalytics: s.setShowAnalytics,
     })),
   )
@@ -298,6 +319,7 @@ function SettingsPanel() {
   }
 
   async function handleBackupImport(file: File) {
+    if (storageReadOnly) { flash('This profile is read-only; import is disabled until its encrypted data is repaired'); return }
     try {
       const parsed: unknown = JSON.parse(await file.text())
       const result = await importBackup(parsed)
@@ -308,6 +330,7 @@ function SettingsPanel() {
   }
 
   async function handleChangePassword() {
+    if (storageReadOnly) { flash('This profile is read-only; export a backup before repairing it'); return }
     if (newPassword.length < 8) { flash('New password must be at least 8 characters'); return }
     const record = await getAccountByUsername(activeAccount!.username)
     if (!record) { flash('Profile record not found'); return }
@@ -320,21 +343,22 @@ function SettingsPanel() {
     const newAccountRecord: AccountRecord = {
       ...record,
       kdfParams,
-      checkBlob: makeCheckBlob(newKey),
-      prefsBlob: encryptJson(newKey, prefs),
+      checkBlob: makeCheckBlob(newKey, activeAccount!.id),
+      prefsBlob: encryptJson(
+        newKey,
+        prefs,
+        accountCipherAad('prefs', activeAccount!.id),
+      ),
     }
     const ok = await rekeyAllRecords(activeAccount!.id, sessionKey!, newKey, newAccountRecord)
     if (!ok) { flash('Password change failed — nothing was modified; your old password still works'); return }
     useAuthStore.setState({ sessionKey: newKey })
-    try {
-      const raw = localStorage.getItem('drone-sim:session:v1')
-      if (raw) localStorage.setItem('drone-sim:session:v1', JSON.stringify({ v: 1, username: record.username, key: toBase64(newKey) }))
-    } catch { /* noop */ }
     setNewPassword('')
     flash('Password changed — all mission data re-encrypted')
   }
 
   async function handleClearRuns() {
+    if (storageReadOnly) { flash('This profile is read-only; no history was removed'); return }
     await clearRuns(activeAccount!.id)
     await clearRunDetails(activeAccount!.id)
     setConfirmClear(false)
@@ -342,6 +366,7 @@ function SettingsPanel() {
   }
 
   async function handleDeleteProfile() {
+    if (storageReadOnly) { flash('This profile is read-only; no account data was deleted'); return }
     await deleteAccount(activeAccount!.id)
     setConfirmDelete(false)
     setShowSettings(false)
@@ -357,6 +382,12 @@ function SettingsPanel() {
 
       <div className="account-panel-body">
         {status && <p className="account-status">{status}</p>}
+        {storageReadOnly && (
+          <p className="account-status warning">
+            Encrypted data upgrade failed. This profile is read-only. Export a backup before repair;
+            saved records have not been changed.
+          </p>
+        )}
 
         <div className="account-settings-section">
           <span className="account-label">PREFERENCES</span>
@@ -364,6 +395,7 @@ function SettingsPanel() {
             <label>Default scenario
               <select
                 className="account-input"
+                disabled={storageReadOnly}
                 value={prefs.defaultScenarioId ?? ''}
                 onChange={(e) => void savePrefs({ ...prefs, defaultScenarioId: e.target.value || undefined })}
               >
@@ -374,6 +406,7 @@ function SettingsPanel() {
             <label>Default sim speed
               <select
                 className="account-input"
+                disabled={storageReadOnly}
                 value={prefs.defaultSimSpeed ?? ''}
                 onChange={(e) => void savePrefs({ ...prefs, defaultSimSpeed: e.target.value ? Number(e.target.value) as 1 | 5 | 10 : undefined })}
               >
@@ -390,7 +423,7 @@ function SettingsPanel() {
           <span className="account-label">DATA</span>
           <div className="account-settings-row">
             <button className="btn" onClick={() => void handleBackupExport()}>⬇ EXPORT BACKUP</button>
-            <button className="btn" onClick={() => fileRef.current?.click()}>⬆ IMPORT BACKUP</button>
+            <button className="btn" disabled={storageReadOnly} onClick={() => fileRef.current?.click()}>⬆ IMPORT BACKUP</button>
             <input
               ref={fileRef}
               type="file"
@@ -402,7 +435,7 @@ function SettingsPanel() {
           </div>
           <div className="account-settings-row">
             {!confirmClear
-              ? <button className="btn warning" onClick={() => setConfirmClear(true)}>CLEAR MISSION HISTORY</button>
+              ? <button className="btn warning" disabled={storageReadOnly} onClick={() => setConfirmClear(true)}>CLEAR MISSION HISTORY</button>
               : (
                 <>
                   <span style={{ color: 'var(--accent-yellow)', fontSize: 12 }}>Delete all saved missions for this profile?</span>
@@ -425,7 +458,7 @@ function SettingsPanel() {
                 onChange={(e) => setNewPassword(e.target.value)}
               />
             </label>
-            <button className="btn" onClick={() => void handleChangePassword()} disabled={!newPassword}>CHANGE PASSWORD</button>
+            <button className="btn" onClick={() => void handleChangePassword()} disabled={!newPassword || storageReadOnly}>CHANGE PASSWORD</button>
           </div>
           <p className="account-fineprint">
             Changing the password re-encrypts your entire mission history with a new key.
@@ -438,7 +471,7 @@ function SettingsPanel() {
           <div className="account-settings-row">
             <button className="btn" onClick={signOut}>⏻ SIGN OUT</button>
             {!confirmDelete
-              ? <button className="btn danger" onClick={() => setConfirmDelete(true)}>DELETE PROFILE</button>
+              ? <button className="btn danger" disabled={storageReadOnly} onClick={() => setConfirmDelete(true)}>DELETE PROFILE</button>
               : (
                 <>
                   <span style={{ color: 'var(--accent-red)', fontSize: 12 }}>Permanently delete this profile and all its missions?</span>

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { WelcomeOverlay } from '@/components/WelcomeOverlay'
 import { useDroneStore } from '@/store/droneStore'
@@ -56,6 +56,8 @@ describe('<WelcomeOverlay />', () => {
     const user = userEvent.setup()
     render(<WelcomeOverlay />)
     await user.click(screen.getByTestId('welcome-launch-demo'))
+
+    await waitFor(() => expect(useDroneStore.getState().ui.isRunning).toBe(true))
 
     const s = useDroneStore.getState()
     expect(s.scenario?.id).toBe('demo_basic')

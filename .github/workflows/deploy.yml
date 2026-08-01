@@ -1,52 +1,125 @@
-name: Deploy to GitHub Pages
+name: Promote verified Vercel production targets
 
-# Retained as a manual fallback only — Vercel is the canonical host (auto-deploys
-# from main via its Git integration). Trigger by hand from the Actions tab if a
-# Pages copy is ever needed.
+# Disable Vercel's automatic production deployment from `main` before
+# configuring these protected Deploy Hook secrets. Pull requests may continue
+# to use Vercel preview deployments.
 on:
-  workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: vercel-production
+  cancel-in-progress: false
 
 jobs:
-  build:
+  promote:
+    name: Promote ${{ matrix.target }}
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Verify (typecheck + test)
-        run: npx tsc -b && npx vitest run
-
-      - name: Build for Pages
-        run: npx vite build
-        env:
-          GITHUB_PAGES: 'true'
-
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: dist/
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
+    timeout-minutes: 25
     environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      name: production-${{ matrix.target }}
+      url: ${{ matrix.expected_url }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows
+            hook_secret: VERCEL_WINDOWS_DEPLOY_HOOK
+            expected_url: https://autonomous-drone-simulator.vercel.app
+          - target: mobile
+            hook_secret: VERCEL_MOBILE_DEPLOY_HOOK
+            expected_url: https://autonomous-drone-simulator-mobile.vercel.app
+          - target: classroom
+            hook_secret: VERCEL_CLASSROOM_DEPLOY_HOOK
+            expected_url: https://autonomous-drone-simulator-classroom.vercel.app
+
+    env:
+      DEPLOY_HOOK_URL: ${{ secrets[matrix.hook_secret] }}
+      VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+      EXPECTED_URL: ${{ matrix.expected_url }}
+      EXPECTED_TARGET: ${{ matrix.target }}
+
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@v5
+      - name: Require protected deploy hook
+        run: test -n "$DEPLOY_HOOK_URL"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.VERIFIED_SHA }}
+          fetch-depth: 0
+
+      - name: Refuse stale or advanced main
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$VERIFIED_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$VERIFIED_SHA"
+
+      - name: Trigger protected production build
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --request POST \
+            "$DEPLOY_HOOK_URL" > deploy-hook-response.json
+          node -e "
+            const fs = require('node:fs');
+            const body = JSON.parse(fs.readFileSync('deploy-hook-response.json', 'utf8'));
+            if (!body.job?.id) throw new Error('Vercel Deploy Hook did not return a job id');
+          "
+
+      - name: Wait for exact public target and revision
+        shell: bash
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error --max-time 10 \
+              "$EXPECTED_URL/build-info.json" > build-info.json; then
+              if node -e "
+                const fs = require('node:fs');
+                const info = JSON.parse(fs.readFileSync('build-info.json', 'utf8'));
+                if (info.gitSha !== process.env.VERIFIED_SHA) process.exit(1);
+                if (info.target !== process.env.EXPECTED_TARGET) process.exit(1);
+              "; then
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          echo "Production alias did not serve the verified SHA and target." >&2
+          exit 1
+
+      - name: Smoke rendered target, security headers, and CSP
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --max-time 20 \
+            --dump-header response-headers.txt \
+            "$EXPECTED_URL/" > source.html
+          grep -qi '^content-security-policy:' response-headers.txt
+          grep -qi '^x-frame-options: *DENY' response-headers.txt
+          grep -qi '^permissions-policy:' response-headers.txt
+          grep -qi '^cross-origin-opener-policy: *same-origin' response-headers.txt
+          grep -qi '^strict-transport-security:' response-headers.txt
+          grep -qi '^cache-control: *no-store' response-headers.txt
+
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          test -n "$CHROME"
+          "$CHROME" \
+            --headless \
+            --no-sandbox \
+            --disable-gpu \
+            --virtual-time-budget=15000 \
+            --dump-dom \
+            "$EXPECTED_URL/" > rendered.html 2> browser.log
+
+          grep -F "$VERIFIED_SHA" rendered.html
+          grep -F "$EXPECTED_TARGET" rendered.html
+          if grep -Eqi 'violates the following Content Security Policy directive|Refused to (load|connect to|execute).*Content Security Policy' browser.log; then
+            cat browser.log >&2
+            exit 1
+          fi

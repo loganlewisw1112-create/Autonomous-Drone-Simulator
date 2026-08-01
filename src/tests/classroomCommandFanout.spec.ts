@@ -25,7 +25,7 @@ const STUDENTS = [
 ] as const
 
 interface WireEnvelope {
-  v: 1
+  v: 2
   type: string
   classId: ClassId
   studentId?: string | null
@@ -62,7 +62,6 @@ beforeEach(async () => {
   client.teardown()
   useClassroomStore.getState().reset()
 })
-
 afterEach(() => {
   client.teardown()
   vi.unstubAllGlobals()
@@ -79,11 +78,11 @@ describe('classroom encrypted command fan-out', () => {
     const socket = sockets[0]
     socket.onopen?.()
     const instructorPublicKey = socket.sent[0].classPubKey!
-    socket.deliver({ v: 1, type: 'class.ok', classId, instructorToken: 'TOKEN' })
+    socket.deliver({ v: 2, type: 'class.ok', classId, instructorToken: 'TOKEN' })
 
     const keyPairs = STUDENTS.map(() => generateKeyPair())
     socket.deliver({
-      v: 1,
+      v: 2,
       type: 'roster.update',
       classId,
       students: STUDENTS.map((student, index) => ({
@@ -113,17 +112,25 @@ describe('classroom encrypted command fan-out', () => {
     const boCipher = studentCiphers.get('stu-bo')!
     const adaFirst = first.find((message) => message.studentId === 'stu-ada')!
     const boFirst = first.find((message) => message.studentId === 'stu-bo')!
-    expect(adaCipher.open<SealedPayload<InstructorCommand>>(adaFirst.sealed!)).toEqual({
+    expect(adaCipher.open<SealedPayload<InstructorCommand>>(adaFirst.sealed!, {
+      direction: 'instructor-to-student', type: 'class.command',
+    })).toEqual({
       seq: 1,
       body: command('broadcast-1'),
     })
-    expect(boCipher.open<SealedPayload<InstructorCommand>>(boFirst.sealed!)).toEqual({
+    expect(boCipher.open<SealedPayload<InstructorCommand>>(boFirst.sealed!, {
+      direction: 'instructor-to-student', type: 'class.command',
+    })).toEqual({
       seq: 1,
       body: command('broadcast-1'),
     })
     expect(adaFirst.sealed?.ct).not.toBe(boFirst.sealed?.ct)
-    expect(() => adaCipher.open(boFirst.sealed!)).toThrow()
-    expect(() => boCipher.open(adaFirst.sealed!)).toThrow()
+    expect(() => adaCipher.open(boFirst.sealed!, {
+      direction: 'instructor-to-student', type: 'class.command',
+    })).toThrow()
+    expect(() => boCipher.open(adaFirst.sealed!, {
+      direction: 'instructor-to-student', type: 'class.command',
+    })).toThrow()
 
     expect(useClassroomStore.getState().commands).toMatchObject(STUDENTS.map((student) => ({
       commandId: 'broadcast-1',
@@ -136,7 +143,9 @@ describe('classroom encrypted command fan-out', () => {
     expect(second).toHaveLength(2)
     for (const message of second) {
       const cipher = studentCiphers.get(message.studentId!)!
-      expect(cipher.open<SealedPayload<InstructorCommand>>(message.sealed!)).toEqual({
+      expect(cipher.open<SealedPayload<InstructorCommand>>(message.sealed!, {
+        direction: 'instructor-to-student', type: 'class.command',
+      })).toEqual({
         seq: 2,
         body: command('broadcast-2'),
       })

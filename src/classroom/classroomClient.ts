@@ -5,7 +5,13 @@ import { buildSessionArchive, persistSessionArchive, snapshotDepartedStudent } f
 import { setClassroomRunTag } from '@/account/runContext'
 import { useClassroomStore } from '@/classroom/classroomStore'
 import { loadClassMission } from '@/classroom/classroomMission'
-import { generateKeyPair, SessionCipher, type KeyPair } from '@/classroom/sessionCrypto'
+import { getClassroomDesktopBridge } from '@/classroom/desktopBridge'
+import {
+  generateKeyPair,
+  publicKeyFingerprint,
+  SessionCipher,
+  type KeyPair,
+} from '@/classroom/sessionCrypto'
 import { buildGridFrame, parseGridFrame, type GridFrame, type GridFrameInput, type GridStatus } from '@/classroom/gridFrame'
 import { buildMissionAssessment, type MissionAssessment } from '@/classroom/missionAssessment'
 import { CLASSROOM_INTERVENTION_ACTOR_PREFIX } from '@/classroom/commandAttribution'
@@ -17,7 +23,15 @@ import {
   GRID_BUFFER_LIMIT_BYTES, PROTOCOL_VERSION, encodeEnvelope, decodeEnvelope, makeClassId,
   acceptsSeq, isSealedPayload,
 } from '@/classroom/protocol'
-import type { ClassConfig, ClassId, Envelope, Sealed, SealedPayload, StudentId } from '@/classroom/protocol'
+import type {
+  ClassConfig,
+  ClassId,
+  Envelope,
+  Sealed,
+  SealedMsgType,
+  SealedPayload,
+  StudentId,
+} from '@/classroom/protocol'
 import type { FullMissionFrame, MissionReplaySession } from '@/types'
 
 // WebSocket lifecycle + the Tier-A/Tier-B publishers. Subscribes to droneStore
@@ -79,9 +93,9 @@ const studentCiphers = new Map<StudentId, SessionCipher>()
 // and is dropped with them, so a rejoining student (new studentId, new key) starts clean.
 const lastSeqByStudent = new Map<StudentId, number>()
 const outCommandSeqByStudent = new Map<StudentId, number>()
-// Server-minted proof that this tab created the class. Held only in memory: it is the
-// one credential that can re-point a live room at a different key, so it never touches
-// storage and never leaves this module except back to the relay that issued it.
+// Server-minted room proof held only in memory. Relay-v2 also requires the HttpOnly
+// instructor session attached during the WebSocket upgrade before class.create is
+// accepted, so a stolen room token alone cannot rebind the class.
 let instructorToken: string | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let reconnectTries = 0
@@ -92,6 +106,7 @@ let studentKeys: KeyPair | null = null
 let studentCipher: SessionCipher | null = null
 let displayName = ''
 let studentAccountId: string | undefined
+let expectedInstructorFingerprint: string | null = null
 // Monotonic across grid/focus/run for this student session. The instructor keeps ONE
 // high-water mark per student, so every message this tab sends must advance it.
 let outSeq = 0
@@ -114,7 +129,7 @@ function send(msg: Envelope): void {
 
 // ── Instructor ────────────────────────────────────────────────────────────────
 
-export function startClass(config: ClassConfig): ClassId {
+export function startClass(config: ClassConfig, graded = true): ClassId {
   teardown()
   const id = makeClassId()
   classId = id
@@ -124,24 +139,44 @@ export function startClass(config: ClassConfig): ClassId {
   store.reset()
   if (classroomId) store.setActiveClassroomId(classroomId)
   store.setStatus('connecting')
-  openInstructorSocket(id, config)
+  openInstructorSocket(id, config, graded)
   return id
+}
+
+/** Shareable student URL. The fragment pins the instructor key without sending it to the relay. */
+export function currentClassJoinUrl(): string | null {
+  if (!classId || !instructorKeys || typeof location === 'undefined') return null
+  let baseUrl = location.href
+  try {
+    const candidate = getClassroomDesktopBridge()?.getState().relayJoinBaseUrl
+    if (candidate) {
+      const parsed = new URL(candidate)
+      const loopback = parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost'
+      if (parsed.protocol === 'https:' && !parsed.username && !parsed.password && !loopback) {
+        baseUrl = `${parsed.origin}/`
+      }
+    }
+  } catch { /* malformed bridge state falls back to the current trusted page */ }
+  const url = new URL(baseUrl)
+  url.search = `?join=${encodeURIComponent(classId)}`
+  url.hash = new URLSearchParams({ ik: publicKeyFingerprint(instructorKeys.publicKey) }).toString()
+  return url.toString()
 }
 
 // One socket-open, reused for the first create and every re-bind. The token is absent
 // on the first attempt (the relay mints it and returns class.ok) and present on every
 // later one — which is precisely what distinguishes "my tab reconnected" from "someone
 // who overheard the code is claiming the room".
-function openInstructorSocket(id: ClassId, config: ClassConfig): void {
+function openInstructorSocket(id: ClassId, config: ClassConfig, graded: boolean): void {
   ws = new WebSocket(wsUrl())
   ws.onopen = () => {
     send(instructorToken
-      ? { v: PROTOCOL_VERSION, type: 'class.create', classId: id, classPubKey: instructorKeys!.publicKey, config, instructorToken }
-      : { v: PROTOCOL_VERSION, type: 'class.create', classId: id, classPubKey: instructorKeys!.publicKey, config })
+      ? { v: PROTOCOL_VERSION, type: 'class.create', classId: id, classPubKey: instructorKeys!.publicKey, config, graded, instructorToken }
+      : { v: PROTOCOL_VERSION, type: 'class.create', classId: id, classPubKey: instructorKeys!.publicKey, config, graded })
     useClassroomStore.getState().setInstructorClass(id, config)
   }
   ws.onmessage = (ev) => handleInstructorMessage(String(ev.data))
-  ws.onclose = () => scheduleRebind(id, config)
+  ws.onclose = () => scheduleRebind(id, config, graded)
   ws.onerror = () => useClassroomStore.getState().setStatus('error', 'connection failed')
 }
 
@@ -150,7 +185,7 @@ function openInstructorSocket(id: ClassId, config: ClassConfig): void {
 // "Creating…". Status deliberately stays 'live' across attempts: the roster and the last
 // frames are still meaningful, and flapping to ClassSetup for a two-second wifi hiccup
 // would tear down the wall and its shared backdrop bitmap.
-function scheduleRebind(id: ClassId, config: ClassConfig): void {
+function scheduleRebind(id: ClassId, config: ClassConfig, graded: boolean): void {
   const store = useClassroomStore.getState()
   if (!instructorToken || classId !== id) {
     if (store.status === 'live') store.setStatus('closed')
@@ -162,7 +197,7 @@ function scheduleRebind(id: ClassId, config: ClassConfig): void {
   }
   reconnectTries += 1
   if (reconnectTimer) clearTimeout(reconnectTimer)
-  reconnectTimer = setTimeout(() => openInstructorSocket(id, config), INSTRUCTOR_RECONNECT_MS)
+  reconnectTimer = setTimeout(() => openInstructorSocket(id, config, graded), INSTRUCTOR_RECONNECT_MS)
 }
 
 // Aggregate, never per-frame. A wrong key at 1 Hz × 40 students would otherwise emit
@@ -180,10 +215,18 @@ function noteIntegrity(kind: 'decrypt' | 'replay'): void {
 // and records WHICH of the two failed — three separate empty catches used to make a key
 // mismatch, a hijack and a tampered frame all indistinguishable from a dropped wifi
 // link. Any future path that decrypts without going through here re-opens the hole.
-function openSealed<T>(from: StudentId, cipher: SessionCipher, sealed: Sealed): T | null {
+function openSealed<T>(
+  from: StudentId,
+  cipher: SessionCipher,
+  sealed: Sealed,
+  type: Exclude<SealedMsgType, 'class.command'>,
+): T | null {
   let payload: SealedPayload<T>
   try {
-    payload = cipher.open<SealedPayload<T>>(sealed)
+    payload = cipher.open<SealedPayload<T>>(sealed, {
+      direction: 'student-to-instructor',
+      type,
+    })
   } catch {
     noteIntegrity('decrypt')
     return null
@@ -236,7 +279,7 @@ function handleInstructorMessage(raw: string): void {
     case 'student.grid': {
       const cipher = msg.from ? studentCiphers.get(msg.from) : undefined
       if (!cipher || !msg.from) return
-      const frame = openSealed<GridFrame>(msg.from, cipher, msg.sealed)
+      const frame = openSealed<GridFrame>(msg.from, cipher, msg.sealed, 'student.grid')
       if (frame) store.setFrame(msg.from, parseGridFrame(frame))
       break
     }
@@ -244,14 +287,14 @@ function handleInstructorMessage(raw: string): void {
       if (!msg.from || msg.from !== store.focusedStudentId) return
       const cipher = studentCiphers.get(msg.from)
       if (!cipher) return
-      const focused = openSealed<ClassroomFocusFrame>(msg.from, cipher, msg.sealed)
+      const focused = openSealed<ClassroomFocusFrame>(msg.from, cipher, msg.sealed, 'student.focus')
       if (focused) store.setFocusFrame(focused.frame, focused.assessment)
       break
     }
     case 'student.run': {
       const cipher = msg.from ? studentCiphers.get(msg.from) : undefined
       if (!cipher || !msg.from) return
-      const sub = openSealed<RunSubmission>(msg.from, cipher, msg.sealed)
+      const sub = openSealed<RunSubmission>(msg.from, cipher, msg.sealed, 'student.run')
       if (sub) store.addRun({
         studentId: msg.from,
         displayName: sub.student.displayName,
@@ -265,7 +308,7 @@ function handleInstructorMessage(raw: string): void {
     case 'student.session': {
       const cipher = msg.from ? studentCiphers.get(msg.from) : undefined
       if (!cipher || !msg.from) return
-      const snap = openSealed<SessionSnapshot>(msg.from, cipher, msg.sealed)
+      const snap = openSealed<SessionSnapshot>(msg.from, cipher, msg.sealed, 'student.session')
       if (!snap?.incomplete) return
       if (store.runs.some((r) => r.studentId === msg.from && !r.incomplete)) break
       const rosterEntry = store.roster.find((r) => r.studentId === msg.from)
@@ -318,7 +361,7 @@ function handleInstructorMessage(raw: string): void {
     case 'student.ack': {
       const cipher = msg.from ? studentCiphers.get(msg.from) : undefined
       if (!cipher || !msg.from) return
-      const ack = openSealed<InstructorCommandAck>(msg.from, cipher, msg.sealed)
+      const ack = openSealed<InstructorCommandAck>(msg.from, cipher, msg.sealed, 'student.ack')
       if (!isInstructorCommandAck(ack)) return
       const pending = store.commands.some((command) => command.studentId === msg.from
         && command.commandId === ack.commandId && command.status === 'pending')
@@ -337,6 +380,9 @@ function handleInstructorMessage(raw: string): void {
       store.removeStudent(msg.from)
       break
     }
+    case 'backup.warn':
+      console.warn(`[classroom] relay could not retain the latest encrypted backup: ${msg.reason}`)
+      break
   }
 }
 
@@ -394,6 +440,7 @@ export function joinClass(
   name: string,
   remoteControlConsent: boolean,
   accountId?: string,
+  pinnedInstructorFingerprint?: string,
 ): void {
   teardown()
   if (!remoteControlConsent) {
@@ -405,6 +452,10 @@ export function joinClass(
   classId = id
   displayName = name
   studentAccountId = accountId
+  expectedInstructorFingerprint = pinnedInstructorFingerprint
+    ?? (typeof location === 'undefined'
+      ? null
+      : new URLSearchParams(location.hash.replace(/^#/, '')).get('ik'))
   outSeq = 0
   studentKeys = generateKeyPair()
   const store = useClassroomStore.getState()
@@ -420,22 +471,41 @@ export function joinClass(
     studentPubKey: studentKeys!.publicKey,
     ...(accountId ? { accountId } : {}),
   })
-  ws.onmessage = (ev) => handleStudentMessage(String(ev.data))
+  ws.onmessage = (ev) => { void handleStudentMessage(String(ev.data)) }
   ws.onclose = () => { if (useClassroomStore.getState().status === 'live') useClassroomStore.getState().setStatus('closed') }
   ws.onerror = () => useClassroomStore.getState().setStatus('error', 'connection failed')
 }
 
-function handleStudentMessage(raw: string): void {
+async function handleStudentMessage(raw: string): Promise<void> {
   let msg: Envelope
   try { msg = decodeEnvelope(raw) } catch { return }
   const store = useClassroomStore.getState()
   switch (msg.type) {
     case 'join.ok': {
       if (!studentKeys || !classId) return
+      const actualFingerprint = publicKeyFingerprint(msg.classPubKey)
+      if (
+        msg.classKeyFingerprint !== actualFingerprint
+        || (expectedInstructorFingerprint && expectedInstructorFingerprint !== actualFingerprint)
+      ) {
+        store.setStatus('error', 'instructor-key-mismatch')
+        teardown()
+        return
+      }
+      const joiningSocket = ws
+      const joiningClassId = classId
       studentCipher = SessionCipher.forStudent(studentKeys.secretKey, msg.classPubKey, classId)
-      store.setStudentJoined(classId, msg.studentId, msg.config)
       setClassroomRunTag({ classId })
-      loadClassMission(msg.config)
+      const loaded = await loadClassMission(msg.config, {
+        isCurrent: () => ws === joiningSocket && classId === joiningClassId && classId === msg.classId,
+      })
+      if (!loaded.ok) {
+        if (loaded.reason === 'classroom assignment was cancelled') return
+        store.setStatus('error', loaded.reason ?? 'mission terrain could not be prepared')
+        teardown()
+        return
+      }
+      store.setStudentJoined(classId, msg.studentId, msg.config)
       startGridPublisher()
       subscribeRunSubmission()
       bindUnloadSnapshot()
@@ -468,10 +538,18 @@ function handleStudentMessage(raw: string): void {
 // eavesdropper necessarily carries its original seq and the instructor drops it.
 // Single counter for the whole session across grid/focus/run: the instructor keeps one
 // high-water mark per student, so every send must advance it. See SealedPayload.
-function sealOutgoing(cipher: SessionCipher, body: unknown, sequence?: number): Sealed {
+function sealOutgoing(
+  cipher: SessionCipher,
+  body: unknown,
+  type: SealedMsgType,
+  sequence?: number,
+): Sealed {
   if (sequence === undefined) outSeq += 1
   const payload: SealedPayload<unknown> = { seq: sequence ?? outSeq, body }
-  return cipher.seal(payload)
+  return cipher.seal(payload, {
+    direction: type === 'class.command' ? 'instructor-to-student' : 'student-to-instructor',
+    type,
+  })
 }
 
 // Wall-clock intervals, NOT the sim tick or rAF: the publisher must keep reporting
@@ -482,7 +560,7 @@ function publishGridFrame(): void {
   if (!studentCipher || !ws || ws.readyState !== WebSocket.OPEN || !classId) return
   if (ws.bufferedAmount > GRID_BUFFER_LIMIT_BYTES) return // backpressure: skip, never queue a stale frame
   const frame = buildGridFrame(currentGridInput())
-  send({ v: PROTOCOL_VERSION, type: 'student.grid', classId, sealed: sealOutgoing(studentCipher, frame) })
+  send({ v: PROTOCOL_VERSION, type: 'student.grid', classId, sealed: sealOutgoing(studentCipher, frame, 'student.grid') })
 }
 
 function startGridPublisher(): void {
@@ -496,7 +574,7 @@ function publishFocusFrame(): void {
   if (ws.bufferedAmount > GRID_BUFFER_LIMIT_BYTES) return
   const focused = currentFocusFrame()
   if (!focused) return
-  send({ v: PROTOCOL_VERSION, type: 'student.focus', classId, sealed: sealOutgoing(studentCipher, focused) })
+  send({ v: PROTOCOL_VERSION, type: 'student.focus', classId, sealed: sealOutgoing(studentCipher, focused, 'student.focus') })
 }
 
 function startFocusPublisher(): void {
@@ -521,7 +599,7 @@ function subscribeRunSubmission(): void {
         assessment,
         student: { displayName, accountId: studentAccountId },
       }
-      send({ v: PROTOCOL_VERSION, type: 'student.run', classId, sealed: sealOutgoing(studentCipher, submission) })
+      send({ v: PROTOCOL_VERSION, type: 'student.run', classId, sealed: sealOutgoing(studentCipher, submission, 'student.run') })
     },
   )
 }
@@ -539,7 +617,7 @@ function sendSessionSnapshot(): void {
     progressPercent: assessment?.progressPercent,
     elapsedSec: s.elapsedSec,
   }
-  send({ v: PROTOCOL_VERSION, type: 'student.session', classId, sealed: sealOutgoing(studentCipher, snap) })
+  send({ v: PROTOCOL_VERSION, type: 'student.session', classId, sealed: sealOutgoing(studentCipher, snap, 'student.session') })
 }
 
 function onPageHide(): void {
@@ -584,7 +662,10 @@ function handleStudentCommand(sealed: Sealed): void {
   const store = useClassroomStore.getState()
   let payload: SealedPayload<unknown>
   try {
-    payload = studentCipher.open<SealedPayload<unknown>>(sealed)
+    payload = studentCipher.open<SealedPayload<unknown>>(sealed, {
+      direction: 'instructor-to-student',
+      type: 'class.command',
+    })
   } catch {
     store.noteCommandReject()
     return
@@ -604,6 +685,22 @@ function handleStudentCommand(sealed: Sealed): void {
       ok: false,
       code: checked.code,
       message: checked.message,
+      affectedDroneIds: [],
+    })
+    return
+  }
+
+  const durationMinutes = store.config?.durationMinutes ?? 60
+  const classExpired = store.sessionStartedAt !== null
+    && Date.now() >= store.sessionStartedAt + durationMinutes * 60_000
+  if (checked.command.kind === 'restart' && classExpired) {
+    store.noteCommandReject()
+    sendCommandAck({
+      commandId: checked.command.commandId,
+      actorId: `${CLASSROOM_INTERVENTION_ACTOR_PREFIX}${classId}`,
+      ok: false,
+      code: 'rejected',
+      message: 'Class time limit reached; new mission starts are disabled while review and export remain available.',
       affectedDroneIds: [],
     })
     return
@@ -646,7 +743,7 @@ function handleStudentCommand(sealed: Sealed): void {
 
 function sendCommandAck(ack: InstructorCommandAck): void {
   if (!studentCipher || !classId) return
-  send({ v: PROTOCOL_VERSION, type: 'student.ack', classId, sealed: sealOutgoing(studentCipher, ack) })
+  send({ v: PROTOCOL_VERSION, type: 'student.ack', classId, sealed: sealOutgoing(studentCipher, ack, 'student.ack') })
 }
 
 function commandIdFrom(value: unknown): string {
@@ -697,7 +794,7 @@ export function sendCommand(studentId: StudentId | null, command: InstructorComm
       classId,
       studentId: recipient,
       instructorToken,
-      sealed: sealOutgoing(cipher, command, seq),
+      sealed: sealOutgoing(cipher, command, 'class.command', seq),
     })
     outCommandSeqByStudent.set(recipient, seq)
     useClassroomStore.getState().addCommand({
@@ -790,6 +887,7 @@ export function teardown(): void {
   classId = null
   displayName = ''
   studentAccountId = undefined
+  expectedInstructorFingerprint = null
   outSeq = 0
   lastCommandSeq = undefined
 }

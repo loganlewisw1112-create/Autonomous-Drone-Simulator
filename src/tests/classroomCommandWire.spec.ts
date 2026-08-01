@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { generateKeyPair, SessionCipher } from '@/classroom/sessionCrypto'
+import { generateKeyPair, publicKeyFingerprint, SessionCipher } from '@/classroom/sessionCrypto'
 import { useClassroomStore } from '@/classroom/classroomStore'
 import { isSealedPayload } from '@/classroom/protocol'
 import { useDroneStore } from '@/store/droneStore'
@@ -36,7 +36,7 @@ const CONFIG: ClassConfig = {
 }
 
 interface WireEnvelope {
-  v: 1
+  v: 2
   type: string
   classId: ClassId
   from?: string
@@ -93,10 +93,10 @@ function liveInstructor() {
   const socket = sockets[0]
   socket.onopen?.()
   const classPubKey = socket.sent[0].classPubKey!
-  socket.deliver({ v: 1, type: 'class.ok', classId: generatedId, instructorToken: 'TOKEN' })
+  socket.deliver({ v: 2, type: 'class.ok', classId: generatedId, instructorToken: 'TOKEN' })
   const student = generateKeyPair()
   socket.deliver({
-    v: 1,
+    v: 2,
     type: 'roster.update',
     classId: generatedId,
     students: [{ studentId: STUDENT_ID, displayName: 'Ada', joinedAt: 1, studentPubKey: student.publicKey }],
@@ -108,16 +108,19 @@ function liveInstructor() {
   }
 }
 
-function liveStudent() {
+async function liveStudent() {
   client.joinClass(CLASS_ID, 'Ada', true)
   const socket = sockets[0]
   socket.onopen?.()
   const instructor = generateKeyPair()
   const studentPubKey = socket.sent[0].studentPubKey!
   socket.deliver({
-    v: 1, type: 'join.ok', classId: CLASS_ID, studentId: STUDENT_ID,
-    classPubKey: instructor.publicKey, config: CONFIG,
+    v: 2, type: 'join.ok', classId: CLASS_ID, studentId: STUDENT_ID,
+    classPubKey: instructor.publicKey,
+    classKeyFingerprint: publicKeyFingerprint(instructor.publicKey),
+    config: CONFIG,
   })
+  await vi.waitFor(() => expect(useClassroomStore.getState().status).toBe('live'))
   return {
     socket,
     cipher: SessionCipher.forInstructor(instructor.secretKey, studentPubKey, CLASS_ID),
@@ -135,6 +138,28 @@ describe('classroom encrypted command wire', () => {
     })
   })
 
+  it('rejects an instructor key that does not match the join-fragment fingerprint', async () => {
+    client.joinClass(CLASS_ID, 'Ada', true, undefined, 'pinned-other-key')
+    const socket = sockets[0]
+    socket.onopen?.()
+    const instructor = generateKeyPair()
+    socket.deliver({
+      v: 2,
+      type: 'join.ok',
+      classId: CLASS_ID,
+      studentId: STUDENT_ID,
+      classPubKey: instructor.publicKey,
+      classKeyFingerprint: publicKeyFingerprint(instructor.publicKey),
+      config: CONFIG,
+    })
+    await vi.waitFor(() => {
+      expect(useClassroomStore.getState()).toMatchObject({
+        status: 'error',
+        error: 'instructor-key-mismatch',
+      })
+    })
+  })
+
   it('seals per-student commands with a strictly rising outbound sequence', () => {
     const { classId, socket, cipher } = liveInstructor()
 
@@ -144,22 +169,27 @@ describe('classroom encrypted command wire', () => {
     const messages = socket.sent.filter((message) => message.type === 'class.command')
     expect(messages).toHaveLength(2)
     expect(messages[0]).toMatchObject({ classId, studentId: STUDENT_ID, instructorToken: 'TOKEN' })
-    expect(cipher.open(messages[0].sealed!)).toMatchObject({ seq: 1, body: { commandId: 'cmd-1' } })
-    expect(cipher.open(messages[1].sealed!)).toMatchObject({ seq: 2, body: { commandId: 'cmd-2' } })
+    const commandContext = { direction: 'instructor-to-student', type: 'class.command' } as const
+    expect(cipher.open(messages[0].sealed!, commandContext)).toMatchObject({ seq: 1, body: { commandId: 'cmd-1' } })
+    expect(cipher.open(messages[1].sealed!, commandContext)).toMatchObject({ seq: 2, body: { commandId: 'cmd-2' } })
     expect(useClassroomStore.getState().commands.map((entry) => entry.status)).toEqual(['pending', 'pending'])
   })
 
-  it('executes an authenticated command once, rejects its replay, and returns an encrypted ack', () => {
-    const { socket, cipher } = liveStudent()
-    const sealed = cipher.seal({ seq: 1, body: command('cmd-1') })
-    const envelope = { v: 1, type: 'command', classId: CLASS_ID, sealed }
+  it('executes an authenticated command once, rejects its replay, and returns an encrypted ack', async () => {
+    const { socket, cipher } = await liveStudent()
+    const sealed = cipher.seal({ seq: 1, body: command('cmd-1') }, {
+      direction: 'instructor-to-student', type: 'class.command',
+    })
+    const envelope = { v: 2, type: 'command', classId: CLASS_ID, sealed }
 
     socket.deliver(envelope)
     socket.deliver(envelope)
 
     const acks = socket.sent.filter((message) => message.type === 'student.ack')
     expect(acks).toHaveLength(1)
-    expect(cipher.open(acks[0].sealed!)).toMatchObject({
+    expect(cipher.open(acks[0].sealed!, {
+      direction: 'student-to-instructor', type: 'student.ack',
+    })).toMatchObject({
       seq: 2,
       body: {
         commandId: 'cmd-1',
@@ -178,7 +208,7 @@ describe('classroom encrypted command wire', () => {
     client.sendCommand(STUDENT_ID, command('cmd-1'))
 
     socket.deliver({
-      v: 1,
+      v: 2,
       type: 'student.ack',
       classId,
       from: STUDENT_ID,
@@ -188,34 +218,39 @@ describe('classroom encrypted command wire', () => {
           commandId: 'cmd-1', actorId: `classroom:instructor:${classId}`,
           ok: true, affectedDroneIds: [],
         },
-      }),
+      }, { direction: 'student-to-instructor', type: 'student.ack' }),
     })
 
     expect(useClassroomStore.getState().commandAcks).toHaveLength(1)
     expect(useClassroomStore.getState().commands[0].status).toBe('acknowledged')
   })
 
-  it('rejects a decrypted non-whitelisted command and acknowledges the failure', () => {
-    const { socket, cipher } = liveStudent()
+  it('rejects a decrypted non-whitelisted command and acknowledges the failure', async () => {
+    const { socket, cipher } = await liveStudent()
     socket.deliver({
-      v: 1,
+      v: 2,
       type: 'command',
       classId: CLASS_ID,
-      sealed: cipher.seal({ seq: 1, body: { commandId: 'cmd-bad', kind: 'shell' } }),
+      sealed: cipher.seal(
+        { seq: 1, body: { commandId: 'cmd-bad', kind: 'shell' } },
+        { direction: 'instructor-to-student', type: 'class.command' },
+      ),
     })
 
     const acks = socket.sent.filter((message) => message.type === 'student.ack')
     expect(acks).toHaveLength(1)
-    expect(cipher.open(acks[0].sealed!)).toMatchObject({
+    expect(cipher.open(acks[0].sealed!, {
+      direction: 'student-to-instructor', type: 'student.ack',
+    })).toMatchObject({
       body: { commandId: 'cmd-bad', ok: false, code: 'unknown_command' },
     })
     expect(useClassroomStore.getState().commandRejects).toBe(1)
     expect(useClassroomStore.getState().interventions).toHaveLength(0)
   })
 
-  it('publishes the current simulator store on every live grid interval', () => {
+  it('publishes the current simulator store on every live grid interval', async () => {
     vi.useFakeTimers()
-    const { socket, cipher } = liveStudent()
+    const { socket, cipher } = await liveStudent()
     stopTicking()
 
     const gridMessages = () => socket.sent.filter((message) => message.type === 'student.grid')
@@ -233,7 +268,9 @@ describe('classroom encrypted command wire', () => {
 
     const latest = gridMessages().at(-1)
     expect(gridMessages().length).toBeGreaterThanOrEqual(2)
-    const opened = cipher.open<SealedPayload<GridFrame>>(latest!.sealed!)
+    const opened = cipher.open<SealedPayload<GridFrame>>(latest!.sealed!, {
+      direction: 'student-to-instructor', type: 'student.grid',
+    })
     expect(isSealedPayload(opened)).toBe(true)
     expect(opened.body.t).toBe(42)
     expect(opened.body.d[0].slice(0, 5)).toEqual([
@@ -245,9 +282,9 @@ describe('classroom encrypted command wire', () => {
     ])
   })
 
-  it('publishes focused frames from live state, not the slow replay buffer', () => {
+  it('publishes focused frames from live state, not the slow replay buffer', async () => {
     vi.useFakeTimers()
-    const { socket, cipher } = liveStudent()
+    const { socket, cipher } = await liveStudent()
     stopTicking()
 
     const staleReplayPosition = { lat: 37.7, lng: -122.4 }
@@ -273,10 +310,12 @@ describe('classroom encrypted command wire', () => {
       }],
     })
 
-    socket.deliver({ v: 1, type: 'focus.on', classId: CLASS_ID })
+    socket.deliver({ v: 2, type: 'focus.on', classId: CLASS_ID })
 
     const focus = socket.sent.filter((message) => message.type === 'student.focus').at(-1)
-    const opened = cipher.open<SealedPayload<ClassroomFocusFrame>>(focus!.sealed!)
+    const opened = cipher.open<SealedPayload<ClassroomFocusFrame>>(focus!.sealed!, {
+      direction: 'student-to-instructor', type: 'student.focus',
+    })
     expect(isSealedPayload(opened)).toBe(true)
     expect(opened.body.frame.elapsedSec).toBe(61.4)
     expect(opened.body.frame.tick).toBe(1228)

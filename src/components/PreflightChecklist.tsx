@@ -7,6 +7,8 @@ import {
   evaluateAuthorizationTraining,
 } from '@/sim/mission/authorizationTraining'
 import type { AuthorizationStepId } from '@/types'
+import { assuranceForScenario } from '@/assurance/trainingAssurance'
+import { resolveLostLinkPolicy } from '@/sim/safety/lostLink'
 
 const CHECKLIST = PREFLIGHT_CHECKLIST
 
@@ -37,21 +39,30 @@ export function PreflightChecklist() {
     })),
   )
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set())
+  const [degradedAcknowledged, setDegradedAcknowledged] = useState(false)
 
   // Fresh checklist every time the modal opens — items must be confirmed per mission.
   useEffect(() => {
-    if (ui.showPreflight) setCheckedIds(new Set())
+    if (ui.showPreflight) {
+      setCheckedIds(new Set())
+      setDegradedAcknowledged(false)
+    }
   }, [ui.showPreflight])
 
   const authProgress = useMemo(
     () => evaluateAuthorizationTraining(scenario, scenarioVariant, authorizationCompletedSteps),
     [authorizationCompletedSteps, scenario, scenarioVariant],
   )
+  const assurance = useMemo(() => assuranceForScenario(scenario), [scenario])
+  const lostLink = useMemo(() => scenario ? resolveLostLinkPolicy(scenario) : null, [scenario])
 
   if (!ui.showPreflight) return null
 
   const allChecked = checkedIds.size === CHECKLIST.length
+  const requiresDegradedAcknowledgement = assurance.launchDisposition === 'training_degraded'
+    || assurance.launchDisposition === 'training_blocked'
   const canContinue = allChecked && authProgress.ready
+    && (!requiresDegradedAcknowledgement || degradedAcknowledged)
 
   function toggleItem(id: number) {
     setCheckedIds((prev) => {
@@ -109,11 +120,50 @@ export function PreflightChecklist() {
           borderRadius: 'var(--radius-sm)',
           background: 'var(--bg-input)',
         }}>
+          <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', color: assurance.trainingRunAllowed ? 'var(--accent-green)' : 'var(--accent-yellow)', marginBottom: 6 }}>
+            TRAINING ASSURANCE · {assurance.launchDisposition.replaceAll('_', ' ').toUpperCase()}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+            {assurance.disclaimer}
+          </div>
+          {lostLink && (
+            <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+              <strong>Lost link:</strong>{' '}
+              {lostLink.action === 'hold_then_rtb'
+                ? `hold ${lostLink.holdSec}s, then use a validated RTB route; emergency-land in the model when no validated route is available.`
+                : lostLink.action === 'continue'
+                  ? 'continue only under this explicitly acknowledged scenario policy; other safety overrides remain active.'
+                  : lostLink.action === 'land'
+                    ? 'enter the simulated emergency-landing response.'
+                    : 'use a validated RTB route; emergency-land in the model when no validated route is available.'}
+              {lostLink.warning ? ` ${lostLink.warning}` : ''}
+            </div>
+          )}
+          {assurance.blockers.length > 0 && (
+            <ul style={{ margin: '6px 0', paddingLeft: 18, fontSize: 10, color: 'var(--accent-yellow)' }}>
+              {assurance.blockers.slice(0, 6).map((blocker) => <li key={blocker}>{blocker}</li>)}
+            </ul>
+          )}
+          {requiresDegradedAcknowledgement && (
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 10, color: 'var(--text-secondary)' }}>
+              <input type="checkbox" checked={degradedAcknowledged} onChange={(event) => setDegradedAcknowledged(event.target.checked)} />
+              Run as geographic familiarization only. I understand coordinates are training context and the result is not real-mission validation, FAA authorization, a safe-route determination, or an obstacle-avoidance guarantee.
+            </label>
+          )}
+        </div>
+
+        <div style={{
+          marginBottom: 14,
+          padding: '10px 10px 8px',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          background: 'var(--bg-input)',
+        }}>
           <div style={{
             fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em',
             color: 'var(--accent-yellow)', marginBottom: 6,
           }}>
-            OPERATIONAL AUTHORIZATION (SIMULATION)
+            OPERATIONAL AUTHORIZATION TRAINING
           </div>
           <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 8, lineHeight: 1.4 }}>
             Practice the authorization workflow for this AO — RID, airspace request, ceiling,
@@ -238,8 +288,8 @@ export function PreflightChecklist() {
           color: 'var(--text-dim)',
           fontFamily: 'var(--font-mono)',
         }}>
-          ⚠ SIMULATION ONLY — Not for operational deployment. All data synthetic.
-          FAA Part 107 / LAANC / UTM surfaces shown for portfolio training purposes only.
+          ⚠ AGENCY TRAINING ONLY — No operational authorization, real-mission validation, or safety determination.
+          {' '}Airspace and traffic exercises are local and scripted; there are no aircraft or aviation-system connectors.
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>

@@ -75,11 +75,6 @@ const kilauea = baseHistorical(
     sources: [
       { label: 'USGS — Kīlauea UAS rescue mission', url: 'https://www.usgs.gov/media/videos/kilauea-volcano-uas-mission-aid-rescue' },
     ],
-    instructorNotes: 'Emphasize moving geofence (lava front) and night precision guidance — not pursuit.',
-    discussionPrompts: [
-      'How would you score time-to-first-contact vs the documented extraction?',
-      'What altitude band keeps LOS to EOC while staying clear of gas plumes?',
-    ],
   }),
   anchors([
     { id: 'time-to-contact', label: 'Time to first thermal contact', unit: 'min', documentedValue: 12, description: 'Representative EOC reporting cadence from public accounts.' },
@@ -312,7 +307,6 @@ const katrina = baseHistorical(
     sources: [
       { label: 'FAA — disaster UAS authorizations (Harvey precedent policy)', url: 'https://medium.com/faa/drone-authorizations-soar-through-hurricanes-wildfires-8548ea4a2c75' },
     ],
-    instructorNotes: 'Handle with care — capability gap framing only, never blame assignment.',
   }),
   anchors([
     { id: 'rooftops-hr', label: 'Rooftop sectors triaged per hour', unit: 'sectors/hr', documentedValue: 4, description: 'Operator target under endurance budget.' },
@@ -368,7 +362,6 @@ const marshall = baseHistorical(
     sources: [
       { label: 'Representative wildfire weather doctrine (Fort Myers/Ian precedent)', url: 'https://www.nbcbayarea.com/news/local/how-a-squadron-of-drones-mapped-the-entire-paradise-camp-fire-zone-in-two-days/201896/' },
     ],
-    instructorNotes: 'Marshall keeps peak-wind conditions — launch refusal IS the realism.',
   }),
   anchors([
     { id: 'wind-gust', label: 'Peak gust threshold', unit: 'kts', documentedValue: 30, description: 'Launch-bay closing gust reference.' },

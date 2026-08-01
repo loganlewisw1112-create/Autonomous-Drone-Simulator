@@ -98,6 +98,13 @@ export function enhanceScenarioForOperations(scenario: ScenarioConfig): Scenario
 
   const baseScenario: ScenarioConfig = {
     ...scenario,
+    assuranceMode: scenario.assuranceMode ?? 'synthetic_training',
+    lostLinkPolicy: scenario.lostLinkPolicy ?? {
+      action: 'hold_then_rtb',
+      holdSec: 10,
+      explicitlyAcknowledged: true,
+    },
+    advancedFleetExercise: scenario.advancedFleetExercise ?? scenario.droneCount > 4,
     startPosition: safeStart,
     rechargeStations,
     perDroneRechargeStations: rechargeStationsByDroneIds ?? perDroneRechargeStations,
@@ -386,7 +393,7 @@ function deriveMissionBrief(scenario: ScenarioConfig): MissionBrief {
     operationalConstraints: [
       'Maintain scenario geofence and altitude constraints.',
       'Use standoff observation for protected assets and hazard zones.',
-      'Log all operator retasks and route changes for chain-of-custody review.',
+      'Log operator retasks and route changes in the application event-custody record.',
       'Simulation only: no real personal data, no weapon targeting, no real-world dispatching.',
     ],
   }

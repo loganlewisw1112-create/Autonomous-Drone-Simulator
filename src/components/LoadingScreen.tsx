@@ -21,7 +21,7 @@ const INITIAL_CHECKS: Check[] = [
   { label: 'REACT RUNTIME',       detail: 'js engine + dom',           status: 'pending' },
   { label: 'SCENARIO DATABASE',   detail: '',                           status: 'pending' },
   { label: 'SIMULATION ENGINE',   detail: 'physics + comms + weather', status: 'pending' },
-  { label: 'SECURITY HASH CHAIN', detail: 'sha-256 chain-of-custody',  status: 'pending' },
+  { label: 'EVENT INTEGRITY CHAIN', detail: 'sha-256 tamper-evident continuity',  status: 'pending' },
   { label: 'TACTICAL MAP',        detail: 'awaiting renderer',          status: 'pending' },
 ]
 

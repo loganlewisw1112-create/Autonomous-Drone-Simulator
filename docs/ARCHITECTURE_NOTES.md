@@ -13,9 +13,16 @@
 - `src/sim/SimulationLoop.ts` advances the deterministic mission tick, publishes chain-of-custody
   events, updates drone state, records replay snapshots, and keeps simulator time separate from
   React rendering (see **Sim/Render Decoupling** below).
-- `src/scenarios/catalog.ts` is the scenario source of truth for mission metadata, launch/recovery
-  sites, geofences, weather, heat sources, and per-drone routes — 21 scenarios (7 base +
-  14 "extreme"), all run through the same safety/route-audit pipeline.
+- `src/scenarios/scenarioManifest.ts` is the catalog membership source of truth: 25 incident
+  missions plus 6 NIST-inspired skills drills. `catalog.ts`, `historicalScenarios.ts`, and
+  `nistLanes.ts` provide scenario metadata, launch/recovery sites, geofences, weather, heat
+  sources, and per-drone routes; all enter the same safety/route-audit pipeline.
+- Terrain packages load through the canonical scenario registry before fleet initialization.
+  The production tick remains synchronous after preparation. A scenario that declares terrain
+  cannot launch if that package fails to load.
+- Mobile, Windows, and Classroom may use different presentation modules, but target-specific
+  aliases are prohibited in simulation/scenario-data modules. Target parity is an artifact-level
+  release contract.
 
 ## Deterministic Simulation Kernel
 
@@ -106,6 +113,19 @@ Derived, expensive state (`buildMissionOutcomeSummary`, `buildComplianceState`,
 - `ErrorBoundary` wraps the shell; a component throw renders a recoverable fallback card instead
   of a blank page.
 
+## Classroom Security Boundary
+
+- `server/classroomTls.mjs` owns the persistent 3072-bit RSA school-local CA and renewable
+  LAN leaf. TLS files live under per-user application data, outside the repository. The CLI and
+  Electron host serve HTTPS/WSS by default; insecure LAN operation requires explicit
+  development-only flags and cannot create a graded class.
+- Electron verifies the exact certificate fingerprint of its owned loopback relay. It does not
+  install CA trust on student Windows profiles; that remains a managed school deployment action.
+- Relay-owned instructor sessions authorize room creation. Protocol-v2 application encryption
+  binds class, direction, message type, version, and both session keys.
+- The coordinator renders a QR and copyable join URL with the instructor-key fingerprint in the
+  URL fragment. Student clients reject a mismatched instructor key.
+
 ## Test Strategy
 
 Three layers, deliberately kept distinct:
@@ -128,8 +148,10 @@ per-file only where a component actually needs a DOM, keeping the bulk of the su
 
 ## Verification
 
-- `npm test`, `npm run lint`, `npm run build` (plus `npm audit`) are the CI gates — see
-  `.github/workflows/ci.yml`.
+- `npm run verify:ci` enforces type checking, expanded lint, full tests with at most two workers,
+  and coverage thresholds. Explicit target builds, bundle isolation, fixture budgets,
+  deterministic target parity, and `npm audit --audit-level=high` complete the gate — see
+  `.github/workflows/ci.yml` and `RELEASE_CHECKLIST.md`.
 - The app is intentionally local-first. External systems are represented by deterministic
   simulation layers, not live drone, FAA, camera, or UTM integrations — see the README's Known
   Limitations and the disclaimer strings embedded directly in `complianceEngine.ts` and

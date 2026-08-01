@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { startSimLoop, stopTicking, endMission, initFleet } from '@/sim/SimulationLoop'
@@ -11,12 +11,17 @@ import { buildGeoJSON } from '@/utils/geojsonExport'
 import { buildAfterActionPackage, serializeAfterActionPackage } from '@/sim/demo/missionReport'
 import { isRetaskable } from '@/sim/mission/retaskPolicy'
 import type { ScenarioVariantConfig } from '@/types'
+import { prepareScenarioTerrain } from '@/scenarios/terrainFixtures'
+import { useAuthStore } from '@/store/authStore'
+import { useUsagePolicy } from '@/licensing/UsagePolicyGate'
 
 // Mission control logic shared by the desktop ControlBar and the mobile bottom-dock
 // sheets. Handlers were moved verbatim out of ControlBar so both shells drive the
 // exact same start/stop/export pipeline — the desktop bar keeps its markup, mobile
 // renders touch-sized controls over the same behavior.
 export function useMissionControls() {
+  const activeAccount = useAuthStore((state) => state.activeAccount)
+  const usagePolicy = useUsagePolicy()
   const store = useDroneStore(
     useShallow((s) => ({
       ui: s.ui, scenario: s.scenario, events: s.events, drones: s.drones, lifecycle: s.lifecycle,
@@ -42,8 +47,13 @@ export function useMissionControls() {
   } = store
 
   const [exportStatus, setExportStatus] = useState<string | null>(null)
+  const [missionLoadError, setMissionLoadError] = useState<string | null>(null)
+  const [missionLoadPending, setMissionLoadPending] = useState(false)
+  const missionLoadRequest = useRef(0)
 
   const canStart = operatorRole === 'pic'
+    && usagePolicy.canBeginNewActivity
+    && (!scenario?.isCustom || activeAccount !== null)
   const canRetaskFleet = operatorRole === 'pic' && drones.some(isRetaskable)
   const canAbort = operatorRole === 'pic' || operatorRole === 'mission_commander'
   const canStop  = operatorRole === 'pic' || operatorRole === 'mission_commander'
@@ -52,6 +62,14 @@ export function useMissionControls() {
 
   function handleStart() {
     if (!scenario || !launchReady) return
+    if (!usagePolicy.canBeginNewActivity) {
+      setMissionLoadError('The demo or license window is in debrief-only mode. Export or review existing records; a new mission cannot start.')
+      return
+    }
+    if (scenario.isCustom && !activeAccount) {
+      setMissionLoadError('Sign in to an operator profile before starting a custom mission. Guest sessions may run built-in missions only.')
+      return
+    }
     if (!useDroneStore.getState().isAuthorizationTrainingReady()) return
     const currentLifecycle = useDroneStore.getState().lifecycle
     if (currentLifecycle !== 'idle' && currentLifecycle !== 'preflight') return
@@ -99,13 +117,32 @@ export function useMissionControls() {
     endMission()
   }
 
-  function handleScenarioChange(id: string) {
+  async function handleScenarioChange(id: string): Promise<boolean> {
     const currentLifecycle = useDroneStore.getState().lifecycle
     // Never discard an in-progress mission. The operator must explicitly end it
     // before browsing/replacing the active scenario.
-    if (currentLifecycle === 'running' || currentLifecycle === 'paused') return
+    if (currentLifecycle === 'running' || currentLifecycle === 'paused') return false
+    if (!usagePolicy.canBeginNewActivity) {
+      setMissionLoadError('The demo or license window has ended. New missions are disabled; review and export remain available.')
+      return false
+    }
     const found = getScenarioById(id)
-    if (!found) return
+    if (!found) return false
+    if (found.config.isCustom && !activeAccount) {
+      setMissionLoadError('Guest access is limited to built-in missions. Sign in to load a custom mission.')
+      return false
+    }
+
+    const request = ++missionLoadRequest.current
+    setMissionLoadPending(true)
+    setMissionLoadError(null)
+    const terrain = await prepareScenarioTerrain(found.config)
+    if (request !== missionLoadRequest.current) return false
+    setMissionLoadPending(false)
+    if (!terrain.ok) {
+      setMissionLoadError(terrain.reason)
+      return false
+    }
     // Swap scenarios without finalizing the prior one (browsing scenarios must not
     // write a ghost run record). initFleet() resets lifecycle back to 'idle'.
     stopTicking()
@@ -120,6 +157,7 @@ export function useMissionControls() {
     initFleet()
     setLifecycle('preflight')
     setShowPreflight(true)
+    return true
   }
 
   function handleVariantChange(patch: Partial<ScenarioVariantConfig>) {
@@ -197,7 +235,7 @@ export function useMissionControls() {
 
   return {
     ...store,
-    exportStatus,
+    exportStatus, missionLoadError, missionLoadPending,
     canStart, canAbort, canStop, canRetaskFleet, launchReady, allLanded,
     handleStart, handleAbort, handlePause, handleResume, handleEndMission,
     handleScenarioChange, handleVariantChange, handleRandomizeSeed, handleDemoReset,

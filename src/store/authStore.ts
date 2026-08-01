@@ -1,17 +1,30 @@
 import { create } from 'zustand'
 import { devtools, subscribeWithSelector } from 'zustand/middleware'
 import {
-  deriveKey, encryptJson, decryptJson, makeCheckBlob, verifyCheckBlob, makeKdfParams, makeId, toBase64, fromBase64,
+  accountCipherAad,
+  deriveKey,
+  encryptJson,
+  decryptJson,
+  makeCheckBlob,
+  verifyCheckBlob,
+  makeKdfParams,
+  makeId,
 } from '@/account/crypto'
 import {
-  accountStorageAvailable, deleteAccount, getAccountByUsername, listAccounts, putAccount,
+  accountStorageAvailable,
+  deleteAccount,
+  getAccountByUsername,
+  listAccounts,
+  migrateAccountCipherBlobs,
+  purgeExpiredOperationalRecords,
+  putAccount,
+  setAccountStorageReadOnly,
 } from '@/account/accountDb'
 import { unlockWithInstructorAccessCode } from '@/account/instructorAccessRemote'
 import type { AccountPrefs, AccountRecord, AccountRole } from '@/account/types'
 
-// Local-only auth. The derived AES key lives in memory for the session; with
-// remember-me it is additionally kept in localStorage so a reload stays signed
-// in on a personal device (tradeoff surfaced in the sign-in UI).
+// Local-only auth. The derived AES key lives in memory for the current page
+// session only. It is never persisted in browser storage.
 
 const SESSION_KEY = 'drone-sim:session:v1'
 
@@ -47,6 +60,7 @@ interface AuthState {
   activeAccount: ActiveAccount | null
   sessionKey: Uint8Array | null
   storageAvailable: boolean
+  storageReadOnly: boolean
   authError: string | null
   prefs: AccountPrefs
   showSignIn: boolean
@@ -62,14 +76,13 @@ interface AuthState {
     username: string,
     displayName: string,
     password: string,
-    rememberMe: boolean,
     options?: SignUpOptions,
   ) => Promise<boolean>
-  signIn: (username: string, password: string, rememberMe: boolean) => Promise<boolean>
+  signIn: (username: string, password: string) => Promise<boolean>
   /** One-time supervised unlock for an already-signed-in instructor account. */
   unlockInstructor: (accessCode: string) => Promise<boolean>
   signOut: () => void
-  restoreRememberedSession: () => Promise<void>
+  clearLegacyPersistedSession: () => void
   savePrefs: (prefs: AccountPrefs) => Promise<void>
 }
 
@@ -88,22 +101,18 @@ function toActive(account: AccountRecord): ActiveAccount {
   }
 }
 
-function persistSession(account: AccountRecord, key: Uint8Array, rememberMe: boolean) {
+function clearLegacySession() {
   const storage = resolveStorage()
   if (!storage) return
   try {
-    if (rememberMe) {
-      storage.setItem(SESSION_KEY, JSON.stringify({ v: 1, username: account.username, key: toBase64(key) }))
-    } else {
-      storage.removeItem(SESSION_KEY)
-    }
-  } catch { /* private mode — session stays memory-only */ }
+    storage.removeItem(SESSION_KEY)
+  } catch { /* private mode — nothing persisted */ }
 }
 
 function loadPrefs(account: AccountRecord, key: Uint8Array): AccountPrefs {
   if (!account.prefsBlob) return {}
   try {
-    return decryptJson<AccountPrefs>(key, account.prefsBlob)
+    return decryptJson<AccountPrefs>(key, account.prefsBlob, accountCipherAad('prefs', account.id))
   } catch {
     return {}
   }
@@ -115,6 +124,7 @@ export const useAuthStore = create<AuthState>()(
       activeAccount: null,
       sessionKey: null,
       storageAvailable: accountStorageAvailable(),
+      storageReadOnly: false,
       authError: null,
       prefs: {},
       showSignIn: false,
@@ -132,10 +142,18 @@ export const useAuthStore = create<AuthState>()(
       }),
       clearAuthError: () => set({ authError: null }),
 
-      signUp: async (username, displayName, password, rememberMe, options) => {
+      signUp: async (username, displayName, password, options) => {
         const name = username.trim()
         if (name.length < 2) { set({ authError: 'Username must be at least 2 characters' }); return false }
+        if (name.length > 64) { set({ authError: 'Username must be 64 characters or fewer' }); return false }
+        if (/\p{C}/u.test(name)) { set({ authError: 'Username cannot contain control or formatting characters' }); return false }
         if (password.length < 8) { set({ authError: 'Password must be at least 8 characters' }); return false }
+        if (password.length > 128) { set({ authError: 'Password must be 128 characters or fewer' }); return false }
+        const safeDisplayName = displayName.trim() || name
+        if (safeDisplayName.length > 64 || /\p{C}/u.test(safeDisplayName)) {
+          set({ authError: 'Display name must be 64 characters or fewer and cannot contain control characters' })
+          return false
+        }
         if (!accountStorageAvailable()) { set({ authError: 'Device storage unavailable — accounts need IndexedDB' }); return false }
 
         const role = options?.role
@@ -159,15 +177,16 @@ export const useAuthStore = create<AuthState>()(
 
         const kdfParams = makeKdfParams()
         const key = deriveKey(password, kdfParams)
+        const accountId = makeId()
         const record: AccountRecord = {
           schemaVersion: 1,
-          id: makeId(),
+          id: accountId,
           username: name,
           usernameLower: name.toLowerCase(),
-          displayName: displayName.trim() || name,
+          displayName: safeDisplayName,
           createdAt: Date.now(),
           kdfParams,
-          checkBlob: makeCheckBlob(key),
+          checkBlob: makeCheckBlob(key, accountId),
           ...(role ? { role } : {}),
           ...(instructorUnlockedAt !== undefined ? { instructorUnlockedAt } : {}),
           ...(instructorUnlockPending ? { instructorUnlockPending: true } : {}),
@@ -175,10 +194,9 @@ export const useAuthStore = create<AuthState>()(
         const ok = await putAccount(record)
         if (!ok) { set({ authError: 'Could not save the profile to device storage' }); return false }
 
-        persistSession(record, key, rememberMe)
         set({
           activeAccount: toActive(record),
-          sessionKey: key, prefs: {}, authError: null, showSignIn: false,
+          sessionKey: key, storageReadOnly: false, prefs: {}, authError: null, showSignIn: false,
         })
         return true
       },
@@ -189,14 +207,14 @@ export const useAuthStore = create<AuthState>()(
           set({ authError: 'Sign in as an instructor to unlock' })
           return false
         }
-        if (activeAccount.instructorUnlocked) {
-          set({ authError: null })
-          return true
-        }
         const unlocked = await unlockWithInstructorAccessCode(accessCode)
         if (!unlocked.ok) {
           set({ authError: unlocked.error })
           return false
+        }
+        if (activeAccount.instructorUnlocked) {
+          set({ authError: null })
+          return true
         }
         const record = await getAccountByUsername(activeAccount.username)
         if (!record || record.role !== 'instructor') {
@@ -214,54 +232,55 @@ export const useAuthStore = create<AuthState>()(
         return true
       },
 
-      signIn: async (username, password, rememberMe) => {
+      signIn: async (username, password) => {
         const record = await getAccountByUsername(username)
         if (!record) { set({ authError: 'No profile with that username on this device' }); return false }
         const key = deriveKey(password, record.kdfParams)
-        if (!verifyCheckBlob(key, record.checkBlob)) {
+        if (!verifyCheckBlob(key, record.checkBlob, record.id)) {
           set({ authError: 'Incorrect password' })
           return false
         }
-        persistSession(record, key, rememberMe)
+        const migration = await migrateAccountCipherBlobs(record.id, key)
+        const storageReadOnly = migration === 'failed'
+        setAccountStorageReadOnly(record.id, storageReadOnly)
+        if (!storageReadOnly) await purgeExpiredOperationalRecords(record.id)
         set({
           activeAccount: toActive(record),
-          sessionKey: key, prefs: loadPrefs(record, key), authError: null, showSignIn: false,
+          sessionKey: key,
+          storageReadOnly,
+          prefs: loadPrefs(record, key),
+          authError: storageReadOnly
+            ? 'Encrypted data upgrade could not complete. This profile is read-only; export a backup before repairing it.'
+            : null,
+          showSignIn: false,
         })
         return true
       },
 
       signOut: () => {
-        try { resolveStorage()?.removeItem(SESSION_KEY) } catch { /* noop */ }
-        set({ activeAccount: null, sessionKey: null, prefs: {}, showSettings: false, showAnalytics: false })
-      },
-
-      restoreRememberedSession: async () => {
-        const storage = resolveStorage()
-        if (!storage) return
-        let stored: { v?: number; username?: string; key?: string } | null = null
-        try {
-          const raw = storage.getItem(SESSION_KEY)
-          stored = raw ? JSON.parse(raw) : null
-        } catch {
-          return
-        }
-        if (!stored || stored.v !== 1 || !stored.username || !stored.key) return
-        const record = await getAccountByUsername(stored.username)
-        if (!record) return
-        const key = fromBase64(stored.key)
-        if (!verifyCheckBlob(key, record.checkBlob)) return
+        clearLegacySession()
         set({
-          activeAccount: toActive(record),
-          sessionKey: key, prefs: loadPrefs(record, key),
+          activeAccount: null,
+          sessionKey: null,
+          storageReadOnly: false,
+          prefs: {},
+          showSettings: false,
+          showAnalytics: false,
         })
       },
 
+      clearLegacyPersistedSession: clearLegacySession,
+
       savePrefs: async (prefs) => {
-        const { activeAccount, sessionKey } = get()
-        if (!activeAccount || !sessionKey) return
+        const { activeAccount, sessionKey, storageReadOnly } = get()
+        if (!activeAccount || !sessionKey || storageReadOnly) return
         const record = await getAccountByUsername(activeAccount.username)
         if (!record) return
-        record.prefsBlob = encryptJson(sessionKey, prefs)
+        record.prefsBlob = encryptJson(
+          sessionKey,
+          prefs,
+          accountCipherAad('prefs', activeAccount.id),
+        )
         await putAccount(record)
         set({ prefs })
       },
