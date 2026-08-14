@@ -19,6 +19,7 @@ import { replanLaunchSlots } from '@/sim/mission/launchPlanGeometry'
 import { clearAllSavedWaypointPlans, clearSavedDroneWaypointRoute, saveDroneWaypointRoute, saveFleetWaypointRoutes } from '@/sim/mission/waypointPersistence'
 import { hashEvent } from '@/utils/chainOfCustody'
 import { getActiveOperator } from '@/store/authStore'
+import { assuranceForScenario } from '@/assurance/trainingAssurance'
 import { getDefaultWeatherState, isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import type {
   AuthorizationStepId,
@@ -1599,6 +1600,13 @@ export const useDroneStore = create<DroneStore>()(
             state.scenarioVariant,
             state.authorizationCompletedSteps,
           ).ready) {
+            return
+          }
+          // Independent re-check of the training assurance disposition at the launch
+          // boundary (audit F-06). The preflight UI also refuses a blocked disposition, but
+          // it is not the only path here — classroom mission control and the demo driver
+          // call this directly — so the refusal has to live where the command is issued.
+          if (!assuranceForScenario(state.scenario).trainingRunAllowed) {
             return
           }
           set((s) => ({

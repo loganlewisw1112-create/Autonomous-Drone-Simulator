@@ -1,5 +1,6 @@
 import { generatePerDroneWaypoints } from '@/sim/mission/SARPlanner'
-import { launchSiteForDrone, recoverySiteForDrone } from '@/sim/mission/siteAssignments'
+import { launchSiteForDrone } from '@/sim/mission/siteAssignments'
+import { resolvePlannedRtbDestination } from '@/sim/mission/rtbDestination'
 import { haversineDistanceM, pointInPolygon } from '@/utils/geometry'
 import { occlusionServiceFor } from '@/scenarios/terrainFixtures'
 import { containsLatLng } from '@/sim/terrain/terrainRaster'
@@ -110,8 +111,11 @@ export function buildSafeDroneRoutes(scenario: ScenarioConfig): Record<string, W
   for (let i = 0; i < scenario.droneCount; i++) {
     const droneId = droneIdForIndex(i)
     const start = defaultDroneStartPosition(scenario, i)
-    const rechargeStations = scenario.perDroneRechargeStations?.[droneId] ?? []
-    const base = recoverySiteForDrone(scenario, droneId)?.position ?? rechargeStations[rechargeStations.length - 1] ?? scenario.startPosition
+    // Home comes from the shared resolver (F-04). This used to hand-roll a third precedence
+    // — recovery site → last recharge station → start — which disagreed with the destination
+    // the aircraft actually flies whenever a scenario had both a recovery site and staged
+    // stations, so the "safe recovery" leg could be planned to a place nobody would fly to.
+    const base = resolvePlannedRtbDestination(scenario, droneId, routes[droneId] ?? []).position
     const recoveryId = `${droneId}-rtb-safe`
     const missionRoute = (routes[droneId] ?? []).filter((wp) => !wp.id.startsWith(recoveryId))
     const routeWithRecovery = [
@@ -169,7 +173,6 @@ export function auditScenarioRoutes(scenario: ScenarioConfig, options: AuditScen
     const droneId = droneIdForIndex(i)
     const start = options.startPositions?.[droneId] ?? defaultDroneStartPosition(scenario, i)
     const rechargeStations = scenario.perDroneRechargeStations?.[droneId] ?? []
-    const base = recoverySiteForDrone(scenario, droneId)?.position ?? rechargeStations[rechargeStations.length - 1] ?? scenario.startPosition
     const route = routes[droneId] ?? []
     const points: RoutePoint[] = [
       { id: 'start', position: start, altitudeFt: route[0]?.altitudeFt ?? 120 },
@@ -177,7 +180,12 @@ export function auditScenarioRoutes(scenario: ScenarioConfig, options: AuditScen
     ]
 
     if (includeRtb) {
-      points.push({ id: 'rtb-base', position: base, altitudeFt: 120 })
+      // Same shared resolver as the flown path (F-04) — see buildSafeDroneRoutes above.
+      points.push({
+        id: 'rtb-base',
+        position: resolvePlannedRtbDestination(scenario, droneId, route).position,
+        altitudeFt: 120,
+      })
     }
 
     auditRoutePoints(scenario, droneId, points, findings)
