@@ -1,13 +1,20 @@
 # Project status
 
-Status date: 2026-08-01
-Release line: `codex/release-v1.1`
+Status date: 2026-08-13
+Release line: `main` (the `codex/release-v1.1` branch is historical; v1.1 is
+still unreleased — see CHANGELOG.md)
 
 This is a local-first, high-fidelity agency drone-training platform with a
 shared, fail-closed training-assurance architecture for classroom and Windows
 pilot builds. Repository fixtures remain synthetic/recorded and do not
 command aircraft or connect to operational FAA, LAANC, USS/UTM, Remote ID,
 dispatch, camera, weather, or aircraft-telemetry services.
+
+> Canonical sources of truth are the tracked documents only: this file,
+> README.md, CHANGELOG.md, SECURITY_THREAT_MODEL.md, and docs/. Ignored local
+> files (HANDOFF.md, PROJECT_PLAN.md, START_HERE.md, TASKS.md) and locally
+> built packages under outputs/ are non-canonical, may hold older state, and
+> are labeled as such in place (audit F-13).
 
 ## Implemented product
 
@@ -19,7 +26,7 @@ dispatch, camera, weather, or aircraft-telemetry services.
 | Operations | Preflight, launch/recovery planning, route editing, suggestions, retasking, hover/divert/resume/RTB, OPS HUB, after-action review |
 | Targets | Separate Mobile, Windows web, and Classroom client builds using one simulation contract |
 | Accounts | Browser-local encrypted profiles, runs, custom missions, backups, and classroom history |
-| Classroom | Instructor/student roles, HTTPS/WSS local relay, persistent school-local CA and renewable leaf, encrypted protocol-v2 messages, fingerprint-pinned join URL/QR, coordinator wall, commands, scoring, and archives |
+| Classroom | Instructor/student roles, HTTPS/WSS local relay, persistent school-local CA and renewable leaf, encrypted protocol-v3 messages, fingerprint-pinned join URL/QR, coordinator wall, commands, scoring, and archives |
 | Evidence | Replay, JSONL chain, KML, GeoJSON, reports, and after-action exports |
 | Assurance | Training-envelope evaluator, mechanically prohibited operational claims, geographic-familiarization acknowledgement, and assurance state in preflight/readiness/classroom/reports |
 | Licensing | Public-demo wall/idle/debrief windows; evaluation/pilot expiry channels; 30-180 minute classroom schedule |

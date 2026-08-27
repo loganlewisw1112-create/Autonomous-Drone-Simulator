@@ -1,16 +1,57 @@
-import { auditScenarioRoutes } from '@/sim/mission/routeAudit'
+import {
+  auditScenarioRoutes,
+  auditTerrainClearance,
+  defaultDroneStartPosition,
+  type RouteAuditFinding,
+  type TerrainRouteWarning,
+} from '@/sim/mission/routeAudit'
+import { resolveRtbDestination, type RtbDestinationSource } from '@/sim/mission/rtbDestination'
 import { MAX_OPERATOR_ALTITUDE_FT, MIN_OPERATOR_ALTITUDE_FT, validateAltitude } from '@/sim/mission/operatorRoutes'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
-import type { CustomMissionDefinition, LaunchRecoverySite, ScenarioConfig, Waypoint } from '@/types'
+import type { CustomMissionDefinition, LatLng, LaunchRecoverySite, ScenarioConfig, Waypoint } from '@/types'
 
 export const MAX_CUSTOM_DRONES = 8
 export const MAX_STANDARD_CUSTOM_DRONES = 4
 export { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
 
+/** Matches the RTB altitude routeAudit itself uses for its rtb-base / safe-recovery points. */
+const RTB_LEG_ALTITUDE_FT = 120
+
+/**
+ * Audit F-10: per-drone audit of the return leg the aircraft will actually fly.
+ * The destination comes from resolveRtbDestination — the same single source of truth the sim
+ * tick and lost-link validator use (F-04) — never from a scenario.startPosition assumption.
+ */
+export interface DesignerRtbLegAudit {
+  droneId: string
+  destination: LatLng
+  destinationLabel: string
+  destinationSource: RtbDestinationSource
+  /** Geofence findings on the return leg; any entry rejects the mission like outbound findings. */
+  findings: RouteAuditFinding[]
+}
+
+/**
+ * Audit F-10: machine-readable review facts persisted alongside validity — what was checked,
+ * what was not, and the explicit unknowns. A "valid" custom mission is structurally valid and
+ * geofence-audited (outbound + return legs); everything in `unknowns` was NOT modeled.
+ */
+export interface DesignerMissionReview {
+  geofenceCount: number
+  terrainFixtureSourced: boolean
+  rtbLegs: DesignerRtbLegAudit[]
+  /** Advisory terrain findings (including explicit 'no_fixture'); reported, never a rejection. */
+  terrainWarnings: TerrainRouteWarning[]
+  /** Explicit-unknown lines the review UI renders verbatim instead of staying silent. */
+  unknowns: string[]
+}
+
 export interface DesignerValidationResult {
   valid: boolean
   errors: string[]
   scenario: ScenarioConfig | null
+  /** Non-null whenever the definition compiled, even if the route audit then rejected it. */
+  review: DesignerMissionReview | null
 }
 
 export function customDroneId(index: number): string {
@@ -85,7 +126,9 @@ export function compileCustomMission(definition: CustomMissionDefinition): Scena
     startPosition: launchSites[defaultLaunchAssignments[customDroneId(0)]]?.position ?? definition.center,
     waypoints: firstRoute,
     perDroneWaypoints: definition.routes,
-    geofences: [],
+    // F-10: authored geofences compile through instead of being silently dropped. A mission
+    // with none stays valid but the review reports the absence as an explicit unknown.
+    geofences: definition.geofences ?? [],
     heatSources: [],
     batteryStartPct: 100,
     batteryDrainRatePerSec: 0.035,
@@ -166,6 +209,94 @@ function validateRoute(droneId: string, route: Waypoint[] | undefined, errors: s
   })
 }
 
+function validateGeofences(definition: CustomMissionDefinition, errors: string[]) {
+  ;(definition.geofences ?? []).forEach((geofence, index) => {
+    const name = geofence.label?.trim() || `Geofence ${index + 1}`
+    if (geofence.type !== 'no_fly' && geofence.type !== 'restricted') {
+      errors.push(`${name} has an unsupported type; use no_fly or restricted.`)
+    }
+    if (!Array.isArray(geofence.polygon) || geofence.polygon.length < 3 || geofence.polygon.some((point) => !validCoordinate(point))) {
+      errors.push(`${name} needs a polygon of at least 3 valid coordinates.`)
+    }
+    if (geofence.type === 'restricted' && !Number.isFinite(geofence.maxAltitudeFt)) {
+      errors.push(`${name} is restricted but has no numeric maximum altitude.`)
+    }
+  })
+}
+
+/**
+ * F-10: audit the return leg against the destination the aircraft will actually fly to.
+ * resolveRtbDestination (F-04's shared resolver: recharge station → recovery site → scenario
+ * start) is the only permitted source for that point. auditScenarioRoutes' built-in
+ * includeRtb base uses a *different* precedence (recovery site before recharge station), so
+ * the leg is built explicitly here rather than trusting includeRtb — validating a destination
+ * the aircraft won't fly is exactly the failure class F-04 fixed.
+ */
+function auditRtbLeg(scenario: ScenarioConfig, droneId: string, route: Waypoint[]): DesignerRtbLegAudit {
+  const destination = resolveRtbDestination(scenario, {
+    id: droneId,
+    missionState: 'return_to_base',
+    sortieCount: 0,
+    currentWaypointIndex: Math.max(0, route.length - 1),
+  })
+  const findings = auditScenarioRoutes(scenario, {
+    routes: {
+      [droneId]: [{
+        id: `${droneId}-rtb-leg`,
+        label: `RTB: ${destination.label}`,
+        position: destination.position,
+        altitudeFt: RTB_LEG_ALTITUDE_FT,
+      }],
+    },
+    includeRtb: false,
+    // The leg starts where the mission ends: the drone's final authored waypoint.
+    startPositions: { [droneId]: route[route.length - 1]?.position ?? scenario.startPosition },
+  }).filter((finding) => finding.droneId === droneId)
+  return {
+    droneId,
+    destination: destination.position,
+    destinationLabel: destination.label,
+    destinationSource: destination.source,
+    findings,
+  }
+}
+
+function buildMissionReview(scenario: ScenarioConfig, definition: CustomMissionDefinition): DesignerMissionReview {
+  const rtbLegs: DesignerRtbLegAudit[] = []
+  const terrainWarnings: TerrainRouteWarning[] = []
+  for (let index = 0; index < definition.droneCount; index++) {
+    const droneId = customDroneId(index)
+    const route = definition.routes[droneId] ?? []
+    const leg = auditRtbLeg(scenario, droneId, route)
+    rtbLegs.push(leg)
+    // Terrain stays advisory (routeAudit's contract) but is reported, not omitted (F-10).
+    // The RTB point is appended so the return leg's terrain is checked, not just outbound.
+    terrainWarnings.push(...auditTerrainClearance(
+      scenario.terrainFixtureId ?? scenario.id,
+      droneId,
+      [...route, { id: `${droneId}-rtb-leg`, label: `RTB: ${leg.destinationLabel}`, position: leg.destination, altitudeFt: RTB_LEG_ALTITUDE_FT }],
+      { fromPosition: defaultDroneStartPosition(scenario, index) },
+    ))
+  }
+
+  const terrainFixtureSourced = !terrainWarnings.some((warning) => warning.kind === 'no_fixture')
+  const unknowns: string[] = []
+  // F-10: absences are persisted as explicit machine-readable facts, never silence.
+  if (scenario.geofences.length === 0) {
+    unknowns.push('No geofences authored — no airspace containment is modeled or enforced for this mission.')
+  }
+  if (!terrainFixtureSourced) {
+    unknowns.push('No sourced terrain/building fixture — ground and structure clearance are not modeled.')
+  }
+  return {
+    geofenceCount: scenario.geofences.length,
+    terrainFixtureSourced,
+    rtbLegs,
+    terrainWarnings,
+    unknowns,
+  }
+}
+
 export function validateCustomMission(definition: CustomMissionDefinition): DesignerValidationResult {
   const errors: string[] = []
   if (!definition.name.trim()) errors.push('Mission name is required.')
@@ -200,16 +331,26 @@ export function validateCustomMission(definition: CustomMissionDefinition): Desi
 
   validateAssignments('Launch', definition, definition.launchAssignments, errors)
   validateAssignments('Recovery', definition, definition.recoveryAssignments, errors)
+  validateGeofences(definition, errors)
   for (let index = 0; index < definition.droneCount; index++) {
     const droneId = customDroneId(index)
     validateRoute(droneId, definition.routes[droneId], errors)
   }
 
   let scenario: ScenarioConfig | null = null
+  let review: DesignerMissionReview | null = null
   if (errors.length === 0) {
     scenario = compileCustomMission(definition)
     const findings = auditScenarioRoutes(scenario, { routes: definition.routes, includeRtb: false })
     for (const finding of findings) errors.push(`${finding.droneId.toUpperCase()}: ${finding.reason}`)
+    review = buildMissionReview(scenario, definition)
+    // F-10: a geofence breach on the return leg rejects exactly like an outbound breach —
+    // the return leg is the route the aircraft will actually fly, so it gets no exemption.
+    for (const leg of review.rtbLegs) {
+      for (const finding of leg.findings) {
+        errors.push(`${leg.droneId.toUpperCase()} return-to-base leg to ${leg.destinationLabel}: ${finding.reason}`)
+      }
+    }
   }
-  return { valid: errors.length === 0, errors, scenario: errors.length === 0 ? scenario : null }
+  return { valid: errors.length === 0, errors, scenario: errors.length === 0 ? scenario : null, review }
 }

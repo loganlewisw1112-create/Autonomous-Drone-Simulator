@@ -855,6 +855,10 @@ export interface CustomMissionDefinition {
   launchAssignments: Record<string, string>     // droneId → siteId
   recoveryAssignments: Record<string, string>   // droneId → siteId
   routes: Record<string, Waypoint[]>            // droneId → authored waypoints (≤24 each)
+  // Audit F-10: optional authored geofences (e.g. via JSON import). A geofence-free mission
+  // stays valid, but the absence is surfaced as an explicit unknown in the designer review
+  // instead of silently compiling an empty containment list.
+  geofences?: Geofence[]
   geographicMode?: 'synthetic_training' | 'real_coordinate_familiarization'
   advancedFleetAcknowledged?: boolean
   createdAt: number

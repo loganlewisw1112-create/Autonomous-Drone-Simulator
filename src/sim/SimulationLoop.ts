@@ -3,19 +3,19 @@ import { stepDrone } from '@/sim/drone/DroneEntity'
 import { platformForDrone } from '@/sim/drone/platformCatalog'
 import { getNextCommand, type MissionManagerState } from '@/sim/mission/MissionManager'
 import { detectConflicts, applyConflictFlags, getAssignedAltitude } from '@/sim/safety/DeconflictEngine'
+import { resolveGiveWayAssignments } from '@/sim/safety/avoidanceDoctrine'
 import { applyGeofenceFlags, applyCommsModel, applySurfaceClearanceSafety } from '@/sim/safety/SafetyManager'
 import { buildSafeDroneRoutes } from '@/sim/mission/routeAudit'
 import { validateOperatorRoute } from '@/sim/mission/operatorRoutes'
 import { restoreSavedWaypointRoutes } from '@/sim/mission/waypointPersistence'
 import { replanLaunchSlots, seededLaunchPlanFromScenario } from '@/sim/mission/launchPlanGeometry'
-import { resolveLaunchSite } from '@/sim/mission/siteResolver'
-import { recoverySiteIdForDrone } from '@/sim/mission/siteAssignments'
+import type { SiteOverrides } from '@/sim/mission/siteResolver'
+import { resolveRtbDestination } from '@/sim/mission/rtbDestination'
 import {
   batteryProfileForDrone,
   batteryReservePctForDrone,
   chargeRateMultiplierForDrone,
   effectiveBatteryDrainRateForDrone,
-  selectRechargeStationForDrone,
 } from '@/sim/mission/rechargeStations'
 import { checkThermalDetections } from '@/sim/sensors/ThermalSim'
 import { evaluateGnss } from '@/sim/nav/gnss'
@@ -116,26 +116,18 @@ export function tick() {
     const telemetryBatch: Array<{ id: string; t: number; alt: number; bat: number; spd: number; pos: LatLng }> = []
 
     const updatedDrones = drones.map((drone) => {
-      const stationSortieCount = drone.missionState === 'recharge'
-        ? Math.max(0, (drone.sortieCount ?? 0) - 1)
-        : (drone.sortieCount ?? 0)
-      const selectedRechargeStation = selectRechargeStationForDrone({
-        scenario,
-        droneId: drone.id,
-        sortieCount: stationSortieCount,
-        currentWaypointIndex: drone.currentWaypointIndex,
-      })
-      const recoverySiteId = recoverySiteIdForDrone(scenario, drone.id)
-      const recoverySite = recoverySiteId
-        ? resolveLaunchSite(scenario, recoverySiteId, siteOverrides)
-        : undefined
-      const basePos = selectedRechargeStation?.position ?? recoverySite?.position ?? scenario.startPosition
+      // Home is resolved in exactly one place (see rtbDestination.ts) so the destination the
+      // aircraft flies and the destination the lost-link validator checks can never diverge.
+      const rtbDestination = resolveRtbDestination(scenario, drone, siteOverrides)
+      const selectedRechargeStation = rtbDestination.rechargeStation
+      const recoverySiteId = rtbDestination.recoverySiteId
+      const basePos = rtbDestination.position
       const recoveryRelocation = recoverySiteId ? siteRelocations[recoverySiteId] : undefined
       const baseWaypoint: Waypoint = {
         id: `base-${drone.sortieCount}`,
         position: basePos,
         altitudeFt: 0,
-        label: selectedRechargeStation?.station.label ?? recoverySite?.label ?? 'Base',
+        label: rtbDestination.label,
       }
       const batteryProfile = batteryProfileForDrone(scenario, drone.id)
       // Apply weather battery drain multiplier
@@ -382,27 +374,27 @@ export function tick() {
     }
 
     // ── Conflict avoidance: the give-way drone diverges ───────────────────────
-    // For each detected pair the second aircraft (idB) is the give-way drone: it breaks off
-    // onto a divergence heading pointing directly away from the other aircraft, holds it for
-    // AVOID_MANEUVER_SEC (see MissionManager), then resumes its interrupted task. Completion
-    // is emitted through the standard state-transition path as avoidance_complete.
-    // 'launch' is included: fleets spawn from adjacent launch points a few meters apart, so
-    // climb-out is where conflicts actually occur in practice (cruise altitude bands are
-    // separated enough that conflicts rarely happen once established) — excluding 'launch'
-    // meant the maneuver almost never fired outside forced/artificial scenarios.
+    // The give-way aircraft breaks off onto a divergence heading pointing directly away from
+    // the other aircraft, holds it for AVOID_MANEUVER_SEC (see MissionManager), then resumes
+    // its interrupted task. Completion is emitted through the standard state-transition path
+    // as avoidance_complete.
+    //
+    // Which states maneuver, which are protected, and which aircraft of a pair gives way are
+    // all decided by src/sim/safety/avoidanceDoctrine.ts — that module states a disposition
+    // for every MissionState so no airborne state can be silently left flag-only again
+    // (audit F-05).
+    const giveWayAssignments = resolveGiveWayAssignments(conflicts, surfaceSafeDrones)
     const withDeconflict: DroneState[] = surfaceSafeDrones.map((drone) => {
-      if (!['navigate', 'sar_grid', 'launch'].includes(drone.missionState)) return drone
-      const conflict = conflicts.find((c) => c.idB === drone.id)
-      if (!conflict) return drone
-      const other = surfaceSafeDrones.find((d) => d.id === conflict.idA)
-      if (!other) return drone
-      const divergenceHeading = bearingDeg(other.position, drone.position)
+      const assignment = giveWayAssignments.get(drone.id)
+      if (!assignment) return drone
+      const { conflictWith, conflict } = assignment
+      const divergenceHeading = bearingDeg(conflictWith.position, drone.position)
       useDroneStore.getState().emitEvent({
         eventType: 'avoidance_start',
         droneId: drone.id,
         tick: currentTick,
         payload: {
-          conflictWith: conflict.idA,
+          conflictWith: conflictWith.id,
           divergenceHeadingDeg: Math.round(divergenceHeading),
           horizDistM: Math.round(conflict.horizDistM),
           vertDistFt: Math.round(conflict.vertDistFt),
@@ -430,10 +422,10 @@ export function tick() {
         if (firstDrop) {
           lostLinkReturnState = drone.missionState
           if (policy.action === 'hold' || policy.action === 'hold_then_rtb') missionState = 'lost_link_hold'
-          if (policy.action === 'rtb') missionState = validatedLostLinkRtb(scenario, drone) ? 'return_to_base' : 'emergency'
+          if (policy.action === 'rtb') missionState = validatedLostLinkRtb(scenario, drone, siteOverrides) ? 'return_to_base' : 'emergency'
           if (policy.action === 'land') missionState = 'emergency'
         } else if (policy.action === 'hold_then_rtb' && lostSec >= policy.holdSec) {
-          missionState = validatedLostLinkRtb(scenario, drone) ? 'return_to_base' : 'emergency'
+          missionState = validatedLostLinkRtb(scenario, drone, siteOverrides) ? 'return_to_base' : 'emergency'
         }
         return {
           ...drone,
@@ -882,12 +874,30 @@ export function tick() {
   }
 }
 
-function validatedLostLinkRtb(scenario: ScenarioConfig, drone: DroneState): boolean {
-  const route = [{
+// The probe route the lost-link check validates. Its destination comes from the shared
+// resolver, not scenario.startPosition — validating a different point than the one flown is
+// how an unflyable return could previously be cleared (audit F-04). Exported so that the
+// probe target stays pinned to the flown target by lostLinkRtbValidation.spec.ts.
+export function lostLinkProbeRoute(
+  scenario: ScenarioConfig,
+  drone: DroneState,
+  siteOverrides: Readonly<SiteOverrides> = {},
+): Waypoint[] {
+  const destination = resolveRtbDestination(scenario, drone, siteOverrides)
+  return [{
     id: 'lost-link-rtb',
-    position: scenario.startPosition,
+    position: destination.position,
     altitudeFt: Math.max(20, drone.altitudeFt),
+    label: destination.label,
   }]
+}
+
+function validatedLostLinkRtb(
+  scenario: ScenarioConfig,
+  drone: DroneState,
+  siteOverrides: Readonly<SiteOverrides> = {},
+): boolean {
+  const route = lostLinkProbeRoute(scenario, drone, siteOverrides)
   const validation = validateOperatorRoute(scenario, drone.id, route, drone.position)
   return validation.accepted && validation.terrainWarnings.length === 0
 }

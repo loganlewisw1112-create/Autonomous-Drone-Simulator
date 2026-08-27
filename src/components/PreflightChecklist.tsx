@@ -59,9 +59,14 @@ export function PreflightChecklist() {
   if (!ui.showPreflight) return null
 
   const allChecked = checkedIds.size === CHECKLIST.length
+  // A blocked disposition is NEVER operator-overridable (audit F-06). The acknowledgement
+  // affordance below exists for degraded (geographic-familiarization) training only — its
+  // wording says as much — and previously it also cleared 'training_blocked', which would
+  // have let an evidence-gated scenario launch on missing/stale/invalid evidence. The store
+  // re-checks this independently in beginLaunchSequence; neither layer is load-bearing alone.
+  const launchBlocked = assurance.launchDisposition === 'training_blocked'
   const requiresDegradedAcknowledgement = assurance.launchDisposition === 'training_degraded'
-    || assurance.launchDisposition === 'training_blocked'
-  const canContinue = allChecked && authProgress.ready
+  const canContinue = !launchBlocked && allChecked && authProgress.ready
     && (!requiresDegradedAcknowledgement || degradedAcknowledged)
 
   function toggleItem(id: number) {
@@ -143,6 +148,15 @@ export function PreflightChecklist() {
             <ul style={{ margin: '6px 0', paddingLeft: 18, fontSize: 10, color: 'var(--accent-yellow)' }}>
               {assurance.blockers.slice(0, 6).map((blocker) => <li key={blocker}>{blocker}</li>)}
             </ul>
+          )}
+          {launchBlocked && (
+            <div
+              data-testid="assurance-blocked-notice"
+              style={{ fontSize: 10, color: 'var(--accent-yellow)', lineHeight: 1.4 }}
+            >
+              Launch is blocked for this scenario and cannot be acknowledged past. Resolve the
+              training evidence listed above, then reopen preflight.
+            </div>
           )}
           {requiresDegradedAcknowledgement && (
             <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 10, color: 'var(--text-secondary)' }}>
@@ -299,11 +313,15 @@ export function PreflightChecklist() {
           <button className="btn" onClick={() => setShowPreflight(false)}>Cancel</button>
           <button
             className="btn primary"
+            data-testid="preflight-continue"
             onClick={handleContinue}
             disabled={!canContinue}
-            title={canContinue ? undefined : !authProgress.ready
-              ? `${authProgress.missedStepIds.length} authorization step(s) incomplete`
-              : `${CHECKLIST.length - checkedIds.size} item(s) unconfirmed`}
+            title={canContinue ? undefined
+              : launchBlocked
+                ? 'Training assurance is blocked for this scenario and cannot be overridden'
+                : !authProgress.ready
+                  ? `${authProgress.missedStepIds.length} authorization step(s) incomplete`
+                  : `${CHECKLIST.length - checkedIds.size} item(s) unconfirmed`}
           >
             ✓ Checklist Complete — Assign Launch Bays
           </button>
