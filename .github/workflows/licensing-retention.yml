@@ -1,8 +1,26 @@
 name: Enforce licensing retention
 
+# The daily schedule is intentionally disabled.
+#
+# This job targets the `production-licensing` environment, which enforces
+# `required_reviewers`. A scheduled run therefore parks in `pending` with zero
+# jobs until a human approves it, and is superseded/cancelled ~24h later. Between
+# 2026-08-02 and 2026-08-27 that produced 22 cancelled runs, 1 failure and 0
+# successes: the purge has never executed.
+#
+# The licensing service itself has also never completed a production deployment
+# (`deploy-licensing.yml`, last attempt 2026-08-01, failed), so there is no
+# production database for this transaction to act on. A daily job that cannot
+# run is worse than no job: it burns Actions minutes and implies an enforced
+# retention control that is not in force.
+#
+# Re-enable the `schedule:` block below in the same change that lands the first
+# successful production licensing deployment, and remove the corresponding
+# caveat in DATA_PRIVACY_RETENTION.md. Until then the purge remains available
+# on demand via workflow_dispatch.
 on:
-  schedule:
-    - cron: '23 7 * * *'
+  # schedule:
+  #   - cron: '23 7 * * *'
   workflow_dispatch:
 
 permissions:

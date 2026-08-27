@@ -44,6 +44,17 @@ produce normal service logs.
   expiry/revocation; licence service request logs expire within 30 days and
   HMAC-pseudonymized rate-limit records within 24 hours.
 
+> [!IMPORTANT]
+> **The licence-service retention periods above are specified, not currently
+> enforced.** They are applied by the `Enforce licensing retention` workflow
+> against the production licensing database. That service has not completed a
+> production deployment, so no such database exists yet and the workflow's daily
+> schedule is disabled (see `.github/workflows/licensing-retention.yml`). This
+> caveat must be removed — and the schedule re-enabled — in the same change that
+> lands the first successful production licensing deployment. Every other
+> default in this section is enforced in application or relay code and is
+> unaffected.
+
 Downloaded exports do not receive automatic application retention. They must
 be deleted from their destination and backups under institutional policy.
 
