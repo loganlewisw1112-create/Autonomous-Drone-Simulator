@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type maplibregl from 'maplibre-gl'
+import type * as maplibregl from 'maplibre-gl'
 import {
   addScenarioBuildingLayer as addMobileLayer,
   removeScenarioBuildingLayer as removeMobileLayer,

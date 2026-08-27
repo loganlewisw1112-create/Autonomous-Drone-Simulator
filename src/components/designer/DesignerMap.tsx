@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 import { makeId } from '@/account/crypto'
 import { MAX_WAYPOINTS_PER_DRONE } from './designerValidation'
 import type { CustomMissionDefinition, CustomMissionSite, LatLng, Waypoint } from '@/types'
