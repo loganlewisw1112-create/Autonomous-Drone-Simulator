@@ -57,7 +57,7 @@
     "@noble/curves": "^2.3.0",
     "@noble/hashes": "^1.8.0",
     "@peculiar/x509": "^2.0.0",
-    "maplibre-gl": "^5.24.0",
+    "maplibre-gl": "^6.6.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

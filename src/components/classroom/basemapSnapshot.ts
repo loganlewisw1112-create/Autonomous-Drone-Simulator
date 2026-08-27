@@ -1,4 +1,5 @@
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
+import { hasWebGL2Support } from '../webglSupport'
 import type { Bbox } from '@/components/classroom/tileRenderer'
 
 // Shared basemap bitmap for the classroom wall (COORDINATOR_BUILD_PLAN §16.2).
@@ -76,6 +77,14 @@ function whenVisible(): Promise<void> {
 export async function captureBasemap(options: CaptureOptions): Promise<BasemapSnapshot | null> {
   const { bbox, width, height } = options
   if (typeof document === 'undefined' || !(width > 0) || !(height > 0)) return null
+
+  // MapLibre 6 requires WebGL2 and reports its absence asynchronously, so the try/catch
+  // around the constructor below can no longer see it. Probe first or the capture promise
+  // hangs until the 12s timeout instead of falling back to the plain backdrop.
+  if (!hasWebGL2Support()) {
+    console.warn('[basemapSnapshot] WebGL2 unavailable — wall will use the plain backdrop')
+    return null
+  }
 
   await whenVisible()
 

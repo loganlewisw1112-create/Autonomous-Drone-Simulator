@@ -1,4 +1,4 @@
-import type maplibregl from 'maplibre-gl'
+import type * as maplibregl from 'maplibre-gl'
 import type { DeviceMode } from '@/hooks/useDeviceMode'
 
 /** Mobile omits MapLibre 3D terrain — phone WebGL + bundle budget. */
