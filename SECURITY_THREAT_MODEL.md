@@ -61,7 +61,9 @@ Primary boundaries:
 
 ### Classroom protocol and transport
 
-- Protocol v2 uses X25519, HKDF-SHA-256, and AES-256-GCM.
+- Protocol v3 (`PROTOCOL_VERSION = 3`, `src/classroom/protocol.ts`) uses X25519,
+  HKDF-SHA-256, and AES-256-GCM. The relay enforces the same version
+  (`server/classroom.mjs`) and rejects envelopes carrying any other value.
 - Key derivation and authenticated context bind version, class, direction,
   message type, and both session public keys.
 - Sealed monotonic sequence values protect against replay.

@@ -169,8 +169,16 @@ function RoutesStep({ value, onChange }: { value: CustomMissionDefinition; onCha
   )
 }
 
-function ReviewStep({ value }: { value: CustomMissionDefinition }) {
+const RTB_SOURCE_LABELS: Record<string, string> = {
+  recharge_station: 'forward recharge station',
+  recovery_site: 'assigned recovery site',
+  scenario_start: 'scenario start position',
+}
+
+// Exported for the F-10 review-wording regression spec; not part of the Hub's public surface.
+export function ReviewStep({ value }: { value: CustomMissionDefinition }) {
   const result = useMemo(() => validateCustomMission(value), [value])
+  const review = result.review
   return (
     <div className="designer-review">
       <div><strong>{value.name || 'Unnamed mission'}</strong><span>{value.locationLabel || 'No location name'}</span><span>{value.droneCount} drones · {value.sites.length} sites · {Object.values(value.routes).reduce((sum, route) => sum + route.length, 0)} waypoints</span></div>
@@ -179,8 +187,35 @@ function ReviewStep({ value }: { value: CustomMissionDefinition }) {
       <div><span className="account-label">ASSURANCE ENVELOPE</span><p>{value.geographicMode === 'real_coordinate_familiarization'
         ? 'Real-coordinate familiarization only. Missing authoritative terrain, obstacles, airspace, weather, aircraft, authorization, and contingency evidence blocks operational validation.'
         : 'Synthetic training only. Results are scored only when the assigned exercise has approved fixtures.'}</p></div>
+      {/* F-10: state exactly what WAS checked — including each return leg the aircraft will
+          actually fly (destination from the shared RTB resolver) — instead of a bare pass line. */}
+      {review && (
+        <div data-testid="designer-review-audit">
+          <span className="account-label">WHAT WAS CHECKED</span>
+          <ul>
+            <li>Geofences authored: {review.geofenceCount}{review.geofenceCount > 0 ? ' — outbound routes and every return-to-base leg were audited against them.' : '.'}</li>
+            {review.rtbLegs.map((leg) => (
+              <li key={leg.droneId}>
+                {leg.droneId.toUpperCase()} return leg → {leg.destinationLabel} ({RTB_SOURCE_LABELS[leg.destinationSource] ?? leg.destinationSource}): {leg.findings.length === 0 ? 'clear of active geofences' : `${leg.findings.length} geofence finding${leg.findings.length === 1 ? '' : 's'}`}
+              </li>
+            ))}
+            {review.terrainWarnings.filter((warning) => warning.kind !== 'no_fixture').map((warning) => (
+              <li key={`${warning.droneId}-${warning.segmentId ?? 'route'}-${warning.kind}`}>
+                {warning.droneId.toUpperCase()} terrain advisory: {warning.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {/* F-10: absences are surfaced as explicit unknowns, never silence. */}
+      {review && review.unknowns.length > 0 && (
+        <div data-testid="designer-review-unknowns" role="note">
+          <span className="account-label">NOT CHECKED — EXPLICIT UNKNOWNS</span>
+          <ul>{review.unknowns.map((line) => <li key={line}>{line}</li>)}</ul>
+        </div>
+      )}
       {result.valid
-        ? <p className="designer-valid">✓ Mission passes the available training checks. This is not an operational safety or regulatory approval.</p>
+        ? <p className="designer-valid">✓ Mission passes the available training checks: structure, altitude envelope, and a geofence audit of every outbound route and return-to-base leg. Anything listed above as not checked was not validated. This is not an operational safety or regulatory approval.</p>
         : <div className="designer-errors" role="alert"><strong>Fix before saving:</strong><ul>{result.errors.map((error) => <li key={error}>{error}</li>)}</ul></div>}
     </div>
   )

@@ -169,6 +169,64 @@ export const LOCAL_DEMO_MAP_STYLE: maplibregl.StyleSpecification = {
   }],
 }
 
+/**
+ * F-07 — fonts the OpenFreeMap glyph server actually serves.
+ *
+ * The liberty base style's `glyphs` template is
+ * `https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf`, and the server only holds the
+ * stacks the base style itself references. Anything else 404s for EVERY glyph range — including
+ * MapLibre's built-in default of `["Open Sans Regular", "Arial Unicode MS Regular"]`, which is
+ * what gets requested whenever a symbol layer omits `text-font`. That omission was exactly the
+ * bug: blank labels plus one console error per 256-codepoint range on every label render.
+ *
+ * Allowlist verified against the glyph endpoint on 2026-08-14:
+ *   HEAD https://tiles.openfreemap.org/fonts/<url-encoded stack>/0-255.pbf
+ *   → 200 for each entry below; 404 for "Open Sans Regular,Arial Unicode MS Regular".
+ * Re-verify the same way before adding a font here.
+ */
+export const OPENFREEMAP_SERVED_FONTS = ['Noto Sans Regular', 'Noto Sans Bold', 'Noto Sans Italic'] as const
+
+/**
+ * F-07 — every symbol layer we author must carry an explicit `text-font` from the allowlist
+ * above; never rely on MapLibre's default stack. Kept as an exported constant so the regression
+ * spec can assert the authored stacks stay inside `OPENFREEMAP_SERVED_FONTS`.
+ */
+export const AUTHORED_SYMBOL_LAYERS = [{
+  id: 'operational-point-label',
+  type: 'symbol',
+  source: 'operational-points',
+  layout: {
+    'text-field': ['get', 'label'],
+    'text-font': ['Noto Sans Regular'],
+    'text-size': 10,
+    'text-offset': [0, 1.2],
+    'text-anchor': 'top',
+    'text-allow-overlap': false,
+  },
+  paint: {
+    'text-color': '#e6edf3',
+    'text-halo-color': '#0d1117',
+    'text-halo-width': 1.5,
+  },
+}] satisfies maplibregl.SymbolLayerSpecification[]
+
+/**
+ * F-07 — collapse per-resource console noise into a single degraded-map report.
+ *
+ * MapLibre fires one `error` event per failed glyph range, tile, or sprite; a single bad font
+ * stack therefore produced an unbounded stream of identical warnings. A degraded basemap is one
+ * condition, so it gets one warning. The map itself is always retained — the caller only reaches
+ * this reporter after deciding NOT to fall back (see the `styleParsed` guard at the call site).
+ */
+export function createResourceErrorReporter(warn: (message: string) => void): (detail: string) => void {
+  let reported = false
+  return (detail) => {
+    if (reported) return
+    reported = true
+    warn(`[TacticalMap] map resource error (basemap retained, further resource errors suppressed): ${detail}`)
+  }
+}
+
 const TRAIL_COLORS: Record<string, string> = {
   'uav-01': '#00d4ff',
   'uav-02': '#44ff88',
@@ -696,10 +754,14 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       ? 0
       : window.setTimeout(() => switchToFallbackStyle('style did not load within timeout'), MAP_FALLBACK_MS)
 
+    // F-07: one reporter per map instance — MapLibre emits an `error` per failed glyph
+    // range/tile/sprite, which used to flood the console on every label render.
+    const reportResourceError = createResourceErrorReporter((message) => console.warn(message))
+
     map.on('error', (event) => {
       if (styleParsed) {
-        // Basemap is up; this is a tile/glyph/sprite problem. Report it and keep the map.
-        console.warn('[TacticalMap] map resource error (basemap retained):', event.error?.message ?? event.error)
+        // Basemap is up; this is a tile/glyph/sprite problem. Report it once and keep the map.
+        reportResourceError(String(event.error?.message ?? event.error))
         return
       }
       switchToFallbackStyle(`style load failed: ${event.error?.message ?? 'unknown error'}`)
@@ -917,23 +979,9 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
           },
         })
         if (!usingFallbackStyleRef.current) {
-          map.addLayer({
-            id: 'operational-point-label',
-            type: 'symbol',
-            source: 'operational-points',
-            layout: {
-              'text-field': ['get', 'label'],
-              'text-size': 10,
-              'text-offset': [0, 1.2],
-              'text-anchor': 'top',
-              'text-allow-overlap': false,
-            },
-            paint: {
-              'text-color': '#e6edf3',
-              'text-halo-color': '#0d1117',
-              'text-halo-width': 1.5,
-            },
-          })
+          // F-07: the layer spec (with its explicit, allowlisted `text-font`) lives in
+          // AUTHORED_SYMBOL_LAYERS so the regression spec can audit every authored font stack.
+          AUTHORED_SYMBOL_LAYERS.forEach((layer) => map.addLayer(layer))
         }
       }
 

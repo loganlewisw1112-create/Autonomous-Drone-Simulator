@@ -33,6 +33,9 @@ tmp-*.js
 
 # Launch/GTM kit + packaged distributables — built locally, not part of the source repo
 outputs/
+# Local scratch trees (audit extractions, ad-hoc PDF work) — never repository source (audit F-13)
+output/
+tmp/
 desktop/licensing/public-config.generated.json
 .vercel
 .env*

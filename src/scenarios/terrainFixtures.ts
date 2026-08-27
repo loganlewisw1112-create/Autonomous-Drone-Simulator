@@ -4,7 +4,11 @@ import {
   type OcclusionOptions,
   type TerrainOcclusionService,
 } from '@/sim/terrain/OcclusionService'
-import { buildingIndexFor } from './buildingFixtures'
+import {
+  buildingIndexFor,
+  prepareScenarioBuildings,
+  requireScenarioBuildingsPrepared,
+} from './buildingFixtures'
 
 // Frozen terrain DEMs produced by tools/fixtures/terrain.mjs (REALISM_ROADMAP WP-0/WP-4).
 // Runtime mission loading is local-only: dynamic imports split committed fixtures into
@@ -131,6 +135,24 @@ export async function prepareScenarioTerrain(
   scenario: { id: string; terrainFixtureId?: string } | string | null | undefined,
 ): Promise<TerrainPreparationResult> {
   const fixtureId = resolveTerrainFixtureId(scenario)
+  const scenarioId = typeof scenario === 'string' ? scenario : scenario?.id
+  // F-12: committed building footprints load through this same gate as the DEM. They used to be
+  // static imports on the startup path; every scenario-entry flow already awaits this function,
+  // so staging them here keeps the synchronous sim/map/parity accessors valid with no new call
+  // sites. Both ids are staged because occlusionServiceFor keys structures by resolved fixture
+  // id (custom missions may alias a package) while the map and parity evidence key by scenario id.
+  try {
+    for (const id of new Set([scenarioId, fixtureId])) {
+      if (id) await prepareScenarioBuildings(id)
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      fixtureId: fixtureId ?? scenarioId ?? 'unknown',
+      state: 'failed',
+      reason: error instanceof Error ? error.message : 'Building fixture failed to load',
+    }
+  }
   if (!fixtureId) return { ok: true, fixtureId: null, state: 'not_required' }
   if (preparedFixtures.has(fixtureId)) return { ok: true, fixtureId, state: 'cached' }
 
@@ -147,12 +169,23 @@ export async function prepareScenarioTerrain(
   }
 }
 
-/** Fail-closed assertion used by the synchronous simulation initialization boundary. */
+/**
+ * Fail-closed assertion used by the synchronous simulation initialization boundary.
+ *
+ * F-12: buildings are async fixtures now too, so this boundary asserts the full committed set —
+ * DEM and structures. The sim must never tick with buildings absent for a scenario that has
+ * them; a sourced-but-unstaged fixture throws instead of degrading determinism. Both ids are
+ * checked for buildings because occlusion keys structures by resolved fixture id while the map
+ * and parity evidence key by scenario id.
+ */
 export function requireScenarioTerrainPrepared(
   scenario: { id: string; terrainFixtureId?: string } | string | null | undefined,
 ): void {
   const fixtureId = resolveTerrainFixtureId(scenario)
   if (fixtureId && !preparedFixtures.has(fixtureId)) throw new TerrainNotPreparedError(fixtureId)
+  const scenarioId = typeof scenario === 'string' ? scenario : scenario?.id
+  requireScenarioBuildingsPrepared(scenarioId)
+  if (fixtureId && fixtureId !== scenarioId) requireScenarioBuildingsPrepared(fixtureId)
 }
 
 /** The prepared terrain fixture, or undefined before preparation / when no fixture exists. */
