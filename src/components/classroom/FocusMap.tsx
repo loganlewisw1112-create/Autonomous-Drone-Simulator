@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
+import { hasWebGL2Support } from '../webglSupport'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { DroneState, LatLng } from '@/types'
 import { offsetLatLng } from '@/utils/geometry'
@@ -108,6 +109,15 @@ export function FocusMap({ geometry, drones, fitPoints, fallback }: FocusMapProp
   // ── Map lifecycle: created once, never re-created on data change ────────────
   useEffect(() => {
     if (!containerRef.current) return
+
+    // MapLibre 6 requires WebGL2 and surfaces its absence asynchronously, so the catch below
+    // no longer fires for that case. Probe first to keep the 2D-plot fallback reachable on
+    // locked-down machines, remote-desktop sessions and headless environments.
+    if (!hasWebGL2Support()) {
+      console.warn('[FocusMap] WebGL2 unavailable — falling back to the 2D plot')
+      setUnsupported(true)
+      return
+    }
 
     let map: maplibregl.Map
     try {

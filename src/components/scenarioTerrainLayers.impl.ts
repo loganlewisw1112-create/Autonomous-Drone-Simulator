@@ -1,4 +1,4 @@
-import type maplibregl from 'maplibre-gl'
+import type * as maplibregl from 'maplibre-gl'
 import type { DeviceMode } from '@/hooks/useDeviceMode'
 import { terrainFixtureFor, type TerrainFixture } from '@/scenarios/terrainFixtures'
 
