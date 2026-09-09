@@ -126,6 +126,13 @@ export default defineConfig(({ mode }) => {
   // The Vercel classroom project sets VITE_CLASSROOM_ENABLED in its dashboard instead and uses
   // the ordinary build command, so both routes reach the same flag.
   define: defineEnv,
+  optimizeDeps: {
+    // MapLibre v6 spins up its tile/style worker via a relative import.meta.url path; Vite's
+    // dep pre-bundler rewrites that path but never emits the worker chunk it points to, so the
+    // worker 404s and the map silently never fetches a style. Excluding it serves the package's
+    // own ESM build unmodified, which resolves the worker correctly.
+    exclude: ['maplibre-gl'],
+  },
   resolve: {
     // Resolve the physical-building renderer at build time. This is a release boundary, not
     // only a runtime branch: the mobile artifact never receives the desktop extrusion module.

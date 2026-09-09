@@ -45,7 +45,11 @@ html, body, #root {
 /* ── Layout ─────────────────────────────────────────────────────────────────── */
 .app-shell {
   display: grid;
-  grid-template-rows: 44px 1fr 52px;
+  /* Bottom row is auto-sized, not a fixed 52px: the control dock grows past that when the
+     weather-variant strip and/or fleet-retask review stack on top of the main control bar,
+     and a fixed track let that extra height overflow past the 100vh shell — clipped and
+     unreachable, since html/body/#root are overflow:hidden with no scroll to recover it. */
+  grid-template-rows: 44px 1fr auto;
   grid-template-columns: 220px 1fr 280px;
   height: 100vh;
   gap: 0;
