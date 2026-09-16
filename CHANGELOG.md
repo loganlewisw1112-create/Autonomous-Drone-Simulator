@@ -45,9 +45,30 @@ ISO 8601.
 
 ### Release status
 
-No entry above means a beta, RC, or stable artifact has been published. Record
-the release date, tag, exact SHA, deployment proof, and signed artifact links
-only after completing `RELEASE_CHECKLIST.md`.
+**Beta — 2026-09-15 — web targets at `cb6833c`.**
+The `RELEASE_CHECKLIST.md` §3 web beta gate is met for all three public
+targets:
+
+- CI passed on the exact `main` SHA `cb6833c3b9ac34f98c03a1634549e4ce30f4a0e6`.
+- Production promotion was performed by the verified `workflow_run` promotion
+  workflow off that successful CI run, not by a direct Vercel Git deployment.
+- `/build-info.json` reports the exact SHA and target on every alias:
+  - Windows — https://autonomous-drone-simulator.vercel.app (`target=windows`)
+  - Mobile — https://autonomous-drone-simulator-mobile.vercel.app (`target=mobile`)
+  - Classroom — https://autonomous-drone-simulator-classroom.vercel.app (`target=classroom`)
+- The promotion's rendered-mount, security-header, and CSP smoke checks passed
+  for all three targets.
+
+Not yet done, and not claimed by this beta: no signed Windows classroom
+installer, no completed institution pilot, and no release-candidate or stable
+artifact. The independent licence service (`RELEASE_CHECKLIST.md` §4) is not
+promoted — its `production-licensing` environment still needs an
+administrator-provided `DATABASE_URL` secret. RC and stable promotion remain
+blocked on the external items in `PROJECT_STATUS.md`.
+
+No further entry means an RC or stable artifact has been published. Record the
+release date, tag, exact SHA, deployment proof, and signed artifact links only
+after completing `RELEASE_CHECKLIST.md`.
 
 ## 1.0.0 — 2026-07-02
 
