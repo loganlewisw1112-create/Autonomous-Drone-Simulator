@@ -1,14 +1,25 @@
 # Project status
 
-Status date: 2026-08-13
-Release line: `main` (the `codex/release-v1.1` branch is historical; v1.1 is
-still unreleased — see CHANGELOG.md)
+Status date: 2026-09-16
+Release line: `main`. The **v1.1 web beta is published** — all three public
+targets serve the verified SHA `cb6833c` (see CHANGELOG.md "Release status").
 
 This is a local-first, high-fidelity agency drone-training platform with a
 shared, fail-closed training-assurance architecture for classroom and Windows
 pilot builds. Repository fixtures remain synthetic/recorded and do not
 command aircraft or connect to operational FAA, LAANC, USS/UTM, Remote ID,
 dispatch, camera, weather, or aircraft-telemetry services.
+
+> **Direction (2026-09-16): this build is maintained as a portfolio/demo
+> flagship at the live web beta.** Release-candidate and stable promotion are
+> **not currently being pursued** — they depend on external inputs the
+> repository cannot supply itself (an organization Windows code-signing
+> certificate, a real school pilot with two-machine and 40-student load, an
+> administrator-provided licence-service `DATABASE_URL` secret, and independent
+> security/accessibility assessment; see "External blockers"). Ongoing work is
+> hardening, cleanup, and quality polish of the shipped product rather than
+> advancing the release ladder. The RC/stable sections below remain accurate as
+> the path that *would* be taken if that decision changes.
 
 > Canonical sources of truth are the tracked documents only: this file,
 > README.md, CHANGELOG.md, SECURITY_THREAT_MODEL.md, and docs/. Ignored local
