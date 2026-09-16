@@ -39,10 +39,24 @@ The test record must name release SHA, target, browser/assistive-technology
 versions, failures, workarounds, owner, and retest result. Automated checks may
 supplement but cannot replace the manual assessment.
 
+## Addressed
+
+- Map-based spatial information now has a text equivalent. The tactical map
+  renders a visually-hidden, screen-reader-navigable summary of the same live
+  state it draws — scenario, per-aircraft mission state, altitude, compass
+  heading, battery, warning flags, and coordinates — plus a polite `role=status`
+  region that announces only urgent alerts (low battery, geofence breach, traffic
+  conflict, emergency, link lost, stranded) so it is not flooded by per-tick
+  position updates. Screen-reader walkthroughs across the required matrix below
+  are still owed; this closes the missing-equivalent gap, not the audit.
+
 ## Known gaps until tested
 
-- Map-based spatial information may not have an equivalent linear description.
-- Dragging waypoints may lack a complete keyboard alternative.
+- Waypoint editing on **desktop** is drag-only and has no keyboard alternative.
+  This is deliberate and unresolved: desktop map interaction is frozen (LAW.1),
+  so a keyboard editing path there is held for an explicit design decision rather
+  than added silently. Mobile/touch route editing uses tap-to-place, which is not
+  drag-dependent.
 - Rapid telemetry and classroom focus updates may be noisy or silent to screen
   readers.
 - Charts and thermal/route overlays may depend too heavily on color.
