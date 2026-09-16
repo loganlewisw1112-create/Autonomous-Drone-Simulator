@@ -11,16 +11,32 @@ Everything from "Next action" down is yours and is never auto-edited. -->
 
 ## Blocker
 
-UNKNOWN — no commit signals a blocker. Fill in, or write `none`.
+none. The v1.1 **web beta is LIVE** (all three aliases serve `cb6833c`, verified via
+`/build-info.json`; see CHANGELOG "Release status"). Project decision (2026-09-15): **freeze as a
+portfolio/demo flagship** — do NOT pursue RC/stable. Future work is hardening, cleanup, and polish,
+not the release ladder.
 
 ## Next action
 
-UNKNOWN — one concrete sentence. What would you actually do first?
+Continue the polish/cleanup arc: land the safe dependency bumps (Dependabot #72 jsdom, #74 group —
+both rebasing onto the post-audit-fix main), then work `docs/REALISM_ROADMAP.md` (confirm WP-4
+terrain/OcclusionService keystone status; WP-2 weather and WP-3 airspace look unfinished).
 
 ## Open question
 
-UNKNOWN — what do you not yet know that decides the next move?
+Is WP-4 (terrain/buildings/OcclusionService — the roadmap "★ KEYSTONE") actually complete? Its
+heading isn't marked DONE and it gates the realism of most scenarios — that decides whether there's
+a meaty polish item worth doing next.
 
 ## Carry forward
 
-_Anything the git history does not say. Never auto-edited._
+- Prod is pinned at `cb6833c`; the docs-PR #76 merge (`7d325f0`) was deliberately NOT re-promoted
+  (both re-fired promote runs cancelled), so `main` sits one docs commit ahead of prod by design.
+- **Licensing service is unpromoted** — `production-licensing` needs an admin-set `DATABASE_URL`
+  secret. RC-stage (§4) only; irrelevant under the freeze unless the licence API is wanted live.
+- Majors held out of routine hygiene: Dependabot #71 (TypeScript 7) and #70 (@vitejs/plugin-react
+  6) — evaluate each on its own branch, don't batch.
+- `public/ios-check.html` was live in prod (committed by accident in `547bfbb`); now untracked +
+  gitignored. It is a local-only iPhone QA tool — keep the on-disk copy, never re-commit it.
+- Tests on this spaces-in-path machine need `npm test -- --pool=forks --no-file-parallelism`;
+  the plain run shows a false worker-startup "failure" that does not occur on CI.
