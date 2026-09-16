@@ -15,6 +15,7 @@ import { resolveTerrainFixtureId } from '@/scenarios/terrainFixtures'
 import { buildAirspaceReservationFeatures, buildExternalTrafficFeatures, buildUtmAirspaceState, utmAirspaceStateEquals } from '@/sim/demo/utmEngine'
 import { useDeviceMode, type DeviceMode } from '@/hooks/useDeviceMode'
 import { buildAppendedWaypoint, canAppend, routeWithoutWaypoint } from '@/components/mapRouteEditing'
+import { buildTacticalSummary } from '@/components/tacticalMapSummary'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/components/designer/designerValidation'
 import { type SiteRepositionResult } from '@/sim/mission/siteReposition'
 import { isMobileLaunchSite, resolveLaunchSite } from '@/sim/mission/siteResolver'
@@ -1640,8 +1641,30 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     else setSiteMove({ siteId: siteMove.siteId, preview: result })
   }
 
+  const a11ySummary = buildTacticalSummary({
+    scenarioName: scenario?.name,
+    drones,
+    activeThermalContacts: thermalContacts.filter((c) => c.resolvedAt == null).length,
+  })
+
   return (
     <div className={`map-area${ui.sensorMode === 'ir' ? ' ir-active' : ''}`}>
+      {/* Accessible text equivalent for the graphical map (ACCESSIBILITY.md).
+          Visually hidden; the detail list is navigable on demand, and only the
+          urgent alerts are announced politely so a screen reader is not flooded
+          by per-tick position changes. */}
+      <section className="sr-only" aria-label="Tactical map, text description" data-testid="tactical-map-a11y">
+        <p>{a11ySummary.headline}</p>
+        {a11ySummary.drones.length > 0 && (
+          <ul>
+            {a11ySummary.drones.map((line, i) => <li key={i}>{line}</li>)}
+          </ul>
+        )}
+      </section>
+      <p className="sr-only" role="status" aria-live="polite">
+        {a11ySummary.alerts.join('. ')}
+      </p>
+
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
       {/* Fallback mode: tactical grid overlay + status badge */}
