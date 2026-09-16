@@ -1,0 +1,18 @@
+{
+  "scenarioId": "hist_katrina_lower_ninth_2005",
+  "area": {
+    "lat": 29.964,
+    "lng": -90.067
+  },
+  "realDate": "2005-08-31",
+  "generatedAt": "2026-09-16",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=29.964&longitude=-90.067&start_date=2005-08-31&end_date=2005-08-31&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "662ce91bf94171bba47e908a64bd2565f2d5034e50f1908feb5e3e63deb5910b"
+    }
+  ]
+}

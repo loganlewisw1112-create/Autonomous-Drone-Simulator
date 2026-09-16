@@ -1,0 +1,18 @@
+{
+  "scenarioId": "hist_marshall_fire_2021",
+  "area": {
+    "lat": 39.959,
+    "lng": -105.165
+  },
+  "realDate": "2021-12-30",
+  "generatedAt": "2026-09-16",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=39.959&longitude=-105.165&start_date=2021-12-30&end_date=2021-12-30&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "29bdc4a57f0c676d9d10e8049d1f0fcfd07a2576b2aebca73b3f98d58fc857b9"
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 {
   "scenarioId": "hist_helene_asheville_2024",
   "area": {
+    "lat": 35.595,
+    "lng": -82.551,
     "aoBbox": [
       -82.5786181963379,
       35.57254222062522,
@@ -8,7 +10,8 @@
       35.617457779374774
     ]
   },
-  "generatedAt": "2026-07-24",
+  "realDate": "2024-09-29",
+  "generatedAt": "2026-09-16",
   "sources": [
     {
       "fixture": "terrain-refpoints.json",
@@ -35,6 +38,13 @@
       "retrievedAt": "2026-07-24",
       "detail": "z14 644×644px from 12 tiles, 7.769 m/px, 0.25 m vertical quantum, surface dtm-approx",
       "sha256": "2cdfb9c45ebaa801323542198644531ab6f98570b28644e67e86968fc8a9ddc2"
+    },
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=35.595&longitude=-82.551&start_date=2024-09-29&end_date=2024-09-29&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "da77df813d78d013da89e08d587a1e67784254804351b72baef3735f88f3e60e"
     }
   ]
 }

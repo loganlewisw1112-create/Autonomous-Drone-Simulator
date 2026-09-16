@@ -1,6 +1,8 @@
 {
   "scenarioId": "hist_camp_fire_paradise_2018",
   "area": {
+    "lat": 39.759,
+    "lng": -121.622,
     "aoBbox": [
       -121.65121369912755,
       39.736542220625225,
@@ -8,7 +10,8 @@
       39.781457779374776
     ]
   },
-  "generatedAt": "2026-07-24",
+  "realDate": "2018-11-12",
+  "generatedAt": "2026-09-16",
   "sources": [
     {
       "fixture": "terrain-refpoints.json",
@@ -35,6 +38,13 @@
       "retrievedAt": "2026-07-24",
       "detail": "z14 682×682px from 16 tiles, 7.345 m/px, 0.25 m vertical quantum, surface dtm-approx",
       "sha256": "fad56d25436d6aa841d83b0ea2fa37f74748ac2b8169cd551e93196d0c9bb753"
+    },
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=39.759&longitude=-121.622&start_date=2018-11-12&end_date=2018-11-12&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "a9f2f5df7c0a3fd7c648cbab7e21711f36838d0ff767556054f262445919988d"
     }
   ]
 }

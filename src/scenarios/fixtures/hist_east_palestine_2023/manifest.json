@@ -1,0 +1,18 @@
+{
+  "scenarioId": "hist_east_palestine_2023",
+  "area": {
+    "lat": 40.834,
+    "lng": -80.541
+  },
+  "realDate": "2023-02-05",
+  "generatedAt": "2026-09-16",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=40.834&longitude=-80.541&start_date=2023-02-05&end_date=2023-02-05&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "b990ad42a5ec335073bccaab4bbc0ab268faebdd53e2f21b9776d04e66c4d9ea"
+    }
+  ]
+}
