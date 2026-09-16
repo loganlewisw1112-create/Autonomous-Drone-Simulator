@@ -38,11 +38,16 @@ describe('observed weather fixtures (WP-2)', () => {
     }
   })
 
-  it('keeps exactly one scenario grounded by its own real weather', () => {
+  it('grounds the genuine high-wind events by their own real weather', () => {
+    // Each historical AO now carries its own dedicated ERA5 baseline (WP-2 Phase 6).
+    // Grounding must fall out of the real recorded weather, not a proxy artifact:
+    // Hurricane Harvey and the Marshall Fire's downslope windstorm both exceed the
+    // gust threshold that closes flight ops; the other AOs do not.
     const BAY_CLOSING_GUST_KTS = 30
     const grounded = withObserved
       .filter((s) => observedWeatherFor(s.id)!.gustKts > BAY_CLOSING_GUST_KTS)
       .map((s) => s.id)
-    expect(grounded).toEqual(['hist_marshall_fire_2021'])
+      .sort()
+    expect(grounded).toEqual(['hist_harvey_houston_2017', 'hist_marshall_fire_2021'])
   })
 })
