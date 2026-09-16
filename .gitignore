@@ -41,3 +41,7 @@ desktop/licensing/public-config.generated.json
 .env*
 # Vercel CLI appends .env* above — keep the example tracked (rule order matters)
 !.env.example
+
+# Local-only iPhone/iOS device diagnostic page — useful for on-device QA, must never
+# ship to production (see drone-sim memory). Kept on disk, never committed.
+public/ios-check.html
