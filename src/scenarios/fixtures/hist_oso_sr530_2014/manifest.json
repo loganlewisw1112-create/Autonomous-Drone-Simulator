@@ -1,6 +1,8 @@
 {
   "scenarioId": "hist_oso_sr530_2014",
   "area": {
+    "lat": 48.283,
+    "lng": -121.849,
     "aoBbox": [
       -121.88274816543945,
       48.260542220625226,
@@ -8,7 +10,8 @@
       48.30545777937478
     ]
   },
-  "generatedAt": "2026-07-24",
+  "realDate": "2014-03-23",
+  "generatedAt": "2026-09-16",
   "sources": [
     {
       "fixture": "terrain-refpoints.json",
@@ -35,6 +38,13 @@
       "retrievedAt": "2026-07-24",
       "detail": "z14 787×787px from 20 tiles, 6.358 m/px, 0.25 m vertical quantum, surface dtm-approx",
       "sha256": "be78ffd14b8e4d2bad1cff16b11fa2feb7b3913d639dc72c6811fc934bd621a1"
+    },
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=48.283&longitude=-121.849&start_date=2014-03-23&end_date=2014-03-23&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "f8da47199a96cd4dd5283fb9745a0bf22275cdc48709ca935761f12d9ca945d0"
     }
   ]
 }

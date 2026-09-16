@@ -1,0 +1,18 @@
+{
+  "scenarioId": "hist_harvey_houston_2017",
+  "area": {
+    "lat": 29.76,
+    "lng": -95.37
+  },
+  "realDate": "2017-08-28",
+  "generatedAt": "2026-09-16",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=29.76&longitude=-95.37&start_date=2017-08-28&end_date=2017-08-28&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "92dabff3bad5d47e005d5a61f777b5b2f7bc7904b8b639085abfc3afdcf1d3d5"
+    }
+  ]
+}

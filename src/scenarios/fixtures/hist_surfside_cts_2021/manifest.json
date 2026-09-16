@@ -1,6 +1,8 @@
 {
   "scenarioId": "hist_surfside_cts_2021",
   "area": {
+    "lat": 25.887,
+    "lng": -80.122,
     "aoBbox": [
       -80.13198504220836,
       25.87801688825009,
@@ -8,7 +10,8 @@
       25.89598311174991
     ]
   },
-  "generatedAt": "2026-07-24",
+  "realDate": "2021-06-24",
+  "generatedAt": "2026-09-16",
   "sources": [
     {
       "fixture": "buildings.json",
@@ -55,6 +58,13 @@
       "retrievedAt": "2026-07-24",
       "detail": "z14 234×234px from 4 tiles, 8.596 m/px, 0.25 m vertical quantum, surface dtm-approx",
       "sha256": "98588699261d042b40dc84f8492a75301329f87339d6926ec70bb0c1eda48b9e"
+    },
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=25.887&longitude=-80.122&start_date=2021-06-24&end_date=2021-06-24&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "5574357d3e94f0370f1351ced4d542b8b1b4d51661405cb61240f1ea1bc29e54"
     }
   ]
 }

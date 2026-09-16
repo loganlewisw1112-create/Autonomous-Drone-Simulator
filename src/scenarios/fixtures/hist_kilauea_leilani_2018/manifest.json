@@ -1,0 +1,18 @@
+{
+  "scenarioId": "hist_kilauea_leilani_2018",
+  "area": {
+    "lat": 19.469,
+    "lng": -154.917
+  },
+  "realDate": "2018-05-27",
+  "generatedAt": "2026-09-16",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=19.469&longitude=-154.917&start_date=2018-05-27&end_date=2018-05-27&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "6ec8ff7711825935bfcb4842b828b162f1307855a5ac52744a92581c4a8a18f2"
+    }
+  ]
+}
