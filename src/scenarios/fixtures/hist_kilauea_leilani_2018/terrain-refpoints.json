@@ -1,0 +1,129 @@
+{
+  "scenarioId": "hist_kilauea_leilani_2018",
+  "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
+  "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
+  "license": "US Geological Survey — US federal government work, public domain",
+  "note": "Independent read of 3DEP at native resolution; used to bound the fixture error, not to build it.",
+  "points": [
+    {
+      "lat": 19.451034,
+      "lng": -154.936056,
+      "elevationM": 313,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.451034,
+      "lng": -154.926528,
+      "elevationM": 275.07,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.451034,
+      "lng": -154.917,
+      "elevationM": 271.69,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.451034,
+      "lng": -154.907472,
+      "elevationM": 188.88,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.451034,
+      "lng": -154.897944,
+      "elevationM": 119.38,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.460017,
+      "lng": -154.936056,
+      "elevationM": 285.12,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.460017,
+      "lng": -154.926528,
+      "elevationM": 261.22,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.460017,
+      "lng": -154.917,
+      "elevationM": 245.68,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.460017,
+      "lng": -154.907472,
+      "elevationM": 225.47,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.460017,
+      "lng": -154.897944,
+      "elevationM": 198.18,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.469,
+      "lng": -154.936056,
+      "elevationM": 270.52,
+      "resolutionM": 1
+    },
+    {
+      "lat": 19.469,
+      "lng": -154.926528,
+      "elevationM": 256.7,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.469,
+      "lng": -154.917,
+      "elevationM": 233.19,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.469,
+      "lng": -154.907472,
+      "elevationM": 206.44,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.469,
+      "lng": -154.897944,
+      "elevationM": 199.6,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.477983,
+      "lng": -154.936056,
+      "elevationM": 234.31,
+      "resolutionM": 1
+    },
+    {
+      "lat": 19.477983,
+      "lng": -154.926528,
+      "elevationM": 235.5,
+      "resolutionM": 1
+    },
+    {
+      "lat": 19.477983,
+      "lng": -154.917,
+      "elevationM": 228.81,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.477983,
+      "lng": -154.907472,
+      "elevationM": 204.69,
+      "resolutionM": 0.00009259260035146216
+    },
+    {
+      "lat": 19.477983,
+      "lng": -154.897944,
+      "elevationM": 188.88,
+      "resolutionM": 0.00009259260035146216
+    }
+  ]
+}

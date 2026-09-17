@@ -13,7 +13,7 @@ describe('target parity mission harness', () => {
     const second = await buildTargetParityManifest(build)
 
     expect(second).toEqual(first)
-    expect(first.fixtures.terrainPackageIds).toHaveLength(7)
+    expect(first.fixtures.terrainPackageIds).toHaveLength(13)
     expect(first.fixtures.terrainScenarioIds).toContain('nist_obstructed_lane')
     expect(first.fixtures.buildingScenarioIds).toEqual(
       expect.arrayContaining(['demo_wildfire', 'hist_surfside_cts_2021']),

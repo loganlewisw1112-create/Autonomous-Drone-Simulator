@@ -101,8 +101,8 @@ function validateManifest(target, manifest, outDir) {
   const terrainPackages = manifest.fixtures?.terrainPackageIds
   const terrainScenarios = manifest.fixtures?.terrainScenarioIds
   const buildingScenarios = manifest.fixtures?.buildingScenarioIds
-  if (!Array.isArray(terrainPackages) || terrainPackages.length !== 7) {
-    fail(`${target} artifact does not declare all seven physical DEM packages`)
+  if (!Array.isArray(terrainPackages) || terrainPackages.length !== 13) {
+    fail(`${target} artifact does not declare all 13 physical DEM packages`)
   }
   if (!Array.isArray(terrainScenarios) || !terrainScenarios.includes('nist_obstructed_lane')) {
     fail(`${target} artifact lost the NIST terrain alias`)

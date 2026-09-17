@@ -2,11 +2,43 @@
   "scenarioId": "hist_katrina_lower_ninth_2005",
   "area": {
     "lat": 29.964,
-    "lng": -90.067
+    "lng": -90.067,
+    "aoBbox": [
+      -90.09292261136918,
+      29.941542220625223,
+      -90.04107738863081,
+      29.986457779374774
+    ]
   },
   "realDate": "2005-08-31",
-  "generatedAt": "2026-09-16",
+  "generatedAt": "2026-09-17",
   "sources": [
+    {
+      "fixture": "terrain-refpoints.json",
+      "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
+      "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
+      "license": "US Geological Survey — US federal government work, public domain",
+      "retrievedAt": "2026-09-17",
+      "sha256": "24b0faea1e0c0a5a019da8fad3c26cfc27d054eb729fb953dc5d8337a212acda"
+    },
+    {
+      "fixture": "terrain.json",
+      "source": "derived header (this pipeline)",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+      "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "retrievedAt": "2026-09-17",
+      "sha256": "e47a512f6c8bfcc6f2efc0f583ba9eecf3941c943ef6c965a4df50c161492baf"
+    },
+    {
+      "fixture": "terrain.png",
+      "source": "AWS Open Data — Terrain Tiles (Tilezen/Mapzen joerd), Terrarium RGB encoding",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+      "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "attribution": "United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.",
+      "retrievedAt": "2026-09-17",
+      "detail": "z14 605×605px from 12 tiles, 8.278 m/px, 0.25 m vertical quantum, surface dtm-approx",
+      "sha256": "56aaea5bc27630dd901f9f0879b1cb498fa0abc039822bcc93fe928fac32112b"
+    },
     {
       "fixture": "weather.json",
       "source": "Open-Meteo ERA5 archive",

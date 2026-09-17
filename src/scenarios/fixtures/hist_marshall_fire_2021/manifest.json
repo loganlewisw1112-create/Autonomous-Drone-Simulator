@@ -2,11 +2,43 @@
   "scenarioId": "hist_marshall_fire_2021",
   "area": {
     "lat": 39.959,
-    "lng": -105.165
+    "lng": -105.165,
+    "aoBbox": [
+      -105.19429896392296,
+      39.93654222062523,
+      -105.13570103607705,
+      39.98145777937478
+    ]
   },
   "realDate": "2021-12-30",
-  "generatedAt": "2026-09-16",
+  "generatedAt": "2026-09-17",
   "sources": [
+    {
+      "fixture": "terrain-refpoints.json",
+      "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
+      "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
+      "license": "US Geological Survey — US federal government work, public domain",
+      "retrievedAt": "2026-09-17",
+      "sha256": "3d66b87b1190a124b7f527fcd8d5ab1a0fc21694ee3349cc57c491633eb99613"
+    },
+    {
+      "fixture": "terrain.json",
+      "source": "derived header (this pipeline)",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+      "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "retrievedAt": "2026-09-17",
+      "sha256": "b4cae6b64d56b47ac6b626117020a18c653e9b5c6630a433231232c4c7a978e8"
+    },
+    {
+      "fixture": "terrain.png",
+      "source": "AWS Open Data — Terrain Tiles (Tilezen/Mapzen joerd), Terrarium RGB encoding",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+      "license": "Aggregate of national elevation programmes redistributed via AWS Open Data (no authentication). CONUS coverage derives from USGS 3DEP/NED — US federal government work, public domain. Per-source terms: https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "attribution": "United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.",
+      "retrievedAt": "2026-09-17",
+      "detail": "z14 684×683px from 16 tiles, 7.324 m/px, 0.25 m vertical quantum, surface dtm-approx",
+      "sha256": "422169f5ae023c7af9c628b42f93f8b863eae0e5fe03c8d0369da370bf8a3ed4"
+    },
     {
       "fixture": "weather.json",
       "source": "Open-Meteo ERA5 archive",
