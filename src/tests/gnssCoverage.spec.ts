@@ -35,6 +35,9 @@ describe('GNSS AO coverage (WP-7)', () => {
     }
   })
 
+  // Preparing and decoding the DEM for all 14 constellation AOs in one test comfortably exceeds
+  // vitest's 5 s default on a CI runner (it is well under a second locally). Give it a wide
+  // explicit budget, the same way the real-PBKDF2 tests do, rather than thinning the coverage.
   it('produces a real, terrain-masked fix at every AO — and masking genuinely occurs somewhere', async () => {
     let totalMaskedLowAltitude = 0
 
@@ -79,5 +82,5 @@ describe('GNSS AO coverage (WP-7)', () => {
     // the Asheville and Kīlauea slopes) must. Asserting the sum keeps the test robust to which
     // specific AO does the masking while still proving the pairing is not decorative.
     expect(totalMaskedLowAltitude, 'no AO masked any satellite — occlusion is inert').toBeGreaterThan(0)
-  })
+  }, 30_000)
 })
