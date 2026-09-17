@@ -154,7 +154,52 @@
       "lng": -104.9903,
       "realDate": "2024-07-15",
       "dateKind": "representative",
-      "note": "Front Range DEM committed in Phase 6."
+      "note": "Front Range DEM committed in Phase 6; dedicated ERA5 baseline added in the WP-2 coverage pass."
+    },
+    {
+      "id": "train_flood_corridor",
+      "name": "FEMA — Urban Flood Corridor Triage (Training)",
+      "lat": 29.763,
+      "lng": -95.365,
+      "realDate": "2024-05-03",
+      "dateKind": "representative",
+      "note": "Representative Houston spring storm-season day; scenario premise is post-storm flood, weather grounds ambient conditions only."
+    },
+    {
+      "id": "train_urban_usar",
+      "name": "CA-TF — Urban Search & Rescue Grid (Training)",
+      "lat": 37.8044,
+      "lng": -122.2712,
+      "realDate": "2024-10-17",
+      "dateKind": "representative",
+      "note": "Representative dry East Bay autumn day."
+    },
+    {
+      "id": "train_tornado_sector",
+      "name": "NWS / EM — Tornado Damage Sector (Training)",
+      "lat": 37.084,
+      "lng": -94.513,
+      "realDate": "2024-05-22",
+      "dateKind": "representative",
+      "note": "Representative peak tornado-season day near Joplin; distinct date from the documented hist_joplin_ef5_2011 incident."
+    },
+    {
+      "id": "train_night_relay_sar",
+      "name": "SAR — Night Relay Search (Training)",
+      "lat": 47.606,
+      "lng": -122.332,
+      "realDate": "2024-11-19",
+      "dateKind": "representative",
+      "note": "Representative late-autumn Seattle night op (long-night marine air)."
+    },
+    {
+      "id": "train_infra_inspection",
+      "name": "Caltrans — Bridge Infrastructure Inspection (Training)",
+      "lat": 37.798,
+      "lng": -122.377,
+      "realDate": "2024-09-12",
+      "dateKind": "representative",
+      "note": "Representative clear SF Bay early-autumn inspection day."
     },
     {
       "id": "demo_wildfire",

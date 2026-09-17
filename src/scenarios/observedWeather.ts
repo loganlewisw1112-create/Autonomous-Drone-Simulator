@@ -31,6 +31,20 @@ import joplin from './fixtures/hist_joplin_ef5_2011/weather.json'
 import joplinManifest from './fixtures/hist_joplin_ef5_2011/manifest.json'
 import eastPalestine from './fixtures/hist_east_palestine_2023/weather.json'
 import eastPalestineManifest from './fixtures/hist_east_palestine_2023/manifest.json'
+// WP-2 coverage pass: dedicated representative ERA5 baselines for the training incident
+// scenarios that were still weather-less (seasonally appropriate real day at the real location).
+import mountainSar from './fixtures/train_mountain_sar/weather.json'
+import mountainSarManifest from './fixtures/train_mountain_sar/manifest.json'
+import floodCorridor from './fixtures/train_flood_corridor/weather.json'
+import floodCorridorManifest from './fixtures/train_flood_corridor/manifest.json'
+import urbanUsar from './fixtures/train_urban_usar/weather.json'
+import urbanUsarManifest from './fixtures/train_urban_usar/manifest.json'
+import tornadoSector from './fixtures/train_tornado_sector/weather.json'
+import tornadoSectorManifest from './fixtures/train_tornado_sector/manifest.json'
+import nightRelay from './fixtures/train_night_relay_sar/weather.json'
+import nightRelayManifest from './fixtures/train_night_relay_sar/manifest.json'
+import infraInspection from './fixtures/train_infra_inspection/weather.json'
+import infraInspectionManifest from './fixtures/train_infra_inspection/manifest.json'
 
 // Real observed-weather baselines frozen by tools/fixtures/ (REALISM_ROADMAP WP-0/WP-2).
 // Every historical AO now carries its own dedicated ERA5 baseline fetched for that place and
@@ -74,6 +88,12 @@ const OBSERVED: Record<string, ObservedWeather> = {
   hist_katrina_lower_ninth_2005: withProvenance(katrina, katrinaManifest),
   hist_joplin_ef5_2011: withProvenance(joplin, joplinManifest),
   hist_east_palestine_2023: withProvenance(eastPalestine, eastPalestineManifest),
+  train_mountain_sar: withProvenance(mountainSar, mountainSarManifest),
+  train_flood_corridor: withProvenance(floodCorridor, floodCorridorManifest),
+  train_urban_usar: withProvenance(urbanUsar, urbanUsarManifest),
+  train_tornado_sector: withProvenance(tornadoSector, tornadoSectorManifest),
+  train_night_relay_sar: withProvenance(nightRelay, nightRelayManifest),
+  train_infra_inspection: withProvenance(infraInspection, infraInspectionManifest),
 }
 
 /** The frozen observed-weather baseline for a scenario, or undefined when none is sourced. */

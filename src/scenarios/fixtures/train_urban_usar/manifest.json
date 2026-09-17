@@ -1,0 +1,18 @@
+{
+  "scenarioId": "train_urban_usar",
+  "area": {
+    "lat": 37.8044,
+    "lng": -122.2712
+  },
+  "realDate": "2024-10-17",
+  "generatedAt": "2026-09-17",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=37.8044&longitude=-122.2712&start_date=2024-10-17&end_date=2024-10-17&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "58dc041d87417818cee16d765d3f56ba17d9eac63ab9a610552ff1dd12af3929"
+    }
+  ]
+}
