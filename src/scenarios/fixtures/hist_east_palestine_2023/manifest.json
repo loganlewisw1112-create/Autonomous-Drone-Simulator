@@ -14,6 +14,24 @@
   "generatedAt": "2026-09-17",
   "sources": [
     {
+      "fixture": "constellation.json",
+      "source": "CelesTrak — GPS YUMA almanac (US Space Force / NAVCEN)",
+      "url": "https://celestrak.org/GPS/almanac/Yuma/2026/almanac.yuma.week0379.589824.txt",
+      "license": "GPS almanac data is a product of the US Space Force / NAVCEN — US federal government work, public domain. Redistributed by CelesTrak (https://celestrak.org/), which permits use with attribution.",
+      "attribution": "GPS almanac courtesy of CelesTrak; source data US Space Force NAVCEN",
+      "retrievedAt": "2026-09-17",
+      "sha256": "886228d4aa3db627de37c157ffd9ff86fd2c78fe28090928b23929633d23ec1e",
+      "rawBytes": 7757,
+      "almanacWeek": 379,
+      "almanacToa": 589824,
+      "satellites": "31 healthy of 32 in almanac",
+      "epochUtc": "2026-07-15T21:00:00.000Z",
+      "epochStepSec": 300,
+      "dateKind": "representative",
+      "note": "Representative recent GPS geometry; terrain/building masking is the training content, not the incident-date sky.",
+      "propagation": "IS-GPS-200 almanac algorithm (no harmonic corrections); az/el at the AO reference position"
+    },
+    {
       "fixture": "terrain-refpoints.json",
       "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
       "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
