@@ -262,10 +262,20 @@ stable, snapshot-matched state; existing tests unchanged.
 
 ---
 
-## WP-3 · Real airspace ceilings `[Tranche A]` `[needs WP-0]`
+## WP-3 · Real airspace ceilings `[Tranche A]` `[needs WP-0]` — **DONE + LIVE (coverage extended)**
 
-**Current state:** simulated LAANC / incident-command authorisation, deterministic and
-clearly labelled simulation-only. **Correct posture — keep the labelling exactly.**
+**Status:** the `tools/fixtures/airspace.mjs` CLI now writes real FAA UASFM ceiling grids (fetched
+via `faaUasfm.mjs`, AO envelope read from the committed `terrain.json` like `buildings.mjs`) and
+merges provenance without clobbering other fetchers' fields. **7 active scenarios** carry a real
+gridded ceiling: `demo_perimeter`, `train_uscg_maritime_sar`, `train_hazmat_plume`, and the four
+historical disaster AOs that fall under a charted facility map — Harvey (KHOU), Joplin (KJLN),
+Katrina (KNEW, New Orleans Lakefront) and the Marshall Fire (KBJC, Rocky Mountain Metro, including
+real 0-ft surface cells). The AOs with **no** published map (Oso, the Camp Fire flank, Kīlauea,
+Ocean Beach, Denver) correctly carry no fixture — a real answer, not a gap. **Real data, simulated
+authorisation** — the labelling is unchanged.
+
+**Current state (original target, retained):** simulated LAANC / incident-command authorisation,
+deterministic and clearly labelled simulation-only. **Correct posture — keep the labelling exactly.**
 
 **Upgrade.** The FAA publishes **UAS Facility Maps** — maximum altitudes at which Part 107
 operations may be authorised without further safety analysis — via the **UAS Data Delivery
