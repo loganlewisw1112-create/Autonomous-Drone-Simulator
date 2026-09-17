@@ -1,6 +1,8 @@
 {
   "scenarioId": "train_mountain_sar",
   "area": {
+    "lat": 39.7392,
+    "lng": -104.9903,
     "aoBbox": [
       -105.01950530423869,
       39.71674222062522,
@@ -8,7 +10,8 @@
       39.76165777937477
     ]
   },
-  "generatedAt": "2026-07-24",
+  "realDate": "2024-07-15",
+  "generatedAt": "2026-09-17",
   "sources": [
     {
       "fixture": "terrain-refpoints.json",
@@ -35,6 +38,13 @@
       "retrievedAt": "2026-07-24",
       "detail": "z14 681×682px from 16 tiles, 7.347 m/px, 0.25 m vertical quantum, surface dtm-approx",
       "sha256": "5cdf033d2a6b6498c9402d23fce12250bfbf8015c46a4137c2fe4105fd207b39"
+    },
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=39.7392&longitude=-104.9903&start_date=2024-07-15&end_date=2024-07-15&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "7ce18d610b87d3e6e3aaf0974614442b18cf3d14e305eefb79879f6f87db62ff"
     }
   ]
 }
