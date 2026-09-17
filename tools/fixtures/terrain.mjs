@@ -646,6 +646,10 @@ export async function writeTerrainFixture({
   const produced = new Set(sources.map((source) => source.fixture))
   const kept = (previous?.sources ?? []).filter((source) => !produced.has(source.fixture))
   const manifest = {
+    // Preserve any top-level fields an earlier fetcher wrote (e.g. openMeteo's required
+    // `realDate`). A terrain run only owns scenarioId / area.aoBbox / generatedAt / sources;
+    // spreading `previous` first keeps every other manifest key intact instead of dropping it.
+    ...(previous ?? {}),
     scenarioId,
     area: { ...(previous?.area ?? {}), aoBbox: bbox },
     generatedAt: retrievedAt,

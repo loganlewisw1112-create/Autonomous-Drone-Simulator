@@ -38,6 +38,14 @@ const TERRAIN_LOADERS: Readonly<Record<string, FixtureLoader>> = {
   hist_camp_fire_paradise_2018: () => import('./terrainFixturePackages/hist_camp_fire_paradise_2018'),
   hist_helene_asheville_2024: () => import('./terrainFixturePackages/hist_helene_asheville_2024'),
   hist_surfside_cts_2021: () => import('./terrainFixturePackages/hist_surfside_cts_2021'),
+  // WP-4 coverage extension: the six remaining historical disaster AOs now carry their own
+  // sourced DTM (Terrarium/3DEP), so GNSS/RF/thermal LOS is real for them rather than flat-earth.
+  hist_east_palestine_2023: () => import('./terrainFixturePackages/hist_east_palestine_2023'),
+  hist_harvey_houston_2017: () => import('./terrainFixturePackages/hist_harvey_houston_2017'),
+  hist_joplin_ef5_2011: () => import('./terrainFixturePackages/hist_joplin_ef5_2011'),
+  hist_katrina_lower_ninth_2005: () => import('./terrainFixturePackages/hist_katrina_lower_ninth_2005'),
+  hist_kilauea_leilani_2018: () => import('./terrainFixturePackages/hist_kilauea_leilani_2018'),
+  hist_marshall_fire_2021: () => import('./terrainFixturePackages/hist_marshall_fire_2021'),
   train_mountain_sar: () => import('./terrainFixturePackages/train_mountain_sar'),
   train_wildfire_flank: () => import('./terrainFixturePackages/train_wildfire_flank'),
 }
@@ -46,14 +54,20 @@ const TERRAIN_LOADERS: Readonly<Record<string, FixtureLoader>> = {
  * Physical fixture packages emitted as independent build chunks.
  *
  * `nist_obstructed_lane` intentionally aliases `demo_wildfire`, so the scenario registry has
- * eight keys while the artifact has seven physical packages. Keeping both manifests explicit
- * lets the release parity gate prove the alias itself is identical across targets without
- * pretending it is an eighth DEM.
+ * one more key than the artifact has physical packages (14 loader keys → 13 physical DEMs).
+ * Keeping both manifests explicit lets the release parity gate prove the alias itself is
+ * identical across targets without pretending it is a distinct DEM.
  */
 const TERRAIN_PACKAGE_IDS = [
   'demo_wildfire',
   'hist_camp_fire_paradise_2018',
+  'hist_east_palestine_2023',
+  'hist_harvey_houston_2017',
   'hist_helene_asheville_2024',
+  'hist_joplin_ef5_2011',
+  'hist_katrina_lower_ninth_2005',
+  'hist_kilauea_leilani_2018',
+  'hist_marshall_fire_2021',
   'hist_oso_sr530_2014',
   'hist_surfside_cts_2021',
   'train_mountain_sar',

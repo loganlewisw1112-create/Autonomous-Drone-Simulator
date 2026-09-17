@@ -19,6 +19,12 @@ const EXPECTED_TERRAIN_IDS = [
   'hist_camp_fire_paradise_2018',
   'hist_helene_asheville_2024',
   'hist_surfside_cts_2021',
+  'hist_east_palestine_2023',
+  'hist_harvey_houston_2017',
+  'hist_joplin_ef5_2011',
+  'hist_katrina_lower_ninth_2005',
+  'hist_kilauea_leilani_2018',
+  'hist_marshall_fire_2021',
   'train_mountain_sar',
   'train_wildfire_flank',
 ]

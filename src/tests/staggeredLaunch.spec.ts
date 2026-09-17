@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
+import { prepareScenarioTerrain } from '@/scenarios/terrainFixtures'
 import { useDroneStore } from '@/store/droneStore'
 import { tick, stopSimLoop, initFleet } from '@/sim/SimulationLoop'
 import { getDefaultWeatherState } from '@/sim/weather/weatherEngine'
@@ -15,9 +16,12 @@ import { getNextCommand } from '@/sim/mission/MissionManager'
 const scenario = ALL_SCENARIOS.find((s) => s.id === 'hist_harvey_houston_2017') ?? ALL_SCENARIOS[0]
 
 describe('coordinated staggered launch', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+    // This scenario now carries a committed DEM (WP-4 coverage pass), so initFleet fails
+    // closed unless its terrain is staged first — exactly as the real scenario-entry flow does.
+    await prepareScenarioTerrain(scenario)
     useDroneStore.setState({
       scenario,
       weatherState: getDefaultWeatherState(scenario.seed),

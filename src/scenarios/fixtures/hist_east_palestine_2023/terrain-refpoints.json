@@ -1,0 +1,129 @@
+{
+  "scenarioId": "hist_east_palestine_2023",
+  "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
+  "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",
+  "license": "US Geological Survey — US federal government work, public domain",
+  "note": "Independent read of 3DEP at native resolution; used to bound the fixture error, not to build it.",
+  "points": [
+    {
+      "lat": 40.816034,
+      "lng": -80.564746,
+      "elevationM": 332.34,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.816034,
+      "lng": -80.552873,
+      "elevationM": 342.25,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.816034,
+      "lng": -80.541,
+      "elevationM": 325.14,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.816034,
+      "lng": -80.529127,
+      "elevationM": 327.16,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.816034,
+      "lng": -80.517254,
+      "elevationM": 313.05,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.825017,
+      "lng": -80.564746,
+      "elevationM": 368.54,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.825017,
+      "lng": -80.552873,
+      "elevationM": 347.36,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.825017,
+      "lng": -80.541,
+      "elevationM": 315.22,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.825017,
+      "lng": -80.529127,
+      "elevationM": 372.48,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.825017,
+      "lng": -80.517254,
+      "elevationM": 345.5,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.834,
+      "lng": -80.564746,
+      "elevationM": 325.8,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.834,
+      "lng": -80.552873,
+      "elevationM": 302.8,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.834,
+      "lng": -80.541,
+      "elevationM": 306.07,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.834,
+      "lng": -80.529127,
+      "elevationM": 313.9,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.834,
+      "lng": -80.517254,
+      "elevationM": 316.72,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.842983,
+      "lng": -80.564746,
+      "elevationM": 334.75,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.842983,
+      "lng": -80.552873,
+      "elevationM": 354.51,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.842983,
+      "lng": -80.541,
+      "elevationM": 333.91,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.842983,
+      "lng": -80.529127,
+      "elevationM": 332.38,
+      "resolutionM": 1
+    },
+    {
+      "lat": 40.842983,
+      "lng": -80.517254,
+      "elevationM": 336.27,
+      "resolutionM": 1
+    }
+  ]
+}
