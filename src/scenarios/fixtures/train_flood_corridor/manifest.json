@@ -1,0 +1,18 @@
+{
+  "scenarioId": "train_flood_corridor",
+  "area": {
+    "lat": 29.763,
+    "lng": -95.365
+  },
+  "realDate": "2024-05-03",
+  "generatedAt": "2026-09-17",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=29.763&longitude=-95.365&start_date=2024-05-03&end_date=2024-05-03&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "c20c03c90b7026094fec4d5e83d42335a1f67a41a8b48841a6f7073b556061b5"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "scenarioId": "train_night_relay_sar",
+  "area": {
+    "lat": 47.606,
+    "lng": -122.332
+  },
+  "realDate": "2024-11-19",
+  "generatedAt": "2026-09-17",
+  "sources": [
+    {
+      "fixture": "weather.json",
+      "source": "Open-Meteo ERA5 archive",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=47.606&longitude=-122.332&start_date=2024-11-19&end_date=2024-11-19&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
+      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
+      "sha256": "5d73cdab48bbf33ece3c51162688839a05d578fb3afd18d3562205d6969ceab4"
+    }
+  ]
+}
