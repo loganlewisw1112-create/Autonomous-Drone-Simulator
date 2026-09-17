@@ -1,5 +1,21 @@
 import type { SatelliteLook } from '@/sim/nav/dop'
 import wildfireConstellation from './fixtures/demo_wildfire/constellation.json'
+// WP-7 coverage extension: every AO that carries committed terrain now also carries a
+// constellation, so sky occlusion → DOP → reported-position error has real geometry to be
+// masked by everywhere the occlusion service runs (mountains, the Surfside urban canyon, and
+// the flat AOs where the honest result is simply a nominal fix).
+import osoConstellation from './fixtures/hist_oso_sr530_2014/constellation.json'
+import campFireConstellation from './fixtures/hist_camp_fire_paradise_2018/constellation.json'
+import heleneConstellation from './fixtures/hist_helene_asheville_2024/constellation.json'
+import surfsideConstellation from './fixtures/hist_surfside_cts_2021/constellation.json'
+import eastPalestineConstellation from './fixtures/hist_east_palestine_2023/constellation.json'
+import harveyConstellation from './fixtures/hist_harvey_houston_2017/constellation.json'
+import joplinConstellation from './fixtures/hist_joplin_ef5_2011/constellation.json'
+import katrinaConstellation from './fixtures/hist_katrina_lower_ninth_2005/constellation.json'
+import kilaueaConstellation from './fixtures/hist_kilauea_leilani_2018/constellation.json'
+import marshallConstellation from './fixtures/hist_marshall_fire_2021/constellation.json'
+import mountainSarConstellation from './fixtures/train_mountain_sar/constellation.json'
+import wildfireFlankConstellation from './fixtures/train_wildfire_flank/constellation.json'
 
 // Frozen GPS constellation look angles produced by tools/fixtures/constellation.mjs
 // (REALISM_ROADMAP WP-0 / WP-7 §7.2 step 1). Same shape as terrainFixtures/observedWeather:
@@ -31,6 +47,18 @@ const CONSTELLATIONS: Record<string, ConstellationFixture> = {
   // content of that trial — so it reuses the identical committed fixture rather than
   // shipping a second copy of the same bytes.
   nist_obstructed_lane: wildfireConstellation as ConstellationFixture,
+  hist_oso_sr530_2014: osoConstellation as ConstellationFixture,
+  hist_camp_fire_paradise_2018: campFireConstellation as ConstellationFixture,
+  hist_helene_asheville_2024: heleneConstellation as ConstellationFixture,
+  hist_surfside_cts_2021: surfsideConstellation as ConstellationFixture,
+  hist_east_palestine_2023: eastPalestineConstellation as ConstellationFixture,
+  hist_harvey_houston_2017: harveyConstellation as ConstellationFixture,
+  hist_joplin_ef5_2011: joplinConstellation as ConstellationFixture,
+  hist_katrina_lower_ninth_2005: katrinaConstellation as ConstellationFixture,
+  hist_kilauea_leilani_2018: kilaueaConstellation as ConstellationFixture,
+  hist_marshall_fire_2021: marshallConstellation as ConstellationFixture,
+  train_mountain_sar: mountainSarConstellation as ConstellationFixture,
+  train_wildfire_flank: wildfireFlankConstellation as ConstellationFixture,
 }
 
 /** The frozen constellation for a scenario, or undefined when none is sourced yet. */

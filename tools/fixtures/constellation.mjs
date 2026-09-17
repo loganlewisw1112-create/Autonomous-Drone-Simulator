@@ -333,10 +333,13 @@ async function cli() {
   }
 
   // Same merge discipline as the other fetchers: this run replaces only its own entry.
+  // Preserve any top-level field an earlier fetcher wrote (openMeteo's required `realDate`);
+  // a constellation run only owns scenarioId / generatedAt / sources and must not drop the rest.
   const manifestUrl = new URL('manifest.json', dir)
   const previous = await readFile(manifestUrl, 'utf8').then(JSON.parse).catch(() => null)
   const kept = (previous?.sources ?? []).filter((s) => s.fixture !== 'constellation.json')
   await writeFile(manifestUrl, JSON.stringify({
+    ...(previous ?? {}),
     scenarioId: args.id,
     area: previous?.area ?? {},
     generatedAt: retrievedAt,
