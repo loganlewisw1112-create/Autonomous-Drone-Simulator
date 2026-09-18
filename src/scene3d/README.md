@@ -31,7 +31,7 @@ through `window.__harness.scene` in a harness build. No public bundle imports th
 | Order | What | Relation to the scene |
 |---|---|---|
 | 1 | Terrain mesh + every fill/line/circle layer | With terrain on, MapLibre renders these *into the terrain texture*, so they are always beneath scene geometry and occlude it only through terrain depth |
-| 2 | `fill-extrusion` buildings | Earlier in the stack; write depth; occlude and are occluded correctly |
+| 2 | `fill-extrusion` buildings | Earlier in the stack; write depth; occlude scene geometry (verified, Gate 3.8) |
 | 3 | Symbol layers (labels) | Earlier in the stack, no depth — scene geometry draws over labels behind it |
 | 4 | **`scene3d` custom layer — last in the GL stack** (`map.addLayer(layer)`, no `beforeId`) | |
 | 5 | DOM markers, HUD, panels | HTML above the canvas — always on top |
@@ -76,6 +76,18 @@ it again after any style swap (`style.load`), which drops custom layers.
 - Nav lights and the 1 Hz strobe are additive billboards with the glow baked into the texture - no
   post-processing pass exists, by design.
 
+## Shadows
+
+- MapLibre owns the terrain and building meshes, so shadows land on invisible `ShadowMaterial`
+  stand-ins (`shadowReceivers.ts`) laid over what MapLibre drew. With nothing casting they change
+  0.0002 % of the frame.
+- The terrain stand-in covers the view-fitted shadow box only, takes its heights from
+  `terrainModel.ts` (the ground as DRAWN), and is rebuilt on camera moves with hysteresis
+  (0.08 ms/frame amortised over a 900 m pan). Shadow position error vs the analytic sun-ray hit:
+  0.05 m in elevation across 50 m of relief.
+- **Building stand-ins are OFF by default - known defect** (they shadow themselves; Gate 3.4
+  skipped under the plan's fallback). See the header of `shadowReceivers.ts`.
+
 ## Things measured the hard way (maplibre-gl 6.9.0)
 
 - **The map draws less relief than the sim flies over.** `scenarioTerrainLayers.impl.ts › extractTile`
@@ -84,7 +96,8 @@ it again after any style swap (`style.load`), which drops custom layers.
   while the sim still uses real elevations. The fleet therefore takes its height from the DRAWN
   ground (see Fleet), which hides the mismatch; terrain-dependent volumes in later phases still
   need it fixed at the source. Pre-existing (open finding in `PROGRESS.md`).
-- The DEM source is `minzoom = maxzoom = 14`: **below zoom 14 the map has no terrain at all.**
+- **The map draws relief only at zoom >= 15** (measured: none at z14, present at z15), whatever the
+  source's `minzoom` says. `terrainModel.ts` asks MapLibre once per frame instead of modelling the rule.
 - `setTerrain(null)` → `setTerrain(spec)` leaves `queryTerrainElevation()` at 0 indefinitely. Treat
   terrain removal as one-way for the life of a page.
 - `queryTerrainElevation()` returns `0`, not `null`, where terrain is enabled but no DEM tile exists.

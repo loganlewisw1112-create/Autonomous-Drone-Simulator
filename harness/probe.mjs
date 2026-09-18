@@ -42,7 +42,10 @@ export async function openProbe({ url = BASE_URL } = {}) {
     eval: (fn, arg) => page.evaluate(fn, arg),
     async ready(timeoutMs = 30_000) {
       const started = Date.now()
+      // One retry: a basemap tile request occasionally stalls (remote tile server), which holds
+      // map.loaded() false. A second wait is cheap; a genuinely stuck map still fails, just later.
       await page.evaluate((t) => window.__harness.ready(t), timeoutMs)
+        .catch(() => page.evaluate((t) => window.__harness.ready(t), timeoutMs))
       return Date.now() - started
     },
     /** PNG of the map region only — app chrome (mission clock, panels) is outside the claim. */

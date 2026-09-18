@@ -84,6 +84,12 @@ export class SceneLayer implements maplibregl.CustomLayerInterface {
     )
   }
 
+  /** Scene-space x/y → lng/lat (the exact inverse of toScene). */
+  fromScene(x: number, y: number): { lng: number; lat: number } {
+    const ll = new MercatorCoordinate(this.originX + x * this.metresToMercator, this.originY - y * this.metresToMercator, 0).toLngLat()
+    return { lng: ll.lng, lat: ll.lat }
+  }
+
   onAdd(map: maplibregl.Map, gl: WebGLRenderingContext | WebGL2RenderingContext): void {
     this.map = map
     if (!this.renderer) {

@@ -13,7 +13,9 @@ import { runQuickDemo } from '@/sim/demo/quickDemo'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
 import { resolveTerrainFixtureId, terrainFixtureFor, terrainRasterFor } from '@/scenarios/terrainFixtures'
 import { createScene3D, type Scene3DHandle, type SceneDrone } from '@/scene3d'
-import { storeFleetSource, storeSunSource } from '@/scene3d/fleetBinding'
+import { storeBuildingSource, storeFleetSource, storeSunSource } from '@/scene3d/fleetBinding'
+import { createTerrainModel, wholeTileBounds, type TerrainModel } from '@/scene3d/terrainModel'
+import { sunDirection } from '@/scene3d/sun'
 import { sunPosition, type SunPosition } from '@/scene3d/sun'
 import { containsLatLng, elevationAt } from '@/sim/terrain/terrainRaster'
 import { useDroneStore } from '@/store/droneStore'
@@ -106,6 +108,10 @@ export interface Harness {
     disable(): void
     findOccludedCamera(query: OccludedCameraQuery): OccludedCamera | null
     findOccludedShot(query: OccludedShotQuery): OccludedShot | null
+    /** The scene's model of the DRAWN ground (0 where the map shows no relief), as of the last frame. */
+    drawnGroundAt(lng: number, lat: number): number
+    /** Where the sun ray from a point meets the drawn ground — where its shadow must fall. */
+    shadowHit(from: { lng: number; lat: number; elevationM: number }, sun: SunPosition): { lng: number; lat: number; elevationM: number } | null
     /** Where MapLibre actually draws relief — smaller than the sim's DEM. */
     liveBounds(): { west: number; south: number; east: number; north: number } | null
   }
@@ -120,8 +126,15 @@ export interface Harness {
     sunPosition(utcMs: number, latDeg: number, lngDeg: number): SunPosition
     override(position: SunPosition | null): void
     beacons(on: boolean): void
+    shadows(on: boolean): void
+    buildingShadows(on: boolean): void
+    receiverStats(): ReturnType<Scene3DHandle['receiverStats']> | null
     timeOfDay(value: 'dawn' | 'day' | 'dusk' | 'night'): void
     stats(): ReturnType<Scene3DHandle['lightingStats']> | null
+  }
+  buildings: {
+    /** The roomiest footprint at least `minHeightM` tall — inside the drawn-relief block when one exists. */
+    pick(minHeightM: number): { lng: number; lat: number; heightM: number; areaM2: number; onRelief: boolean } | null
   }
   dom: {
     /** Hide every DOM overlay above the GL canvas so pixel assertions see only what GL drew. */
@@ -177,6 +190,8 @@ export function installHarness(map: maplibregl.Map): Harness {
   requestAnimationFrame(sample)
 
   let terrainSpec: { source: string; exaggeration?: number } | null = null
+  let drawnGround: TerrainModel | null = null
+  let footprints: (() => Array<{ ring: Array<[number, number]>; heightM: number }>) | null = null
   let exaggeration = 1
 
   const terrainSettled = (): boolean => {
@@ -197,7 +212,12 @@ export function installHarness(map: maplibregl.Map): Harness {
     const scenario = useDroneStore.getState().scenario
     harness.scene?.dispose()
     harness.scene = scenario
-      ? createScene3D(map, { lng: scenario.startPosition.lng, lat: scenario.startPosition.lat }, { fleetSource: storeFleetSource(map), sunSource: storeSunSource() })
+      ? createScene3D(map, { lng: scenario.startPosition.lng, lat: scenario.startPosition.lat }, (() => {
+          const terrain = createTerrainModel(map, scenario)
+          drawnGround = terrain
+          footprints = storeBuildingSource(scenario.id)
+          return { terrain, fleetSource: storeFleetSource(terrain), sunSource: storeSunSource(), buildings: storeBuildingSource(scenario.id) }
+        })())
       : null
     return { ok: true, seed: scenario?.seed, scenarioId: scenario?.id }
   }
@@ -209,23 +229,9 @@ export function installHarness(map: maplibregl.Map): Harness {
     return elevationAt(raster, lat, lng) * (map.getTerrain()?.exaggeration ?? exaggeration)
   }
 
-  // The map only DRAWS relief where a whole DEM tile fits inside the committed crop
-  // (scenarioTerrainLayers.impl.ts › extractTile omits partial tiles), which is smaller than the DEM
-  // the sim flies over. Outside this block MapLibre's ground is flat at 0 m.
-  const liveTerrainBounds = (): { west: number; south: number; east: number; north: number } | null => {
+  const liveTerrainBounds = () => {
     const scenario = useDroneStore.getState().scenario
-    const header = terrainFixtureFor(scenario ? resolveTerrainFixtureId(scenario) ?? '' : '')?.header as
-      { zoom: number; width: number; height: number; tileSize?: number; mercatorPixelOrigin?: { x: number; y: number } } | undefined
-    if (!header?.mercatorPixelOrigin) return null
-    const tile = header.tileSize ?? 256
-    const { x: ox, y: oy } = header.mercatorPixelOrigin
-    const x0 = Math.ceil(ox / tile), x1 = Math.floor((ox + header.width) / tile)
-    const y0 = Math.ceil(oy / tile), y1 = Math.floor((oy + header.height) / tile)
-    if (x1 <= x0 || y1 <= y0) return null
-    const n = 2 ** header.zoom
-    const lng = (x: number) => (x / n) * 360 - 180
-    const lat = (y: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI
-    return { west: lng(x0), east: lng(x1), north: lat(y0), south: lat(y1) }
+    return wholeTileBounds(terrainFixtureFor(scenario ? resolveTerrainFixtureId(scenario) ?? '' : '')?.header as Parameters<typeof wholeTileBounds>[0])
   }
   const insideLiveTerrain = (lng: number, lat: number): boolean => {
     const b = liveTerrainBounds()
@@ -361,6 +367,21 @@ export function installHarness(map: maplibregl.Map): Harness {
       findOccludedCamera,
       findOccludedShot,
       liveBounds: liveTerrainBounds,
+      drawnGroundAt: (lng, lat) => drawnGround?.groundAt(lng, lat) ?? 0,
+      shadowHit: (from, sun) => {
+        const [sx, sy, sz] = sunDirection(sun)
+        if (sz <= 0.01) return null
+        const mPerDegLat = 111_320
+        const mPerDegLng = mPerDegLat * Math.cos((from.lat * Math.PI) / 180)
+        for (let t = 0; t < 4000; t += 0.25) {
+          const lng = from.lng - (sx * t) / mPerDegLng
+          const lat = from.lat - (sy * t) / mPerDegLat
+          const z = from.elevationM - sz * t
+          const ground = drawnGround?.groundAt(lng, lat) ?? 0
+          if (z <= ground) return { lng, lat, elevationM: ground }
+        }
+        return null
+      },
     },
     fleet: {
       synthetic: (drones) => harness.scene?.setFleetSource(
@@ -371,12 +392,34 @@ export function installHarness(map: maplibregl.Map): Harness {
       sunPosition,
       override: (position) => harness.scene?.setSunOverride(position),
       beacons: (on) => harness.scene?.setBeacons(on),
+      shadows: (on) => harness.scene?.setShadows(on),
+      buildingShadows: (on) => harness.scene?.setBuildingShadows(on),
+      receiverStats: () => harness.scene?.receiverStats() ?? null,
       timeOfDay: (value) => {
         const s = useDroneStore.getState()
         useDroneStore.setState({ scenarioVariant: { ...s.scenarioVariant, timeOfDay: value } })
         map.triggerRepaint()
       },
       stats: () => harness.scene?.lightingStats() ?? null,
+    },
+    buildings: {
+      pick: (minHeightM) => {
+        const bounds = liveTerrainBounds()
+        let best: { lng: number; lat: number; heightM: number; areaM2: number; onRelief: boolean } | null = null
+        for (const { ring, heightM } of footprints?.() ?? []) {
+          if (heightM < minHeightM || ring.length < 4) continue
+          let lng = 0, lat = 0, twiceArea = 0
+          for (let i = 0; i < ring.length - 1; i++) {
+            lng += ring[i][0]; lat += ring[i][1]
+            twiceArea += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1]
+          }
+          lng /= ring.length - 1; lat /= ring.length - 1
+          const areaM2 = Math.abs(twiceArea / 2) * 111_320 * 111_320 * Math.cos((lat * Math.PI) / 180)
+          const onRelief = bounds !== null && lng > bounds.west && lng < bounds.east && lat > bounds.south && lat < bounds.north
+          if (!best || Number(onRelief) > Number(best.onRelief) || (onRelief === best.onRelief && areaM2 > best.areaM2)) best = { lng, lat, heightM, areaM2, onRelief }
+        }
+        return best
+      },
     },
     dom: {
       glOnly: (on) => {

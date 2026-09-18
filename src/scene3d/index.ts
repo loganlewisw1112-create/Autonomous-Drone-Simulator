@@ -6,11 +6,14 @@ import * as THREE from 'three'
 import type * as maplibregl from 'maplibre-gl'
 import { FleetRenderer, type FleetFrame } from './fleet'
 import { LightingRig } from './lighting'
+import { ShadowReceivers, type BuildingFootprint, type ReceiverStats } from './shadowReceivers'
+import type { TerrainModel } from './terrainModel'
 import type { SunPosition } from './sun'
 import { SCENE_LAYER_ID, SceneLayer, type SceneOrigin } from './SceneLayer'
 
 export type { FleetFrame, SceneDrone } from './fleet'
 export type { SunPosition } from './sun'
+export type { BuildingFootprint } from './shadowReceivers'
 
 export interface TestBoxOptions {
   lng: number
@@ -29,6 +32,10 @@ export interface Scene3DOptions {
   fleetSource?: () => FleetFrame
   /** Where the sun is, pulled once per rendered frame from the SCENARIO clock. Omit for a fixed mid-morning sun. */
   sunSource?: () => SunPosition
+  /** The drawn ground. Without it shadows fall on a flat plane at 0 m. */
+  terrain?: TerrainModel
+  /** Building footprints to stand in as shadow receivers/casters (the scenario's Overture fixture). */
+  buildings?: () => BuildingFootprint[]
 }
 
 export interface Scene3DHandle {
@@ -43,6 +50,11 @@ export interface Scene3DHandle {
   /** Pin the sun (gates, photo mode); `null` returns it to the scenario clock. */
   setSunOverride(position: SunPosition | null): void
   setBeacons(on: boolean): void
+  /** Turn the sun's shadow casting off/on (the receivers stay mounted either way). */
+  setShadows(on: boolean): void
+  receiverStats(): ReceiverStats
+  /** Experimental, default off — see the KNOWN DEFECT note in shadowReceivers.ts. */
+  setBuildingShadows(on: boolean): void
   lightingStats(): { sun: SunPosition; pmremPasses: number; darkness: number; sunIntensity: number }
   /** Matte white sphere, lit like everything else — for reading the light direction off pixels. */
   addTestSphere(options: { lng: number; lat: number; elevationM: number; radiusM: number }): void
@@ -63,6 +75,13 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
   layer.scene.add(testObjects, fleet.root)
 
   const lighting = new LightingRig(layer.scene)
+  const receivers = new ShadowReceivers({
+    toScene: (lng, lat, elevationM, target) => layer.toScene(lng, lat, elevationM, target),
+    fromScene: (x, y) => layer.fromScene(x, y),
+    groundAt: (lng, lat) => options.terrain?.groundAt(lng, lat) ?? 0,
+    buildings: () => options.buildings?.() ?? [],
+  })
+  layer.scene.add(receivers.root)
   const FIXED_SUN: SunPosition = { azimuthDeg: 135, elevationDeg: 42 }
   let sunOverride: SunPosition | null = null
   let beaconsOn = true
@@ -70,7 +89,11 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
   const emptySky: FleetFrame = { drones: [], simTimeSec: 0 }
   let fleetSource = options.fleetSource ?? null
   layer.onBeforeRender = (frame, renderer) => {
+    options.terrain?.refresh()
     lighting.update(frame, renderer, sunOverride ?? options.sunSource?.() ?? FIXED_SUN)
+    // Shadows fade out with the sun: full by day, gone once only twilight glow is left.
+    const strength = lighting.sun.castShadow && lighting.position.elevationDeg > 0 ? Math.min(1, lighting.palette.sunIntensity / 2.2) : 0
+    receivers.update(frame, lighting.shadowRadius, strength, options.terrain?.reliefLive() ?? false)
     // Nav lights never go out; they are simply lost in daylight.
     const beaconGain = beaconsOn ? 0.3 + 0.7 * lighting.palette.darkness : 0
     fleet.update(frame, { ...(fleetSource ? fleetSource() : emptySky), beaconGain })
@@ -130,6 +153,15 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       sunOverride = position
       map.triggerRepaint()
     },
+    setShadows(on) {
+      lighting.sun.castShadow = on
+      map.triggerRepaint()
+    },
+    receiverStats: () => ({ ...receivers.stats }),
+    setBuildingShadows(on) {
+      receivers.setBuildingsEnabled(on)
+      map.triggerRepaint()
+    },
     setBeacons(on) {
       beaconsOn = on
       map.triggerRepaint()
@@ -164,6 +196,7 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       style?.remove()
       if (map.getLayer(SCENE_LAYER_ID)) map.removeLayer(SCENE_LAYER_ID)
       clearTestObjects()
+      receivers.dispose()
       lighting.dispose()
       fleet.dispose()
       layer.dispose()

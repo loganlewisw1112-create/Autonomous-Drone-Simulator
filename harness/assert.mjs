@@ -213,18 +213,24 @@ export const structural = {
 // ── Gate bookkeeping ────────────────────────────────────────────────────────────────────────────
 export function createGate(name) {
   const results = []
+  const skipped = []
   return {
     check(id, claim, pass, detail = '') {
       results.push({ id, pass: Boolean(pass) })
       console.log(`  [${pass ? 'PASS' : 'FAIL'}] ${id} ${claim}${detail ? ` — ${detail}` : ''}`)
       return Boolean(pass)
     },
+    /** A criterion that does not apply to this run (a pre-approved fallback was taken). Never counted as a pass. */
+    skip(id, claim, reason) {
+      skipped.push(id)
+      console.log(`  [SKIP] ${id} ${claim} — ${reason}`)
+    },
     /** Prints the machine-readable summary line and returns the process exit code. */
     finish({ p75LayerMs = 'n/a', artifacts = 'artifacts/' } = {}) {
       const failed = results.filter((r) => !r.pass).map((r) => r.id)
       const passed = results.length - failed.length
       console.log(`GATE ${name} ${failed.length ? 'FAIL' : 'PASS'} assertions=${passed}/${results.length} `
-        + `failed=[${failed.join(',')}] p75_layer_ms=${p75LayerMs} artifacts=${artifacts}`)
+        + `failed=[${failed.join(',')}]${skipped.length ? ` skipped=[${skipped.join(',')}]` : ''} p75_layer_ms=${p75LayerMs} artifacts=${artifacts}`)
       return failed.length ? 1 : 0
     },
   }

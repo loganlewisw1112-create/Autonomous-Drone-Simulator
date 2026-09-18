@@ -1,11 +1,10 @@
 /**
  * Fleet model → scene poses. Pulled once per rendered frame (no subscription state to go stale).
  *
- * Height reference is the ground MapLibre actually DRAWS (`queryTerrainElevation`), not the sim DEM:
- * the map renders relief for only part of the DEM and none below zoom 14, and an aircraft must sit
- * its true AGL above whatever ground is on screen, or it visibly floats or sinks.
+ * Height reference is the ground MapLibre actually DRAWS (terrainModel.ts), not the raw sim DEM: the
+ * map renders relief for only part of the DEM and none below zoom 15, and an aircraft must sit its
+ * true AGL above whatever ground is on screen, or it visibly floats or sinks.
  */
-import type * as maplibregl from 'maplibre-gl'
 import { observedWeatherFor } from '@/scenarios/observedWeather'
 import { useDroneStore } from '@/store/droneStore'
 import type { DroneState, MissionState } from '@/types'
@@ -13,6 +12,9 @@ import type { AirframeId } from './airframes/parts'
 import type { FleetFrame, SceneDrone } from './fleet'
 import { sceneInstant } from './sceneClock'
 import { sunPosition, type SunPosition } from './sun'
+import type { BuildingFootprint } from './shadowReceivers'
+import type { TerrainModel } from './terrainModel'
+import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
 
 const FT_TO_M = 0.3048
 const HOVER_RPM = 5200
@@ -52,12 +54,12 @@ export function poseOf(drone: DroneState, groundM: number): SceneDrone {
   }
 }
 
-export function storeFleetSource(map: maplibregl.Map): () => FleetFrame {
+export function storeFleetSource(terrain: TerrainModel): () => FleetFrame {
   return () => {
     const { drones, elapsedSec } = useDroneStore.getState()
     return {
       simTimeSec: elapsedSec,
-      drones: drones.map((d) => poseOf(d, map.queryTerrainElevation([d.position.lng, d.position.lat]) ?? 0)),
+      drones: drones.map((d) => poseOf(d, terrain.groundAt(d.position.lng, d.position.lat))),
     }
   }
 }
@@ -75,5 +77,25 @@ export function storeSunSource(): () => SunPosition {
       latDeg: lat, lngDeg: lng, elapsedSec,
     })
     return sunPosition(instant, lat, lng)
+  }
+}
+
+/** The scenario's Overture footprints as plain rings (outer ring only; holes cast no useful shadow). */
+export function storeBuildingSource(scenarioId: string): () => BuildingFootprint[] {
+  let cached: BuildingFootprint[] | null = null
+  return () => {
+    if (cached) return cached
+    const collection = buildingFixtureFor(scenarioId)
+    if (!collection) return [] // not prepared yet — ask again next rebuild
+    const out: BuildingFootprint[] = []
+    for (const feature of collection.features) {
+      const heightM = Number((feature.properties as { h?: number } | null)?.h ?? 0)
+      if (!(heightM > 0)) continue
+      const g = feature.geometry as { type: string; coordinates: unknown }
+      const polygons = g.type === 'Polygon' ? [g.coordinates as number[][][]] : g.type === 'MultiPolygon' ? (g.coordinates as number[][][][]) : []
+      for (const polygon of polygons) out.push({ ring: polygon[0].map(([lng, lat]) => [lng, lat] as [number, number]), heightM })
+    }
+    cached = out
+    return out
   }
 }

@@ -26,6 +26,8 @@ export class LightingRig {
   readonly fill = new THREE.HemisphereLight(0xffffff, 0x444444, 1)
   /** How many times the environment map has been (re)built. Must not grow while the sun stands still. */
   pmremPasses = 0
+  /** Half-width of the view-fitted shadow box, metres. The receivers are built to match it. */
+  shadowRadius = SHADOW_MIN_RADIUS_M
   palette: SkyPalette = skyPalette(45)
   position: SunPosition = { azimuthDeg: 180, elevationDeg: 45 }
 
@@ -73,6 +75,7 @@ export class LightingRig {
     // enough to cover the view at that distance, clamped so a zoomed-out view degrades gracefully.
     const reach = frame.cameraPosition.distanceTo(frame.focus)
     const radius = THREE.MathUtils.clamp(reach * Math.tan(frame.fovRad / 2) * 1.8, SHADOW_MIN_RADIUS_M, SHADOW_MAX_RADIUS_M)
+    this.shadowRadius = radius
     this.sun.target.position.copy(frame.focus)
     this.sun.position.copy(frame.focus).addScaledVector(this.toSun, radius + 300)
     this.sun.target.updateMatrixWorld()
@@ -81,6 +84,8 @@ export class LightingRig {
     box.right = box.top = radius
     box.near = 1
     box.far = 2 * radius + 600
+    // Bias in world units has to grow with the shadow texel, or a wide box acnes and a tight one peter-pans.
+    this.sun.shadow.normalBias = Math.max(0.04, ((2 * radius) / SHADOW_MAP_SIZE) * 1.5)
     box.updateProjectionMatrix()
 
     const moved = !this.envAt
