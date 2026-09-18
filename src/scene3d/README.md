@@ -50,13 +50,27 @@ through `window.__harness.scene` in a harness build. No public bundle imports th
 `handle.disable()` removes the custom layer and repaints. `handle.enable()` re-adds it, and re-adds
 it again after any style swap (`style.load`), which drops custom layers.
 
+## Fleet
+
+- Airframes are **authored** as a `Group` of named meshes (`airframes/teal2.ts`, `airframes/x10.ts`;
+  airframe-local `+Y` nose, `+X` right, `+Z` up, true metres) and **rendered** as InstancedMeshes
+  (`fleet.ts`): per type hull + props + gimbal (< 300 m), one decimated mesh (300-1500 m), and one
+  shared camera-facing sprite in the 2D fleet colour (> 1500 m). 9 draw calls at any fleet size.
+- Drawn at `AIRFRAME_VISUAL_SCALE` (6x): true scale is sub-pixel beyond ~60 m.
+- Height = the ground MapLibre **draws** + true AGL (`fleetBinding.ts`), so an aircraft never floats
+  above flat map where the app serves no relief.
+- Prop phase is a function of **sim** time only. No wall clock anywhere in this directory.
+- While the layer owns the fleet the DOM markers are `opacity:0` (still clickable); `disable()` and
+  `dispose()` give them back.
+
 ## Things measured the hard way (maplibre-gl 6.9.0)
 
 - **The map draws less relief than the sim flies over.** `scenarioTerrainLayers.impl.ts › extractTile`
   serves only DEM tiles that fit *wholly* inside the committed crop. For `train_wildfire_flank` that is
   a 2×2 block of z14 tiles (~3.7 km) inside a ~5 km DEM; outside it MapLibre's ground is flat at 0 m
-  while the sim still uses real elevations. Aircraft there will appear to float. Pre-existing; not
-  fixed here (open finding in `PROGRESS.md`).
+  while the sim still uses real elevations. The fleet therefore takes its height from the DRAWN
+  ground (see Fleet), which hides the mismatch; terrain-dependent volumes in later phases still
+  need it fixed at the source. Pre-existing (open finding in `PROGRESS.md`).
 - The DEM source is `minzoom = maxzoom = 14`: **below zoom 14 the map has no terrain at all.**
 - `setTerrain(null)` → `setTerrain(spec)` leaves `queryTerrainElevation()` at 0 indefinitely. Treat
   terrain removal as one-way for the life of a page.

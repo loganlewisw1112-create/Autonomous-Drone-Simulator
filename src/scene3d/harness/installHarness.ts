@@ -12,7 +12,8 @@ import { tick, stopTicking } from '@/sim/SimulationLoop'
 import { runQuickDemo } from '@/sim/demo/quickDemo'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
 import { resolveTerrainFixtureId, terrainFixtureFor, terrainRasterFor } from '@/scenarios/terrainFixtures'
-import { createScene3D, type Scene3DHandle } from '@/scene3d'
+import { createScene3D, type Scene3DHandle, type SceneDrone } from '@/scene3d'
+import { storeFleetSource } from '@/scene3d/fleetBinding'
 import { containsLatLng, elevationAt } from '@/sim/terrain/terrainRaster'
 import { useDroneStore } from '@/store/droneStore'
 
@@ -107,6 +108,12 @@ export interface Harness {
     /** Where MapLibre actually draws relief — smaller than the sim's DEM. */
     liveBounds(): { west: number; south: number; east: number; north: number } | null
   }
+  fleet: {
+    /** Fly a hand-placed fleet instead of the sim's (prop phase still follows the SIM clock);
+     *  `[]` = empty sky, `null` = back to the sim fleet. */
+    synthetic(drones: SceneDrone[] | null): void
+    stats(): ReturnType<Scene3DHandle['fleetStats']> | null
+  }
   dom: {
     /** Hide every DOM overlay above the GL canvas so pixel assertions see only what GL drew. */
     glOnly(on: boolean): void
@@ -181,7 +188,7 @@ export function installHarness(map: maplibregl.Map): Harness {
     const scenario = useDroneStore.getState().scenario
     harness.scene?.dispose()
     harness.scene = scenario
-      ? createScene3D(map, { lng: scenario.startPosition.lng, lat: scenario.startPosition.lat })
+      ? createScene3D(map, { lng: scenario.startPosition.lng, lat: scenario.startPosition.lat }, { fleetSource: storeFleetSource(map) })
       : null
     return { ok: true, seed: scenario?.seed, scenarioId: scenario?.id }
   }
@@ -345,6 +352,11 @@ export function installHarness(map: maplibregl.Map): Harness {
       findOccludedCamera,
       findOccludedShot,
       liveBounds: liveTerrainBounds,
+    },
+    fleet: {
+      synthetic: (drones) => harness.scene?.setFleetSource(
+        drones ? () => ({ drones, simTimeSec: useDroneStore.getState().elapsedSec }) : null),
+      stats: () => harness.scene?.fleetStats() ?? null,
     },
     dom: {
       glOnly: (on) => {

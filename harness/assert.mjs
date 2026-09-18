@@ -110,6 +110,22 @@ export function centroid(frame, roi, predicate) {
   return n ? { x: sx / n, y: sy / n, count: n } : null
 }
 
+/** White-on-black mask of every pixel that differs from `background` — how a silhouette is lifted
+ *  off a busy map without knowing the subject's colours. */
+export function diffMask(frame, background, tolerance = 24) {
+  const f = asFrame(frame), b = asFrame(background)
+  const data = new Uint8Array(f.data.length)
+  let count = 0
+  for (let i = 0; i < f.data.length; i += 4) {
+    const on = Math.abs(f.data[i] - b.data[i]) > tolerance || Math.abs(f.data[i + 1] - b.data[i + 1]) > tolerance
+      || Math.abs(f.data[i + 2] - b.data[i + 2]) > tolerance
+    data[i] = data[i + 1] = data[i + 2] = on ? 255 : 0
+    data[i + 3] = 255
+    if (on) count++
+  }
+  return { width: f.width, height: f.height, data, count }
+}
+
 /** IoU of two binary silhouettes, each defined by `predicate`. Airframe differentiation, LOD. */
 export function silhouetteIoU(frameA, frameB, predicate, roi) {
   const a = asFrame(frameA), b = asFrame(frameB)

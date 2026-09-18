@@ -2,19 +2,33 @@
 
 Branch: feat/3d-scene-layer
 Plan: AUTONOMOUS-PLAN-3d-view.md
-Last updated: 2026-09-18T00:40:00-07:00
+Last updated: 2026-09-18T01:30:00-07:00
 Repo: `D:\CODING\PROJECTS - CURRENTLY WORKING ON\portfolio_local_repo_ready\04-autonomous-drone-mission-simulator`
 
 Claim marks: **V** = Verified (command named), **I** = Inferred (basis named), **U** = Unverified.
 
 ## State
-Current phase: 1
+Current phase: 2
 Gate status: not attempted
-Next concrete action: create `src/scene3d/airframes/teal2.ts` + `x10.ts` (procedural `THREE.Group` builders, >= 12 meshes each, structurally distinct), a fleet binder that feeds `__harness.sim.fleet()` poses into the scene (`z = ground + altAgl`, fleet `platformId` is `teal_2` / `skydio_x10`), the 3-band LOD + one `InstancedMesh` per airframe type, then `harness/gates/gate-1.mjs`. Hide the DOM drone markers only while the layer owns drones (`.scene3d-owns-drones` on the map container) and restore them in `disable()`.
+Next concrete action: write `src/scene3d/sun.ts` (inline NOAA solar position, ~80 lines, input = SCENARIO clock + AOI centroid, never wall clock) and check it against a reference table computed by an INDEPENDENT implementation (Gate 2.1 is the non-circular anchor - do this first). Then replace the placeholder rig in `src/scene3d/index.ts` (`placeholderSky` / `placeholderSun`) with sun `DirectionalLight` + `HemisphereLight` keyed to solar elevation, IBL via one `PMREMGenerator` pass per significant sun-angle change (instrument the call count for 2.6), frustum-fitted shadow camera, night nav lights + 1 Hz strobe. Find where the scenario's clock/date lives (`realDate` in fixture manifests; `scenario` time-of-day fields) before designing the API.
 
 ## Completed phases
 - [x] P-0 preflight — `c352cb4` — `GATE P0 PASS assertions=17/17 failed=[]`, screenshots byte-identical (sha256 `54fc703b429ef5f9…`) across 4 cold launches in 2 gate runs **V** (`node harness/gates/run.mjs p0`)
-- [x] Phase 0 render harness — commit `feat(scene3d): custom layer render harness…` — `GATE 0 PASS assertions=9/9 failed=[] p75_layer_ms=0.1` **V** (`node harness/gates/run.mjs 0`). **Architecture go/no-go: GO.** Terrain occludes scene geometry through the shared depth buffer at pitch 0, 60 **and 107**.
+- [x] Phase 0 render harness — `50d9260` — `GATE 0 PASS assertions=9/9 failed=[] p75_layer_ms=0.1` **V** (`node harness/gates/run.mjs 0`). **Architecture go/no-go: GO.** Terrain occludes scene geometry through the shared depth buffer at pitch 0, 60 **and 107**.
+
+- [x] Phase 1 airframes + LOD - commit `feat(scene3d): procedural TEAL2/X10 airframes...` - `GATE 1 PASS assertions=8/8 failed=[] p75_layer_ms=0.3` **V** (`node harness/gates/run.mjs 1`), first run, no remediation.
+
+## Gate 1 record
+| # | Result **V** |
+|---|---|
+| 1.1 build | teal2 20 meshes / 1096 tris (low 467); x10 20 meshes / 1208 tris (low 494); 0 console errors |
+| 1.2 silhouettes | span-normalised IoU: three-quarter **0.386**, top **0.297**, side **0.401** (need < 0.80 - tested from 3 views, plan asked for 1) |
+| 1.3 LOD | 200 m -> 1096 tris, 800 m -> 467, 3000 m -> 16 (sprite); bands full/low/sprite confirmed structurally |
+| 1.4 props | 3609 px changed across one 50 ms SIM step on uav-01 (need >= 100) |
+| 1.5 instancing | 20 aircraft -> **9** draw calls (budget 40) |
+| 1.6 budget | p75 **0.3 ms**, bands full 2 / low 10 / sprite 8 (budget 4 ms) |
+| 1.7 weight | **164.2 KB** gz added JS (three + scene3d + harness) vs the shipped build (budget 250) |
+| 1.8 (extra) | DOM drone markers opacity 1 -> 0 -> 1 across enable()/disable() |
 
 ## Gate 0 record
 | # | Result **V** |
@@ -78,6 +92,12 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 | `UsagePolicyGate` (public-demo usage clock) | sessionStorage clock expiry | **deliberately NOT bypassed** — product/licensing control. Each probe launch is a cold profile, so the clock restarts |
 
 ## Decisions taken
+- **Aircraft are drawn at 6x true size** (`AIRFRAME_VISUAL_SCALE`, one constant in `fleet.ts`). A 0.5 m quad is sub-pixel beyond ~60 m; the plan's own Phase 0 stand-in was a 3 m box. LOD distances are unchanged. Tune in the aesthetic pass.
+- **Authoring vs rendering are separate:** builders return a `Group` of >= 12 named meshes (what 1.1 counts); `fleet.ts` bakes them into hull / props / gimbal / low InstancedMeshes per type + one shared sprite batch = 9 draw calls at any fleet size.
+- **Prop phase = f(SIM elapsedSec), never wall clock**, so frozen-clock frames and replays are identical. Consequence: at 20 Hz sim ticks the props (and positions) advance in steps; inter-tick smoothing belongs to Phase 4 with the camera smoothing.
+- **Aircraft height reference = the ground MapLibre DRAWS** (`queryTerrainElevation`) + true AGL, not the sim DEM. Outside the drawn relief and below zoom 14 the map is flat, and the aircraft then sits its AGL above that flat ground instead of floating 1.5 km up. This neutralises the visual half of the partial-tile finding below.
+- **DOM markers go `opacity:0`, not hidden**, while the layer owns the fleet - they stay in the hit-test tree so click-to-select keeps working.
+- **Placeholder light rig** (fixed hemisphere + directional) lives in `index.ts` only so PBR airframes are not black in Phase 1. Phase 2 deletes it.
 - **3D layer is default-OFF and harness-only until Phase 6.** Nothing in the public bundle imports `src/scene3d/` yet, so three.js adds 0 bytes to shipped builds and the frozen v1.1 product cannot regress. The user-facing mount arrives with the quality tiers, after the owner's aesthetic review.
 - **Render order (global, fixed):** custom layer is LAST in the GL stack; draped 2D layers and terrain are beneath it by construction, `fill-extrusion` occludes through depth, symbols are overdrawn by geometry in front of them, DOM markers/HUD stay on top. Written up in `src/scene3d/README.md`.
 - **Scene Z = rendered elevation (DEM x 1.15); aircraft Z = rendered ground + true AGL.** Vertical scale is re-derived every frame from the map-centre latitude to stay welded to MapLibre's terrain.
@@ -93,6 +113,8 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 - **Gate "tree clean"** → interpreted as "no changes outside this phase's declared paths", since the gate necessarily runs before its own commit.
 
 ## Deviations from plan
+- **glTF override path is `src/scene3d/airframes/models/<id>.glb`, not `public/models/`.** Resolved at build time with `import.meta.glob`, so with no file present there is no runtime probe, no 404 in the console, and GLTFLoader is never fetched. **Unverified** - no .glb has ever been loaded through it.
+- **The fleet model has no LANDING state.** Landing pose (stowed gimbal, 75 % rotor speed) is inferred: `return_to_base` or `emergency` below 8 m AGL. THERMAL HOLD and INSPECT map directly. There is no gimbal telemetry either; gimbal pitch follows mission state.
 - **`@types/three@0.186.0` added (dev-only, pinned).** three ships no TypeScript types; the alternative was an `any`-typed module shim. Outside section 1.3's literal allowlist; zero runtime/bundle effect.
 - **Branch cut from `fix/maplibre-worker-prod-asset` (`e07f1bc`), not `main` (`e57e5dd`).** `e07f1bc` = `main` + one commit (open PR #96). Without it a production build never emits MapLibre's worker and the map renders blank — the harness serves a production build, so every pixel gate would be meaningless on `main`. Affects: when #96 squash-merges, merge `main` into this branch (no rebase, per §1.1).
 - **Repo located by known path, not the one-level scan in P-0.1** — the simulator sits two levels below the project root, so the literal scan finds zero candidates. Identity still asserted by the gate (P0.1a).
@@ -110,7 +132,7 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 - Plan docs + `cameraDirector.js` are committed at the repo root per *Before kickoff*. This repo is public; they go public if the branch is ever pushed.
 - `node_modules` had drifted from the lockfile before this work (first `npm install` re-synced 94 packages). Baseline and post-change test totals are nevertheless identical.
 
-## Files touched this phase (Phase 0)
-- new: `src/scene3d/SceneLayer.ts`, `src/scene3d/index.ts`, `src/scene3d/README.md`, `harness/gates/gate-0.mjs`
-- changed: `src/scene3d/harness/installHarness.ts` (scene handle, `terrain.*`, `dom.glOnly`, `render.pump/layerTimes`, FOV on `camera.fromTo`), `package.json` + `package-lock.json` (`@types/three`), `PROGRESS.md`
-- **No existing app file touched in Phase 0.**
+## Files touched this phase (Phase 1)
+- new: `src/scene3d/airframes/{parts,teal2,x10,glbOverride}.ts`, `src/scene3d/fleet.ts`, `src/scene3d/fleetBinding.ts`, `harness/gates/gate-1.mjs`
+- changed: `src/scene3d/SceneLayer.ts` (per-frame camera context recovered from the inverse MVP), `src/scene3d/index.ts` (fleet, placeholder lights, DOM-marker handoff), `src/scene3d/harness/installHarness.ts` (`fleet.synthetic/stats`), `harness/assert.mjs` (`diffMask`), `harness/server.mjs` (`buildApp({harness:false})`), `harness/gates/gate-0.mjs` (empty sky), `src/scene3d/README.md`, `PROGRESS.md`
+- **No existing app file touched in Phase 1.**

@@ -31,6 +31,7 @@ try {
   await H((t) => window.__harness.sim.freeze(t), FREEZE_AT_SEC)
   await probe.ready()
   await H(() => window.__harness.dom.glOnly(true))
+  await H(() => window.__harness.fleet.synthetic([])) // Gate 0 is about the layer itself: empty sky
 
   const fleet = await H(() => window.__harness.sim.fleet())
   const uav = fleet[0]

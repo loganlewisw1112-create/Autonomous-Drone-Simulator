@@ -8,10 +8,11 @@ import { OUT_DIR, PORT, ROOT } from './config.mjs'
 const VITE = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js')
 const ENV = { ...process.env, VITE_APP_TARGET: 'windows', VITE_BUILD_TARGET: 'windows', VITE_HARNESS: '1' }
 
-export function buildApp() {
+/** `harness: false` builds exactly what ships (no VITE_HARNESS) — the reference for bundle-weight gates. */
+export function buildApp({ outDir = OUT_DIR, harness = true } = {}) {
   const started = Date.now()
-  const run = spawnSync(process.execPath, [VITE, 'build', '--outDir', OUT_DIR, '--emptyOutDir'], {
-    cwd: ROOT, env: ENV, encoding: 'utf8',
+  const run = spawnSync(process.execPath, [VITE, 'build', '--outDir', outDir, '--emptyOutDir'], {
+    cwd: ROOT, env: { ...ENV, VITE_HARNESS: harness ? '1' : '' }, encoding: 'utf8',
   })
   if (run.status !== 0) throw new Error(`harness build failed:\n${run.stdout}\n${run.stderr}`)
   return { seconds: (Date.now() - started) / 1000 }
