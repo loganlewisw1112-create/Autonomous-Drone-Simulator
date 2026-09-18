@@ -18,6 +18,7 @@ import type * as maplibregl from 'maplibre-gl'
 import { buildGnssUncertaintyFeatures, buildIrFootprintFeatures } from '@/components/tacticalMapGeoJson'
 import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
 import type { VolumeFrame } from './volumes'
+import type { AtmosphereFrame } from './atmosphere'
 
 const FT_TO_M = 0.3048
 const HOVER_RPM = 5200
@@ -176,5 +177,23 @@ export function createLayerOwnership(map: maplibregl.Map): { claim(): void; rele
       const footprints = ui.sensorMode === 'ir' && ui.layerVisibility.irFootprints
       for (const id of owned()) map.setLayoutProperty(id, 'visibility', id.startsWith('ir-footprint') && !footprints ? 'none' : 'visible')
     },
+  }
+}
+
+const MI_TO_KM = 1.609344
+
+/** Fog and smoke inputs. Visibility is the sim's own seeded weather state (ERA5 fixtures carry none);
+ *  fires are the scenario's heat sources, hot ones only — the atmosphere filters by temperature. */
+export function storeAtmosphereSource(): () => AtmosphereFrame | null {
+  return () => {
+    const { scenario, weatherState, elapsedSec } = useDroneStore.getState()
+    if (!scenario) return null
+    return {
+      visibilityKm: weatherState.visibilityMi * MI_TO_KM,
+      windKts: weatherState.windKts,
+      simTimeSec: elapsedSec,
+      seed: scenario.seed,
+      fires: (scenario.heatSources ?? []).map((h) => ({ lng: h.position.lng, lat: h.position.lat, radiusM: h.radiusM, tempC: h.tempC })),
+    }
   }
 }

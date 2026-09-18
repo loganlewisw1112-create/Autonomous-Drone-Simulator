@@ -5,18 +5,20 @@
 import * as THREE from 'three'
 import type * as maplibregl from 'maplibre-gl'
 import { FleetRenderer, type FleetFrame } from './fleet'
+import { Atmosphere, type AtmosphereFrame } from './atmosphere'
 import { createCameraDirector, type CameraDirector } from './cameraDirector'
 import { LightingRig } from './lighting'
 import { SensorVolumes, type VolumeFrame } from './volumes'
 import { ShadowReceivers, type BuildingFootprint, type ReceiverStats } from './shadowReceivers'
 import type { TerrainModel } from './terrainModel'
-import type { SunPosition } from './sun'
+import { sunDirection, type SunPosition } from './sun'
 import { SCENE_LAYER_ID, SceneLayer, type SceneOrigin } from './SceneLayer'
 
 export type { FleetFrame, SceneDrone } from './fleet'
 export type { SunPosition } from './sun'
 export type { BuildingFootprint } from './shadowReceivers'
 export type { VolumeFrame } from './volumes'
+export type { AtmosphereFrame } from './atmosphere'
 export type { CameraDirector, CameraMode } from './cameraDirector'
 
 export interface TestBoxOptions {
@@ -42,6 +44,8 @@ export interface Scene3DOptions {
   buildings?: () => BuildingFootprint[]
   /** Sensor volumes (thermal footprint, gimbal cone, GNSS ellipsoid, trails). Omit, or return null, for none. */
   volumeSource?: () => VolumeFrame | null
+  /** Visibility, wind, fires and the scenario seed — what the fog and the smoke are made from. */
+  atmosphereSource?: () => AtmosphereFrame | null
   /** Hides / restores the 2D layers whose concept the scene is drawing. `claim` runs every frame volumes are
    *  drawn; `release` runs once, the moment they stop — an empty scene must leave the map exactly as it found it. */
   ownership?: { claim(): void; release(): void }
@@ -69,6 +73,14 @@ export interface Scene3DHandle {
   follow(id: string | null): void
   setVolumeSource(source: (() => VolumeFrame | null) | null): void
   volumeStats(): { footprints: number; ellipsoids: number; trailSegments: number }
+  /** Pin the visibility the fog is built from (gates); `null` returns it to the sim's weather. */
+  setVisibilityOverride(km: number | null): void
+  /** 0–1: how much of the smoke to draw. The quality ladder turns this down first. */
+  setSmokeAmount(amount: number): void
+  setGlare(on: boolean): void
+  /** Sky + fog + smoke + glare as one switch. Off, the map keeps its own sky and the scene adds none of them. */
+  setAtmosphere(on: boolean): void
+  atmosphereStats(): { smokeParticles: number; glareVisible: boolean; visibilityKm: number; fogDensity: number; skyWrites: number }
   /** Scene position → CSS pixels, from the last drawn frame. */
   project(lng: number, lat: number, elevationM: number): { x: number; y: number } | null
   lightingStats(): { sun: SunPosition; pmremPasses: number; darkness: number; sunIntensity: number }
@@ -104,6 +116,13 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
   })
   layer.scene.add(volumes.root)
   let volumeSource = options.volumeSource ?? null
+  const atmosphere = new Atmosphere(map, layer.scene, {
+    toScene: (lng, lat, elevationM, target) => layer.toScene(lng, lat, elevationM, target),
+    groundAt: (lng, lat) => options.terrain?.groundAt(lng, lat) ?? 0,
+  })
+  layer.scene.add(atmosphere.root)
+  let visibilityOverride: number | null = null
+  const toSun = new THREE.Vector3()
   let followId: string | null = null
   let owning = false
   const FIXED_SUN: SunPosition = { azimuthDeg: 135, elevationDeg: 42 }
@@ -121,6 +140,10 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
     // Nav lights never go out; they are simply lost in daylight.
     const beaconGain = beaconsOn ? 0.3 + 0.7 * lighting.palette.darkness : 0
     fleet.update(frame, { ...(fleetSource ? fleetSource() : emptySky), beaconGain })
+    const air = options.atmosphereSource?.() ?? null
+    toSun.fromArray(sunDirection(lighting.position))
+    atmosphere.update(frame, frame.mvp, lighting.palette, toSun, lighting.position.elevationDeg,
+      visibilityOverride === null ? air : { ...(air ?? { windKts: 0, simTimeSec: 0, seed: 1, fires: [] }), visibilityKm: visibilityOverride })
     const volumeFrame = volumeSource ? volumeSource() : null
     volumes.update(volumeFrame)
     if (volumeFrame) {
@@ -139,7 +162,6 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       return d ? { lng: d.lng, lat: d.lat, elevationM: d.elevationM, headingDeg: d.headingDeg } : null
     },
     groundAt: (lng, lat) => options.terrain?.groundAt(lng, lat) ?? 0,
-    getPalette: () => lighting.palette,
   })
 
   let enabled = false
@@ -182,6 +204,7 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       camera.setMode('TACTICAL')
       options.ownership?.release()
       owning = false
+      atmosphere.release()
       ownDrones(false)
       if (map.getLayer(SCENE_LAYER_ID)) map.removeLayer(SCENE_LAYER_ID)
       map.triggerRepaint()
@@ -212,6 +235,23 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
     },
     project: (lng, lat, elevationM) => layer.project(lng, lat, elevationM),
     volumeStats: () => ({ ...volumes.stats }),
+    setVisibilityOverride(km) {
+      visibilityOverride = km
+      map.triggerRepaint()
+    },
+    setSmokeAmount(amount) {
+      atmosphere.smokeAmount = Math.min(1, Math.max(0, amount))
+      map.triggerRepaint()
+    },
+    setAtmosphere(on) {
+      atmosphere.enabled = on
+      map.triggerRepaint()
+    },
+    setGlare(on) {
+      atmosphere.glareEnabled = on
+      map.triggerRepaint()
+    },
+    atmosphereStats: () => ({ ...atmosphere.stats }),
     setBuildingShadows(on) {
       receivers.setBuildingsEnabled(on)
       map.triggerRepaint()
@@ -227,7 +267,7 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
     addTestSphere({ lng, lat, elevationM, radiusM }) {
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(radiusM, 48, 24),
-        new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, metalness: 0 }),
+        new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, metalness: 0, fog: false }),
       )
       layer.toScene(lng, lat, elevationM, mesh.position)
       testObjects.add(mesh)
@@ -237,7 +277,7 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       const [sx, sy, sz] = typeof sizeM === 'number' ? [sizeM, sizeM, sizeM] : sizeM
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(sx, sy, sz),
-        new THREE.MeshBasicMaterial({ color, depthTest, depthWrite: depthTest }),
+        new THREE.MeshBasicMaterial({ color, depthTest, depthWrite: depthTest, fog: false }), // test geometry keeps its exact colour
       )
       layer.toScene(lng, lat, elevationM, mesh.position)
       testObjects.add(mesh)
@@ -252,6 +292,7 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       clearTestObjects()
       camera.destroy()
       options.ownership?.release()
+      atmosphere.dispose()
       volumes.dispose()
       receivers.dispose()
       lighting.dispose()

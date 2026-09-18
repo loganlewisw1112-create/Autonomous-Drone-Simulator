@@ -99,6 +99,19 @@ it again after any style swap (`style.load`), which drops custom layers.
   trail ribbon. They are fed by the APP'S OWN feature builders, and `createLayerOwnership` hides the
   flat twin every frame while the 3D one is drawn. One picture per concept.
 
+## Atmosphere
+
+- `atmosphere.ts` owns `map.setSky()` whenever the layer is on (a style with no sky shows raw canvas
+  above ~80 deg pitch) and restores the style's own sky on `disable()`. The sky is rewritten only when
+  its key changes - every `setSky()` dirties the style.
+- Fog is keyed to the sim's `weatherState.visibilityMi` and applied twice: MapLibre's fog terms for
+  the map, a matching `FogExp2` for the scene. Distance fog, not height fog.
+- Smoke: instanced billboards over heat sources >= 300 C, seeded from `scenario.seed`, animated on
+  SIM time only. Smoke and haze are lit by the palette's daylight - they do not glow at night.
+- Glare: one clip-space sprite at the sun, depth-tested at the far plane. **There is no
+  post-processing pass in this directory and Gate 5.4 keeps it that way.**
+- `handle.setAtmosphere(false)` turns all four off; the isolation checks of Gates 0-3 use it.
+
 ## Things measured the hard way (maplibre-gl 6.9.0)
 
 - **The map draws less relief than the sim flies over.** `scenarioTerrainLayers.impl.ts › extractTile`
@@ -112,6 +125,8 @@ it again after any style swap (`style.load`), which drops custom layers.
 - `setTerrain(null)` → `setTerrain(spec)` leaves `queryTerrainElevation()` at 0 indefinitely. Treat
   terrain removal as one-way for the life of a page.
 - `queryTerrainElevation()` returns `0`, not `null`, where terrain is enabled but no DEM tile exists.
+- Do not jump straight to an unlocked, pitched camera at a place the map has not shown: the near field
+  stays unloaded for a long time. Arrive with an ordinary camera first.
 - Pitch > 90 needs `setMaxPitch(180)` + `setCenterClampedToGround(false)` + a `jumpTo()` carrying
   `elevation`; `calculateCameraOptionsFromTo()` is the only camera primitive worth using, and it
   takes real `LngLat` instances. Set the vertical FOV *before* calling it (zoom is derived from FOV),

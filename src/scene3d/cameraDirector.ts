@@ -9,6 +9,7 @@
  *  - FOV is set BEFORE calculateCameraOptionsFromTo (zoom is derived from it), and presets keep the
  *    derived zoom under maxZoom, or the camera silently lands further away than asked.
  *  - Ground height comes from the scene's ground model, never queryTerrainElevation (0 off-screen).
+ *  - The sky that makes a look-up shot possible is owned by atmosphere.ts, not by this rig.
  *  - Nothing here touches React: drag-to-orbit mutates plain fields read by the next frame.
  *
  * Time: `update(dt)` is the whole rig. Live, a rAF loop feeds it wall-clock dt; under the harness the
@@ -16,7 +17,6 @@
  */
 import { LngLat } from 'maplibre-gl'
 import type * as maplibregl from 'maplibre-gl'
-import type { SkyPalette } from './skyPalette'
 
 export type CameraMode = 'TACTICAL' | 'ORBIT' | 'CHASE' | 'FPV' | 'GROUND'
 export const CAMERA_MODES: CameraMode[] = ['TACTICAL', 'ORBIT', 'CHASE', 'FPV', 'GROUND']
@@ -59,8 +59,6 @@ const damp = (current: number, target: number, smoothSec: number, dt: number) =>
 export interface CameraDirectorOptions {
   getSubject(): CameraSubject | null
   groundAt(lng: number, lat: number): number
-  /** Palette for the sky installed while the camera is unlocked (above ~80° pitch a style with no sky shows raw canvas). */
-  getPalette(): SkyPalette
 }
 
 export interface CameraDirector {
@@ -92,8 +90,6 @@ export function createCameraDirector(map: maplibregl.Map, options: CameraDirecto
   let groundAnchor: { lng: number; lat: number } | null = null
   let dragging = false
   let lastPointer: { x: number; y: number } | null = null
-  let skyBefore: ReturnType<maplibregl.Map['getSky']> | undefined
-  let skyKey = ''
   let handlersBefore: Array<[{ enable(): void; disable(): void; isEnabled(): boolean }, boolean]> = []
 
   const container = map.getCanvasContainer()
@@ -137,33 +133,16 @@ export function createCameraDirector(map: maplibregl.Map, options: CameraDirecto
     return null
   }
 
-  function applySky(): void {
-    const palette = options.getPalette()
-    const key = `${palette.zenith}${palette.horizon}`
-    if (key === skyKey) return
-    skyKey = key
-    map.setSky({
-      'sky-color': palette.zenith, 'horizon-color': palette.horizon, 'fog-color': palette.horizon,
-      'sky-horizon-blend': 0.55, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.22,
-      'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 12, 0.6, 20, 0.35],
-    })
-  }
-
   function unlock(): void {
-    skyBefore = map.getSky()
     map.setMaxPitch(180)
     map.setCenterClampedToGround(false)
     handlersBefore = [map.dragPan, map.dragRotate, map.keyboard, map.doubleClickZoom, map.touchZoomRotate, map.scrollZoom].map((h) => [h, h.isEnabled()])
     for (const [h] of handlersBefore) h.disable()
-    skyKey = ''
-    applySky()
   }
 
   function relock(): void {
     for (const [h, was] of handlersBefore) if (was) h.enable()
     handlersBefore = []
-    // `undefined` (the style had no sky) is accepted at runtime and clears ours; the Map typing omits it.
-    map.setSky(skyBefore as maplibregl.SkySpecification)
     map.setCenterClampedToGround(true)
     map.setVerticalFieldOfView(DEFAULT_FOV_DEG)
     map.setRoll(0)
@@ -204,7 +183,6 @@ export function createCameraDirector(map: maplibregl.Map, options: CameraDirecto
       const subject = options.getSubject()
       const want = subject && solve(subject, dtSec)
       if (!want) return
-      applySky()
       if (!cam || !look) {
         cam = { ...want.cam }
         look = { ...want.look }

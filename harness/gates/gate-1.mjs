@@ -42,7 +42,7 @@ try {
     before.length > 0 && owned.every((o) => o === '0') && JSON.stringify(restored) === JSON.stringify(before),
     `${before.length} markers: ${before[0]} → ${owned[0]} → ${restored[0]}`)
 
-  await H(() => { const h = window.__harness; h.dom.glOnly(true); h.scene.enable() })
+  await H(() => { const h = window.__harness; h.dom.glOnly(true); h.atmosphere.enable(false); h.scene.enable() }) // airframes only: no fog, no smoke
 
   // ── 1.1 both airframes build ─────────────────────────────────────────────────────────────────
   const stats = await H(() => window.__harness.fleet.stats())

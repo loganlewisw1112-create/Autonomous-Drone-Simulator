@@ -217,13 +217,14 @@ export class FleetRenderer {
     this.batches = { teal2: buildBatch('teal2', material), x10: buildBatch('x10', material) }
     for (const batch of Object.values(this.batches)) this.root.add(batch.hull, batch.props, batch.gimbal, batch.low)
 
-    this.sprites = instanced(new THREE.CircleGeometry(0.5, 16), new THREE.MeshBasicMaterial({ toneMapped: false }), MAX_AIRCRAFT, 'fleet-sprites')
+    this.sprites = instanced(new THREE.CircleGeometry(0.5, 16), new THREE.MeshBasicMaterial({ toneMapped: false, fog: false }), MAX_AIRCRAFT, 'fleet-sprites')
     this.sprites.setColorAt(0, this.colour.set('#ffffff')) // allocates instanceColor
     this.sprites.castShadow = this.sprites.receiveShadow = false
     this.root.add(this.sprites)
 
     this.beacons = instanced(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
-      map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+      // fog: false — fogging an ADDITIVE sprite adds the fog colour itself and paints a grey square.
+      map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false,
     }), MAX_AIRCRAFT * 3, 'fleet-beacons')
     this.beacons.castShadow = this.beacons.receiveShadow = false
     this.beacons.renderOrder = 10 // additive glow goes on after every opaque airframe

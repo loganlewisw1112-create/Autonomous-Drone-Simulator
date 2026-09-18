@@ -39,7 +39,7 @@ try {
     if (!loaded.ok) throw new Error(`sim.seed(${seed}) failed: ${loaded.reason}`)
     await H((t) => window.__harness.sim.freeze(t), FREEZE_AT_SEC)
     await probe.ready()
-    await H(() => { const h = window.__harness; h.dom.glOnly(true); h.fleet.synthetic([]); h.lighting.beacons(false); h.scene.enable() })
+    await H(() => { const h = window.__harness; h.dom.glOnly(true); h.fleet.synthetic([]); h.lighting.beacons(false); h.atmosphere.enable(false); h.scene.enable() }) // shadows only
     return (await H(() => window.__harness.sim.fleet()))[0]
   }
   const drone = (at, aglM, groundM, airframe = 'x10') => ({ id: 'caster', airframe, lng: at.lng, lat: at.lat, elevationM: groundM + aglM, headingDeg: 0,

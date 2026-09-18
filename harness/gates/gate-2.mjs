@@ -48,7 +48,7 @@ try {
       await H((c) => window.__harness.camera.set({ center: c, zoom: 16, pitch: 0, bearing: 0 }), [uav.lng, uav.lat])
       await probe.ready()
       const ground = await H((c) => window.__harness.map.queryTerrainElevation(c), [uav.lng, uav.lat])
-      await H(() => { const h = window.__harness; h.dom.glOnly(true); h.fleet.synthetic([]); h.scene.enable() })
+      await H(() => { const h = window.__harness; h.dom.glOnly(true); h.fleet.synthetic([]); h.atmosphere.enable(false); h.scene.enable() }) // lighting only
       const drone = (id, airframe, extra = {}) => ({ id, airframe, lng: uav.lng, lat: uav.lat, elevationM: ground + 60, headingDeg: 30, speedMs: 0,
         propRpm: 5200, gimbalYawDeg: 0, gimbalPitchDeg: -25, color: '#00e5ff', ...extra })
       const look = (target, distanceM, elevAngleDeg, bearingDeg) => {

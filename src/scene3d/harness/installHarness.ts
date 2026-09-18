@@ -13,7 +13,7 @@ import { runQuickDemo } from '@/sim/demo/quickDemo'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
 import { resolveTerrainFixtureId, terrainFixtureFor, terrainRasterFor } from '@/scenarios/terrainFixtures'
 import { createScene3D, type Scene3DHandle, type SceneDrone } from '@/scene3d'
-import { createLayerOwnership, storeBuildingSource, storeFleetSource, storeSunSource, storeVolumeSource } from '@/scene3d/fleetBinding'
+import { createLayerOwnership, storeAtmosphereSource, storeBuildingSource, storeFleetSource, storeSunSource, storeVolumeSource } from '@/scene3d/fleetBinding'
 import type { CameraMode, VolumeFrame } from '@/scene3d'
 import { createTerrainModel, wholeTileBounds, type TerrainModel } from '@/scene3d/terrainModel'
 import { sunDirection } from '@/scene3d/sun'
@@ -150,6 +150,14 @@ export interface Harness {
     timeOfDay(value: 'dawn' | 'day' | 'dusk' | 'night'): void
     stats(): ReturnType<Scene3DHandle['lightingStats']> | null
   }
+  atmosphere: {
+    visibilityKm(km: number | null): void
+    smoke(amount: number): void
+    glare(on: boolean): void
+    /** Gates about lighting / shadows / GL state switch the atmosphere off so they measure only their own claim. */
+    enable(on: boolean): void
+    stats(): ReturnType<Scene3DHandle['atmosphereStats']> | null
+  }
   buildings: {
     /** The roomiest footprint at least `minHeightM` tall — inside the drawn-relief block when one exists. */
     pick(minHeightM: number): { lng: number; lat: number; heightM: number; areaM2: number; onRelief: boolean } | null
@@ -237,7 +245,7 @@ export function installHarness(map: maplibregl.Map): Harness {
           footprints = storeBuildingSource(scenario.id)
           ownership = createLayerOwnership(map)
           return { terrain, fleetSource: storeFleetSource(terrain), sunSource: storeSunSource(), buildings: storeBuildingSource(scenario.id),
-            volumeSource: storeVolumeSource(terrain), ownership }
+            volumeSource: storeVolumeSource(terrain), ownership, atmosphereSource: storeAtmosphereSource() }
         })())
       : null
     return { ok: true, seed: scenario?.seed, scenarioId: scenario?.id }
@@ -448,6 +456,13 @@ export function installHarness(map: maplibregl.Map): Harness {
         map.triggerRepaint()
       },
       stats: () => harness.scene?.lightingStats() ?? null,
+    },
+    atmosphere: {
+      visibilityKm: (km) => harness.scene?.setVisibilityOverride(km),
+      smoke: (amount) => harness.scene?.setSmokeAmount(amount),
+      glare: (on) => harness.scene?.setGlare(on),
+      enable: (on) => harness.scene?.setAtmosphere(on),
+      stats: () => harness.scene?.atmosphereStats() ?? null,
     },
     buildings: {
       pick: (minHeightM) => {

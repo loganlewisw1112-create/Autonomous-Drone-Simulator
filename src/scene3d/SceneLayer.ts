@@ -25,6 +25,8 @@ export interface FrameContext {
   focus: THREE.Vector3
   fovRad: number
   viewportHeightPx: number
+  /** World → clip for this frame (the matrix three renders with). */
+  mvp: THREE.Matrix4
 }
 
 /**
@@ -51,6 +53,7 @@ export class SceneLayer implements maplibregl.CustomLayerInterface {
     focus: new THREE.Vector3(),
     fovRad: 0.6435,
     viewportHeightPx: 1,
+    mvp: this.camera.projectionMatrix,
   }
   /** Called inside render(), after the camera is solved and before three draws. */
   onBeforeRender: ((frame: FrameContext, renderer: THREE.WebGLRenderer) => void) | null = null
