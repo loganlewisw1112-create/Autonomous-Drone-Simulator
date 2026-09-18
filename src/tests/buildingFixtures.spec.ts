@@ -73,3 +73,31 @@ describe('committed building fixtures', () => {
     expect(service?.surfaceHeight(KNOWN_FOOTPRINT.lat, KNOWN_FOOTPRINT.lng)).toBe(900)
   })
 })
+
+// Buildings coverage pass: the urban disaster AOs whose terrain shipped now carry real Overture
+// footprints (New Orleans, Houston cropped to the mission core; the Marshall Fire suburbs whole).
+describe('urban-AO building coverage', () => {
+  const NEW_BUILDING_AOS = [
+    'hist_katrina_lower_ninth_2005',
+    'hist_harvey_houston_2017',
+    'hist_marshall_fire_2021',
+  ]
+
+  it('registers each new urban AO with real, non-trivial committed footprints', async () => {
+    const covered = new Set(scenariosWithBuildings())
+    for (const id of NEW_BUILDING_AOS) {
+      expect(covered.has(id), `${id} should have committed buildings`).toBe(true)
+
+      const prep = await prepareScenarioTerrain(id)
+      expect(prep.ok, `${id}: ${prep.ok ? '' : prep.reason}`).toBe(true)
+
+      const fixture = buildingFixtureFor(id)
+      // A dense urban core is thousands of footprints; anything tiny would mean a broken fetch.
+      expect(fixture?.features.length ?? 0, `${id} footprint count`).toBeGreaterThan(500)
+
+      const index = buildingIndexFor(id)
+      expect(index?.buildingCount, `${id} index`).toBe(fixture?.features.length)
+      expect(index?.maxTopM ?? 0).toBeGreaterThan(0)
+    }
+  }, 30_000)
+})

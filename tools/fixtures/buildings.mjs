@@ -25,9 +25,13 @@ export const OVERTURE_BUILDINGS_SOURCE = 'Overture Maps Foundation — buildings
 export const OVERTURE_BUILDINGS_LICENSE = 'ODbL 1.0; upstream attribution retained by Overture'
 export const OVERTURE_BUILDINGS_DOCS = 'https://docs.overturemaps.org/guides/buildings/'
 export const OVERTURE_ATTRIBUTION = '© OpenStreetMap contributors, Overture Maps Foundation'
-export const OVERTURE_DATA_RELEASE = '2026-06-17.0'
-export const OVERTURE_SCHEMA_VERSION = 'v1.17.0'
-export const OVERTURE_CLIENT_VERSION = '1.0.1'
+// Overture keeps only ~2 monthly releases (~60 days) on S3 for GDPR, so a pinned release goes
+// dead and its client's release allowlist with it. Bumped 2026-09 (was 2026-06-17.0 / v1.17.0 /
+// client 1.0.1, all expired) to the current release; re-check https://docs.overturemaps.org
+// before a future run.
+export const OVERTURE_DATA_RELEASE = '2026-08-19.0'
+export const OVERTURE_SCHEMA_VERSION = 'v1.18.0'
+export const OVERTURE_CLIENT_VERSION = '1.0.2'
 export const OVERTURE_STAC_COLLECTION =
   `https://stac.overturemaps.org/${OVERTURE_DATA_RELEASE}/buildings/building/collection.json`
 
@@ -197,11 +201,14 @@ async function downloadOvertureGeoJson(bbox, output) {
 
 const sha256 = (data) => createHash('sha256').update(data).digest('hex')
 
-export async function writeBuildingFixture({ dir, scenarioId, inputPath }) {
+export async function writeBuildingFixture({ dir, scenarioId, inputPath, bboxOverride }) {
   const terrainHeader = JSON.parse(await readFile(new URL('terrain.json', dir), 'utf8'))
   const terrainPng = await readFile(new URL('terrain.png', dir))
   const groundElevation = createTerrainSampler(terrainPng, terrainHeader)
-  const bbox = Object.values(terrainHeader.requestedBbox ?? terrainHeader.bounds)
+  // The building AO defaults to the DEM's box, but a dense urban core (New Orleans, Houston)
+  // can exceed §21's 250 KB gzip budget across a full 5 km box. --bbox crops the footprints to
+  // the mission core while ground elevation still samples the full committed DEM underneath.
+  const bbox = bboxOverride ?? Object.values(terrainHeader.requestedBbox ?? terrainHeader.bounds)
   const temp = await mkdtemp(join(tmpdir(), 'drone-buildings-'))
   const downloadedPath = join(temp, 'overture-buildings.geojson')
 
@@ -281,9 +288,14 @@ function parseArgs(argv) {
 
 async function cli() {
   const args = parseArgs(process.argv.slice(2))
-  if (!args.id) throw new Error('usage: node tools/fixtures/buildings.mjs --id <scenarioId> [--input raw.geojson]')
+  if (!args.id) throw new Error('usage: node tools/fixtures/buildings.mjs --id <scenarioId> [--input raw.geojson] [--bbox w,s,e,n]')
   const dir = new URL(`../../src/scenarios/fixtures/${args.id}/`, import.meta.url)
-  const result = await writeBuildingFixture({ dir, scenarioId: args.id, inputPath: args.input })
+  let bboxOverride
+  if (args.bbox) {
+    bboxOverride = args.bbox.split(',').map(Number)
+    if (bboxOverride.length !== 4 || bboxOverride.some((v) => !Number.isFinite(v))) throw new Error('--bbox must be w,s,e,n')
+  }
+  const result = await writeBuildingFixture({ dir, scenarioId: args.id, inputPath: args.input, bboxOverride })
   console.log(
     `buildings: ${result.stats.output}/${result.stats.input} retained · ` +
     `${result.stats.noHeight} without height · ${(result.bytes / 1024).toFixed(1)} KB raw · ` +
