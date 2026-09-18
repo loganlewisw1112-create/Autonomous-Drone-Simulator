@@ -14,6 +14,22 @@
   "generatedAt": "2026-09-17",
   "sources": [
     {
+      "fixture": "airspace.json",
+      "source": "FAA UAS Facility Map (UASFM) V5 — UAS Data Delivery System",
+      "url": "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/FAA_UAS_FacilityMap_Data_V5/FeatureServer/0/query?where=1%3D1&geometry=%7B%22xmin%22%3A-90.09292261136918%2C%22ymin%22%3A29.941542220625223%2C%22xmax%22%3A-90.04107738863081%2C%22ymax%22%3A29.986457779374774%2C%22spatialReference%22%3A%7B%22wkid%22%3A4326%7D%7D&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects&outFields=OBJECTID%2CCEILING%2CUNIT%2CMAP_EFF%2CAPT1_NAME%2CAPT1_ICAO%2CAIRSPACE_1&returnGeometry=true&resultRecordCount=1000&resultOffset=0&f=geojson",
+      "license": "US Government public domain (17 U.S.C. §105) — FAA UAS Facility Map, UAS Data Delivery System",
+      "retrievedAt": "2026-09-17",
+      "sha256": "434482ca7456606f44e67093daa85e216b07b230b21ee1faadf211bb430d3172",
+      "mapEffective": "10/6/2022",
+      "facilities": [
+        "Lakefront (KNEW)"
+      ],
+      "ceilingRangeFt": [
+        300,
+        400
+      ]
+    },
+    {
       "fixture": "constellation.json",
       "source": "CelesTrak — GPS YUMA almanac (US Space Force / NAVCEN)",
       "url": "https://celestrak.org/GPS/almanac/Yuma/2026/almanac.yuma.week0379.589824.txt",

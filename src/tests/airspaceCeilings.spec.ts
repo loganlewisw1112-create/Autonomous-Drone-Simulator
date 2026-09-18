@@ -190,9 +190,17 @@ describe('WP-3 frozen UASFM fixtures', () => {
   const withGrid = ALL_SCENARIOS.filter((s) => observedAirspaceFor(s.id))
 
   it('covers the scenarios the FAA actually publishes a facility map over', () => {
+    const ids = withGrid.map((s) => s.id)
     expect(withGrid.length).toBeGreaterThanOrEqual(2)
-    expect(withGrid.map((s) => s.id)).toContain('train_hazmat_plume')
-    expect(withGrid.map((s) => s.id)).toContain('train_uscg_maritime_sar')
+    expect(ids).toContain('train_hazmat_plume')
+    expect(ids).toContain('train_uscg_maritime_sar')
+    // WP-3 coverage extension: the historical disaster AOs that fall under a charted UASFM
+    // facility map (Houston Hobby, Joplin Rgnl, New Orleans Lakefront, Rocky Mountain Metro).
+    // The rural AOs with no published map (Oso, Kīlauea, the Camp Fire flank) are correctly absent.
+    for (const id of ['hist_harvey_houston_2017', 'hist_joplin_ef5_2011', 'hist_katrina_lower_ninth_2005', 'hist_marshall_fire_2021']) {
+      expect(ids, `${id} should carry its real UASFM grid`).toContain(id)
+    }
+    expect(ids).not.toContain('hist_oso_sr530_2014')
   })
 
   it('freezes a well-formed 30 arc-second grid with sane published ceilings', () => {

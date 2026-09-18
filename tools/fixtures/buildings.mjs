@@ -249,6 +249,9 @@ export async function writeBuildingFixture({ dir, scenarioId, inputPath }) {
       filters: 'measured height, or num_floors × 3m; unknown-height footprints excluded',
     }
     const manifest = {
+      // Preserve any top-level field an earlier fetcher wrote (e.g. openMeteo's required
+      // `realDate`); a buildings run only owns scenarioId / area.aoBbox / generatedAt / sources.
+      ...(previous ?? {}),
       scenarioId,
       area: { ...(previous?.area ?? {}), aoBbox: bbox },
       generatedAt: new Date().toISOString().slice(0, 10),
