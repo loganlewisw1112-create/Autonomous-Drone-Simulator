@@ -106,6 +106,27 @@ export function ControlBar() {
             </>
           )}
 
+          {/* Wind + gust readout. The gust is what closes a launch bay (~30 kt), so it is called
+              out in red above that threshold — this is the whole lesson of the no-launch scenarios,
+              where the sustained wind can look benign while the recorded gusts ground the fleet. */}
+          {(() => {
+            const gustClosesLaunch = weatherState.gustKts >= 30
+            return (
+              <span style={{ marginLeft: 4, fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ color: 'var(--text-dim)' }}>WIND </span>
+                <span style={{ color: 'var(--text-primary)' }}>{Math.round(weatherState.windKts)} kt</span>
+                <span style={{ color: 'var(--text-dim)' }}> · GUST </span>
+                <span style={{ color: gustClosesLaunch ? 'var(--accent-red, #ff5a5a)' : 'var(--text-primary)', fontWeight: gustClosesLaunch ? 700 : 400 }}>
+                  {Math.round(weatherState.gustKts)} kt
+                </span>
+                {gustClosesLaunch && (
+                  <span style={{ color: 'var(--accent-red, #ff5a5a)' }} title="Gusts at or above ~30 kt close launch bays; holding the fleet may be the correct call.">
+                    {' '}⛔ BAY-CLOSING
+                  </span>
+                )}
+              </span>
+            )
+          })()}
           {/* Always show active hazards summary */}
           {weatherState.activeHazards.length > 0 && (
             <span style={{ color: 'var(--accent-yellow)', marginLeft: 4 }}>
