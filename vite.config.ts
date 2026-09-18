@@ -149,6 +149,9 @@ export default defineConfig(({ mode }) => {
   if (mode === 'classroom') {
     defineEnv['import.meta.env.VITE_CLASSROOM_ENABLED'] = JSON.stringify('true')
   }
+  // Read from the process only (never .env files) and always defined, so every build that
+  // harness/server.mjs did not start folds HARNESS_ENABLED to false and drops the harness chunk.
+  defineEnv['import.meta.env.VITE_HARNESS'] = JSON.stringify(process.env.VITE_HARNESS === '1' ? '1' : '')
   return ({
   // Project Pages site — assets resolve under /<repo>/ on GitHub Pages.
   // Local dev/preview and the packaged offline build are unaffected because
