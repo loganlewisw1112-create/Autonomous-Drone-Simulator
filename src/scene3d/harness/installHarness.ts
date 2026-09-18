@@ -13,7 +13,8 @@ import { runQuickDemo } from '@/sim/demo/quickDemo'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
 import { resolveTerrainFixtureId, terrainFixtureFor, terrainRasterFor } from '@/scenarios/terrainFixtures'
 import { createScene3D, type Scene3DHandle, type SceneDrone } from '@/scene3d'
-import { storeBuildingSource, storeFleetSource, storeSunSource } from '@/scene3d/fleetBinding'
+import { createLayerOwnership, storeBuildingSource, storeFleetSource, storeSunSource, storeVolumeSource } from '@/scene3d/fleetBinding'
+import type { CameraMode, VolumeFrame } from '@/scene3d'
 import { createTerrainModel, wholeTileBounds, type TerrainModel } from '@/scene3d/terrainModel'
 import { sunDirection } from '@/scene3d/sun'
 import { sunPosition, type SunPosition } from '@/scene3d/sun'
@@ -93,11 +94,21 @@ export interface Harness {
     step(dtSeconds: number): number
     fleet(): HarnessDrone[]
     clock(): { tick: number; elapsedSec: number }
+    /** The operator's EO/IR sensor-mode switch (thermal footprints exist only in IR). */
+    sensorMode(mode: 'eo' | 'ir'): void
   }
   camera: {
     set(opts: HarnessCameraOptions): void
     fromTo(from: [number, number], fromAltM: number, to: [number, number], toAltM: number, fovDeg?: number): void
     mode(name: string): void
+    /** Same, but with the rig's own rAF loop running (for input-latency measurement). */
+    live(name: string): void
+    /** Step the camera rig by fixed dt (the rAF loop is off under the harness, so paths replay exactly). */
+    advance(dtSec: number): void
+    state(): ReturnType<Scene3DHandle['camera']['state']> | null
+    follow(id: string | null): void
+    /** Where a scene point lands on screen, from the last drawn frame. */
+    project(lng: number, lat: number, elevationM: number): { x: number; y: number } | null
   }
   terrain: {
     /** Rendered elevation (sim DEM × live exaggeration), metres MSL; null outside the DEM. */
@@ -119,6 +130,13 @@ export interface Harness {
     /** Fly a hand-placed fleet instead of the sim's (prop phase still follows the SIM clock);
      *  `[]` = empty sky, `null` = back to the sim fleet. */
     synthetic(drones: SceneDrone[] | null): void
+    /** One aircraft flying a figure-eight on the SIM clock, turning both ways. Its heading sweeps 45°→315° through
+     *  SOUTH; `rotationDeg: 180` turns the pattern so the sweep runs through NORTH instead (the 359° → 1° wrap). */
+    figureEight(spec: { lng: number; lat: number; elevationM: number; radiusM: number; speedMs: number; rotationDeg?: number } | null): void
+    /** Fixed volume data, re-stamped with the live SIM clock so it rebuilds at the sim's cadence. */
+    volumes(frame: VolumeFrame | null): void
+    volumeStats(): ReturnType<Scene3DHandle['volumeStats']> | null
+    ownedLayers(): Array<{ id: string; visibility: string }>
     stats(): ReturnType<Scene3DHandle['fleetStats']> | null
   }
   lighting: {
@@ -191,6 +209,7 @@ export function installHarness(map: maplibregl.Map): Harness {
 
   let terrainSpec: { source: string; exaggeration?: number } | null = null
   let drawnGround: TerrainModel | null = null
+  let ownership: ReturnType<typeof createLayerOwnership> | null = null
   let footprints: (() => Array<{ ring: Array<[number, number]>; heightM: number }>) | null = null
   let exaggeration = 1
 
@@ -216,7 +235,9 @@ export function installHarness(map: maplibregl.Map): Harness {
           const terrain = createTerrainModel(map, scenario)
           drawnGround = terrain
           footprints = storeBuildingSource(scenario.id)
-          return { terrain, fleetSource: storeFleetSource(terrain), sunSource: storeSunSource(), buildings: storeBuildingSource(scenario.id) }
+          ownership = createLayerOwnership(map)
+          return { terrain, fleetSource: storeFleetSource(terrain), sunSource: storeSunSource(), buildings: storeBuildingSource(scenario.id),
+            volumeSource: storeVolumeSource(terrain), ownership }
         })())
       : null
     return { ok: true, seed: scenario?.seed, scenarioId: scenario?.id }
@@ -328,6 +349,10 @@ export function installHarness(map: maplibregl.Map): Harness {
           mode: d.missionState,
           platformId: d.platformId ?? null,
         })),
+      sensorMode: (mode) => {
+        const s = useDroneStore.getState()
+        useDroneStore.setState({ ui: { ...s.ui, sensorMode: mode } })
+      },
       clock: () => {
         const s = useDroneStore.getState()
         return { tick: s.tick, elapsedSec: s.elapsedSec }
@@ -351,9 +376,12 @@ export function installHarness(map: maplibregl.Map): Harness {
           new LngLat(to[0], to[1]), toAltM,
         ))
       },
-      mode: (name) => {
-        throw new Error(`camera mode "${name}" unavailable: the camera director lands in Phase 4`)
-      },
+      mode: (name) => harness.scene?.camera.setMode(name as CameraMode, true),
+      live: (name) => harness.scene?.camera.setMode(name as CameraMode),
+      advance: (dtSec) => harness.scene?.camera.update(dtSec),
+      state: () => harness.scene?.camera.state() ?? null,
+      follow: (id) => harness.scene?.follow(id),
+      project: (lng, lat, elevationM) => harness.scene?.project(lng, lat, elevationM) ?? null,
     },
     terrain: {
       elevationAt: renderedElevation,
@@ -384,9 +412,28 @@ export function installHarness(map: maplibregl.Map): Harness {
       },
     },
     fleet: {
-      synthetic: (drones) => harness.scene?.setFleetSource(
-        drones ? () => ({ drones, simTimeSec: useDroneStore.getState().elapsedSec }) : null),
+      // A hand-placed fleet brings no sensor data with it: the real fleet's trails/ellipsoids must not
+      // linger over a synthetic (or empty) sky. `fleet.volumes()` supplies them explicitly when wanted.
+      synthetic: (drones) => {
+        harness.scene?.setFleetSource(drones ? () => ({ drones, simTimeSec: useDroneStore.getState().elapsedSec }) : null)
+        harness.scene?.setVolumeSource(drones ? () => null : null)
+      },
       stats: () => harness.scene?.fleetStats() ?? null,
+      figureEight: (spec) => { harness.scene?.setVolumeSource(spec ? () => null : null); harness.scene?.setFleetSource(spec ? () => {
+        const t = useDroneStore.getState().elapsedSec
+        // Lemniscate of Gerono: x = r·sin(a), y = r·sin(a)·cos(a); heading from its derivative.
+        const a = (t * spec.speedMs) / spec.radiusM
+        const rot = ((spec.rotationDeg ?? 0) * Math.PI) / 180
+        const x = spec.radiusM * Math.sin(a), y = spec.radiusM * Math.sin(a) * Math.cos(a)
+        // Clockwise rotation of the pattern (bearings grow clockwise), heading turned with it.
+        const east = x * Math.cos(rot) + y * Math.sin(rot), north = -x * Math.sin(rot) + y * Math.cos(rot)
+        const headingDeg = ((Math.atan2(Math.cos(a), Math.cos(2 * a)) * 180) / Math.PI + (spec.rotationDeg ?? 0) + 720) % 360
+        return { simTimeSec: t, drones: [{ id: 'figure-eight', airframe: 'x10' as const, lng: spec.lng + east / (111_320 * Math.cos((spec.lat * Math.PI) / 180)),
+          lat: spec.lat + north / 111_320, elevationM: spec.elevationM, headingDeg, speedMs: spec.speedMs, propRpm: 5600, gimbalYawDeg: 0, gimbalPitchDeg: -25, color: '#00e5ff' }] }
+      } : null) },
+      volumes: (frame) => harness.scene?.setVolumeSource(frame ? () => ({ ...frame, simTimeSec: useDroneStore.getState().elapsedSec }) : null),
+      volumeStats: () => harness.scene?.volumeStats() ?? null,
+      ownedLayers: () => (ownership?.owned() ?? []).map((id) => ({ id, visibility: String(map.getLayoutProperty(id, 'visibility') ?? 'visible') })),
     },
     lighting: {
       sunPosition,

@@ -2,15 +2,15 @@
 
 Branch: feat/3d-scene-layer
 Plan: AUTONOMOUS-PLAN-3d-view.md
-Last updated: 2026-09-18T04:00:00-07:00
+Last updated: 2026-09-18T05:30:00-07:00
 Repo: `D:\CODING\PROJECTS - CURRENTLY WORKING ON\portfolio_local_repo_ready\04-autonomous-drone-mission-simulator`
 
 Claim marks: **V** = Verified (command named), **I** = Inferred (basis named), **U** = Unverified.
 
 ## State
-Current phase: 4
+Current phase: 5
 Gate status: not attempted
-Next concrete action: port `cameraDirector.js` (repo root) to `src/scene3d/cameraDirector.ts` and wire it to the scene handle. Modes TACTICAL / ORBIT / CHASE / FPV / GROUND; every mode solves camera position + look-at -> `calculateCameraOptionsFromTo` (needs real `LngLat` instances) -> `jumpTo` on rAF; NEVER `easeTo` per frame. Known constraints from earlier phases: keep derived zoom <= 22 (maxZoom clamp silently moves the camera); set FOV before `calculateCameraOptionsFromTo`; pitch > 90 needs `setMaxPitch(180)` + `setCenterClampedToGround(false)`; ground heights come from `terrainModel.groundAt` (NOT `queryTerrainElevation`, which returns 0 off-screen). The sim ticks at 20 Hz - the director (and the fleet poses) need inter-tick smoothing that stays deterministic under `__harness.sim.freeze/step` (drive smoothing from sim time + a fixed dt, not wall clock, when the harness is stepping). Then sensor volumes (gimbal FOV cone, thermal footprint decal replacing `ir-footprints`, GNSS ellipsoid replacing `gnss-uncertainty`, altitude-correct trail ribbons replacing `trail-uav-*`), hiding each 2D layer while its 3D twin is active (Gate 4.5) and restoring it in `disable()`.
+Next concrete action: Phase 5 atmosphere. (1) `map.setSky()` already ships (installed by the camera director from `skyPalette.ts` whenever the camera is unlocked, restored on TACTICAL/disable) - Gate 5.1 must check it at pitch 0/60/89/107, so make the sky available outside the camera modes too (own it from `index.ts` while the layer is enabled, not only from the director). (2) Height fog: the plan keys it to "the open-meteo visibility field already being fetched" - THAT FIELD DOES NOT EXIST (fixtures say "visibility not in ERA5"). Use a documented proxy (cloud cover + the scenario's smoke) or a harness-settable `visibilityKm`; Gate 5.2 needs 2 km vs 20 km to change distant-ROI contrast by >= 20 %. MapLibre's sky spec has fog terms (`fog-color`, `fog-ground-blend`, `horizon-fog-blend`) - try driving those before writing a custom fog pass. (3) Smoke column: instanced billboards, curl noise, SEEDED FROM `scenario.seed` (no `Math.random`), animated on sim time. (4) Sun glare: screen-space sprite, NOT a post pass (Gate 5.4 greps for `EffectComposer|postprocessing`). Also consider the open taste item: the basemap stays daytime-bright at night.
 
 ## Completed phases
 - [x] P-0 preflight — `c352cb4` — `GATE P0 PASS assertions=17/17 failed=[]`, screenshots byte-identical (sha256 `54fc703b429ef5f9…`) across 4 cold launches in 2 gate runs **V** (`node harness/gates/run.mjs p0`)
@@ -20,7 +20,23 @@ Next concrete action: port `cameraDirector.js` (repo root) to `src/scene3d/camer
 
 - [x] Phase 2 lighting - `90ed5c4` - `GATE 2 PASS assertions=10/10 failed=[] p75_layer_ms=0.4` **V** (`node harness/gates/run.mjs 2`). One remediation: night levels (a lighting value, not a criterion).
 
-- [x] Phase 3 shadows - commit `feat(scene3d): terrain shadow receiver...` - `GATE 3 PASS assertions=9/9 failed=[] skipped=[3.4] p75_layer_ms=0.5` **V** (`node harness/gates/run.mjs 3`). **FALLBACK 3 taken, narrowly, for buildings only** - see Deviations.
+- [x] Phase 3 shadows - `d0f4876` - `GATE 3 PASS assertions=9/9 failed=[] skipped=[3.4] p75_layer_ms=0.5` **V** (`node harness/gates/run.mjs 3`). **FALLBACK 3 taken, narrowly, for buildings only** - see Deviations.
+
+- [x] Phase 4 camera + volumes - commit `feat(scene3d): camera director with 5 modes...` - `GATE 4 PASS assertions=9/9 failed=[] p75_layer_ms=1.8` **V** (`node harness/gates/run.mjs 4`).
+
+## Gate 4 record
+| # | Result **V** |
+|---|---|
+| 4.1 modes hold | 60 s of sim per mode on a figure-eight subject: worst camera jump ORBIT 1.85 m, CHASE 1.20 m, FPV 0.85 m, GROUND 0.00 m (need <= 50); TACTICAL leaves the operator's camera untouched |
+| 4.2 bearing wrap | worst bearing step CHASE 0.72, FPV 0.73 deg/frame across real 359->1 crossings (need <= 10) |
+| 4.3 GROUND looks up | pitch **109.5 deg**, aircraft at 35 % of frame height (need pitch > 100, upper 40 %) |
+| 4.4 sky | top quarter of the GROUND frame: **0** raw-canvas pixels (raw canvas measured in a no-sky control shot: rgb 13,17,23), 100 % sky-blue |
+| 4.5 no duplicates | 9 flat layers hidden (2 footprint, 2 GNSS, 5 trail) while 4 footprints+cones / 5 ellipsoids / 146 trail segments are drawn; all 9 restored on `disable()` |
+| 4.6 INP | drag-to-orbit p75 **162 ms** on the final run (135.7 on an earlier one), p95 172 ms (need <= 200). NOTE the margin is thin and it is not the rig: input-to-paint is ~2 frames, and the BASELINE map paints a pitched terrain view at ~60 ms/frame here (see Open findings) |
+| 4.7 budget | p75 **1.8 ms**, 20 aircraft, every volume on, volumes rebuilding at the sim's 20 Hz (budget 8) |
+| 4.8 (extra) | kill switch restores pitch cap 60, pan/zoom handlers, default FOV and the style's own sky |
+
+**Regression caught by re-running the earlier gates (plan 6.6 habit, applied every phase):** the first Phase 4 tree broke Gates 0.3@p0, 2.8 and 3.6. With the sky emptied for a test (`fleet.synthetic([])`) the scene still drew the REAL fleet's trails and GNSS ellipsoids and hid their flat layers, so "an empty scene leaves the map untouched" stopped being true (0.16-0.51 % frame diff; a translucent ellipsoid over the pitch-0 test box). Fix: sensor volumes follow the fleet source (a hand-placed fleet brings none unless `fleet.volumes()` supplies them), a volume source may return `null`, and the 2D hand-off is released the moment no volumes are drawn - not only on `disable()`. All of P0/0/1/2/3/4 pass on the final tree.
 
 ## Gate 3 record
 | # | Result **V** |
@@ -122,6 +138,13 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 | `UsagePolicyGate` (public-demo usage clock) | sessionStorage clock expiry | **deliberately NOT bypassed** — product/licensing control. Each probe launch is a cold profile, so the clock restarts |
 
 ## Decisions taken
+- **Camera rig time = `update(dt)`.** Live, a rAF loop feeds it wall-clock dt (clamped 0.1 s); under the harness the loop is off and the gate feeds fixed 50 ms steps in lock-step with `sim.step`, so every camera path in Gate 4 replays exactly. No React and no store in the input path: drag-to-orbit mutates plain fields.
+- **Final smoothing constants** (`CAMERA_PRESETS`, seconds to close 63 % of the gap): ORBIT 0.8 (0.08 while dragging), CHASE 0.35, FPV 0.18, GROUND 1.1, FOV 0.6. These are the draft's values; they hold 60 s on a manoeuvring subject with sub-2 m camera steps at the sim's 20 Hz. Tuning by eye is still owed (aesthetic pass).
+- **GROUND standoff is 45 m, not the draft's 140 m, and the aim sits 0.17 x FOV below the aircraft.** Looking straight at a 30 m aircraft from 140 m is pitch ~101 with the subject dead-centre; Gate 4.3 wants pitch > 100 AND the subject in the upper 40 %. 45 m gives pitch 109.5 with the aircraft at 35 % and ground + horizon under it. (The plan's pitch-89 fallback was not needed.)
+- **Sensor volumes consume the app's own feature builders** (`buildIrFootprintFeatures`, `buildGnssUncertaintyFeatures` from `tacticalMapGeoJson.ts`), so a 3D twin cannot disagree with the flat layer it replaces about eligibility, size or colour. Footprints follow the app's rule: IR sensor mode AND the toggle.
+- **2D/3D hand-off is re-asserted every frame** (`createLayerOwnership.claim()`): the app's own effect sets those layers visible again whenever sensor mode or a toggle changes. `release()` restores what the app's rule wants, not a stale snapshot.
+- **The fleet model stores lng/lat history only**, so altitude-correct trails are recorded by the binding per 0.5 s of sim time; on first sight a trail is seeded from the flat history at the aircraft's current height (approximate for that seeded stretch).
+- **The sky is installed by the director on unlock** (`map.setSky` from `skyPalette.ts`) and the style's own sky is restored on relock - Gate 4.4 makes this mandatory a phase earlier than the plan lists it.
 - **One ground model for the whole scene** (`terrainModel.ts`): the sim DEM x live exaggeration, masked to where MapLibre actually draws relief. Measured: relief appears only inside the whole-tile block AND only at zoom >= 15 (none at z14). Instead of modelling MapLibre's zoom rule the model asks it once per frame (one `queryTerrainElevation` at an on-block point vs the DEM). Aircraft heights, the shadow receiver and the gate's predicted shadow position all read this model, so they cannot disagree. Aircraft heights were moved onto it from `queryTerrainElevation` (which answers 0 for off-screen tiles).
 - **Terrain receiver** = one 97x97 grid covering 1.35x the view-fitted shadow box, snapped to its own cell size (no shadow swimming), rebuilt only when the focus moves > 25 % of the box or the box resizes > 30 % or relief flips. Lift = max(0.35 m, 6 % of a cell) + polygon offset. Depth test stays ON so a ridge still hides a shadow behind it.
 - **Shadow normal-bias scales with the shadow texel** (1.5 texels, floor 0.04 m): a fixed world-space bias acnes on a wide box and peter-pans on a tight one.
@@ -170,6 +193,9 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 - **`/autocompact`, `/clear`** are interactive CLI commands not available to this runner; PROGRESS.md handoff discipline is kept regardless.
 
 ## Open findings (not blocking)
+- **WHOLE-FRAME TIME IS DOMINATED BY THE BASELINE MAP, NOT THE 3D LAYER - Gate 6.1 is at risk as literally written.** Measured on this machine (AMD Radeon integrated GPU, headed Chrome 1100x889 canvas, nothing else running), rAF frame time p50/p75: layer OFF pitch 60 static **22.8 / 55.4 ms**, layer OFF pitch 60 rotating 39.6 / 76.3 ms, layer OFF pitch 0 rotating 17.5 / 19.9 ms; layer ON pitch 60 static 16.0 / 29.9 ms, layer ON rotating 30.6 / 61.8 ms. The layer's own `render()` is 0.3-1.8 ms p75 in every gate. So the pitched-terrain + 139-layer style alone misses 16.7 ms here, with or without this work. Phase 6 must measure the layer's ADDED cost (on vs off, same cell) alongside the total, and report 6.1 honestly rather than tune the 3D layer against a budget the baseline already blows.
+- Inter-tick smoothing of aircraft POSES is still absent (they advance at the sim's 20 Hz); the camera is smoothed, the subject is not. Visible as slight stepping in CHASE/FPV at 60 fps. A deterministic interpolation (previous/current tick + render alpha) belongs with the aesthetic pass.
+- Click-to-select rides on the (transparent) DOM markers, which sit at the GROUND-projected position; in pitched 3D views the aircraft mesh is drawn well above that point, so the click target and the visible aircraft separate. Needs a raycast pick in the layer (not in the plan).
 - **Building shadow stand-ins self-shadow (Gate 3.4)** - shipped OFF; see Deviations for the full trail and `shadowReceivers.ts` header. `handle.setBuildingShadows(true)` / `npm run gate -- 3 --with-buildings` reproduces.
 - **`map.loaded()` occasionally sticks false for > 30 s** (a remote basemap tile request stalls). Seen once in ~25 gate runs. `probe.ready()` now retries once. If it recurs often, the harness should serve the basemap from a local fixture - the gates currently depend on OpenFreeMap being reachable.
 - **The basemap does not get dark at night.** Phase 2 lights the MODELS; MapLibre's 2D style stays daytime-bright, so a correctly dark night airframe sits on a bright map and additive nav-light glows wash out toward white. Not in the plan's Phase 2 scope; Phase 5 (sky/fog) is the natural place for a night dimming treatment. Needs an owner/taste decision.
@@ -182,7 +208,7 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 - Plan docs + `cameraDirector.js` are committed at the repo root per *Before kickoff*. This repo is public; they go public if the branch is ever pushed.
 - `node_modules` had drifted from the lockfile before this work (first `npm install` re-synced 94 packages). Baseline and post-change test totals are nevertheless identical.
 
-## Files touched this phase (Phase 3)
-- new: `src/scene3d/terrainModel.ts`, `src/scene3d/shadowReceivers.ts`, `harness/gates/gate-3.mjs`
-- changed: `src/scene3d/SceneLayer.ts` (`fromScene`), `src/scene3d/lighting.ts` (`shadowRadius`, texel-scaled normal bias), `src/scene3d/index.ts` (receivers, `setShadows`, `setBuildingShadows`, `receiverStats`), `src/scene3d/fleetBinding.ts` (heights from the ground model; `storeBuildingSource`), `src/scene3d/harness/installHarness.ts` (`terrain.drawnGroundAt/shadowHit`, `buildings.pick`, shadow toggles; whole-tile bounds now shared with the scene), `harness/assert.mjs` (`gate.skip`), `harness/probe.mjs` (one `ready()` retry), `src/scene3d/README.md`, `PROGRESS.md`
-- **No existing app file touched in Phase 3.**
+## Files touched this phase (Phase 4)
+- new: `src/scene3d/cameraDirector.ts` (TS port of the root `cameraDirector.js`, which is left untouched as the plan's input), `src/scene3d/volumes.ts`, `harness/gates/gate-4.mjs`
+- changed: `src/scene3d/SceneLayer.ts` (`project`), `src/scene3d/index.ts` (director, volumes, `follow`, `project`, `volumeStats`; `disable()` returns the camera to TACTICAL and releases the 2D layers), `src/scene3d/fleetBinding.ts` (`storeVolumeSource`, `createLayerOwnership`), `src/scene3d/harness/installHarness.ts` (`camera.mode/live/advance/state/follow/project`, `fleet.figureEight/volumes/volumeStats/ownedLayers`, `sim.sensorMode`), `src/scene3d/README.md`, `PROGRESS.md`
+- **No existing app file touched in Phase 4** (the binding imports two exported builders from `src/components/tacticalMapGeoJson.ts`; it does not edit them).

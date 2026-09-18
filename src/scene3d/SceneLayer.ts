@@ -90,6 +90,16 @@ export class SceneLayer implements maplibregl.CustomLayerInterface {
     return { lng: ll.lng, lat: ll.lat }
   }
 
+  /** Scene position → CSS pixels in the map container, using the matrix of the last drawn frame. `null` behind the camera. */
+  project(lng: number, lat: number, elevationM: number): { x: number; y: number } | null {
+    const canvas = this.map?.getCanvas()
+    if (!canvas) return null
+    const p = this.toScene(lng, lat, elevationM)
+    const v = this.probe.set(p.x, p.y, p.z, 1).applyMatrix4(this.camera.projectionMatrix)
+    if (v.w <= 0) return null
+    return { x: ((v.x / v.w + 1) / 2) * canvas.clientWidth, y: ((1 - v.y / v.w) / 2) * canvas.clientHeight }
+  }
+
   onAdd(map: maplibregl.Map, gl: WebGLRenderingContext | WebGL2RenderingContext): void {
     this.map = map
     if (!this.renderer) {

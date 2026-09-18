@@ -88,6 +88,17 @@ it again after any style swap (`style.load`), which drops custom layers.
 - **Building stand-ins are OFF by default - known defect** (they shadow themselves; Gate 3.4
   skipped under the plan's fallback). See the header of `shadowReceivers.ts`.
 
+## Camera and sensor volumes
+
+- `cameraDirector.ts`: TACTICAL (hands off) / ORBIT / CHASE / FPV / GROUND. Every mode solves camera
+  position + look-at -> `calculateCameraOptionsFromTo` -> `jumpTo`. `update(dt)` is the whole rig:
+  a rAF loop feeds it live, the gates feed it fixed steps. Drag-to-orbit never touches React.
+- Unlocking the camera installs a sky from `skyPalette.ts`, disables MapLibre's own pan/rotate/zoom
+  handlers (they would fight the rig) and lifts the pitch cap; TACTICAL and `disable()` put it all back.
+- `volumes.ts`: thermal footprint (ground-draped), gimbal cone, GNSS ellipsoid, altitude-correct
+  trail ribbon. They are fed by the APP'S OWN feature builders, and `createLayerOwnership` hides the
+  flat twin every frame while the 3D one is drawn. One picture per concept.
+
 ## Things measured the hard way (maplibre-gl 6.9.0)
 
 - **The map draws less relief than the sim flies over.** `scenarioTerrainLayers.impl.ts › extractTile`

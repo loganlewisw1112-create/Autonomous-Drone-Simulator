@@ -14,7 +14,10 @@ import { sceneInstant } from './sceneClock'
 import { sunPosition, type SunPosition } from './sun'
 import type { BuildingFootprint } from './shadowReceivers'
 import type { TerrainModel } from './terrainModel'
+import type * as maplibregl from 'maplibre-gl'
+import { buildGnssUncertaintyFeatures, buildIrFootprintFeatures } from '@/components/tacticalMapGeoJson'
 import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
+import type { VolumeFrame } from './volumes'
 
 const FT_TO_M = 0.3048
 const HOVER_RPM = 5200
@@ -97,5 +100,81 @@ export function storeBuildingSource(scenarioId: string): () => BuildingFootprint
     }
     cached = out
     return out
+  }
+}
+
+const TRAIL_SAMPLE_SEC = 0.5
+const TRAIL_MAX_POINTS = 240
+
+/**
+ * Sensor volumes from the SAME builders the 2D layers use (tacticalMapGeoJson), so a 3D twin can never
+ * disagree with the layer it replaces about who has a footprint, how big an error ring is, or its colour.
+ * The fleet model keeps lng/lat history only, so altitude-correct trails are recorded here, per sim
+ * sample; on first sight a trail is seeded from that flat history at the aircraft's current height.
+ */
+export function storeVolumeSource(terrain: TerrainModel): () => VolumeFrame {
+  const trails = new Map<string, Array<[number, number, number]>>()
+  let sampledAt = -Infinity
+  return () => {
+    const { drones, elapsedSec, positionHistory, ui } = useDroneStore.getState()
+    const heightOf = (d: DroneState) => terrain.groundAt(d.position.lng, d.position.lat) + d.altitudeFt * FT_TO_M
+    const byId = new Map(drones.map((d) => [d.id, d]))
+
+    if (elapsedSec < sampledAt) { trails.clear(); sampledAt = -Infinity } // scenario restarted
+    if (elapsedSec - sampledAt >= TRAIL_SAMPLE_SEC) {
+      sampledAt = elapsedSec
+      for (const d of drones) {
+        let trail = trails.get(d.id)
+        if (!trail) {
+          const agl = d.altitudeFt * FT_TO_M
+          trail = (positionHistory[d.id] ?? []).map((p) => [p.lng, p.lat, terrain.groundAt(p.lng, p.lat) + agl] as [number, number, number])
+          trails.set(d.id, trail)
+        }
+        if (d.altitudeFt > 1) trail.push([d.position.lng, d.position.lat, heightOf(d)])
+        if (trail.length > TRAIL_MAX_POINTS) trail.splice(0, trail.length - TRAIL_MAX_POINTS)
+      }
+    }
+
+    return {
+      simTimeSec: elapsedSec,
+      footprints: buildIrFootprintFeatures(drones).flatMap((f) => {
+        const d = byId.get(f.properties.id)
+        const ring = f.geometry.coordinates[0]
+        return d ? [{ id: d.id, apex: ring[0] as [number, number], apexElevationM: heightOf(d), arc: ring.slice(1, -1) as Array<[number, number]> }] : []
+      }),
+      uncertainties: buildGnssUncertaintyFeatures(drones).flatMap((f) => {
+        const d = byId.get(f.properties.id)
+        if (!d) return []
+        const at = d.reportedPosition ?? d.position
+        return [{ id: d.id, lng: at.lng, lat: at.lat, elevationM: heightOf(d), radiusM: f.properties.radiusM, color: f.properties.color }]
+      }),
+      trails: drones.map((d) => ({ id: d.id, color: d.color, points: trails.get(d.id) ?? [] })),
+      // The app shows footprints only in IR sensor mode with the toggle on; trails and GNSS rings always.
+      show: { footprints: ui.sensorMode === 'ir' && ui.layerVisibility.irFootprints, uncertainty: true, trails: true },
+    }
+  }
+}
+
+/**
+ * While the scene draws a concept, its flat layer is hidden — two pictures of one thing is what makes a
+ * 3D overlay look amateur. `claim()` runs every frame because the app's own effects set these layers
+ * visible again whenever sensor mode or a toggle changes. `release()` puts back what the app wants.
+ */
+export function createLayerOwnership(map: maplibregl.Map): { claim(): void; release(): void; owned(): string[] } {
+  const owned = () => {
+    const { drones } = useDroneStore.getState()
+    return ['ir-footprint-fill', 'ir-footprint-line', 'gnss-uncertainty-fill', 'gnss-uncertainty-ring', ...drones.map((d) => `trail-${d.id}`)]
+      .filter((id) => map.getLayer(id))
+  }
+  return {
+    owned,
+    claim() {
+      for (const id of owned()) if (map.getLayoutProperty(id, 'visibility') !== 'none') map.setLayoutProperty(id, 'visibility', 'none')
+    },
+    release() {
+      const { ui } = useDroneStore.getState()
+      const footprints = ui.sensorMode === 'ir' && ui.layerVisibility.irFootprints
+      for (const id of owned()) map.setLayoutProperty(id, 'visibility', id.startsWith('ir-footprint') && !footprints ? 'none' : 'visible')
+    },
   }
 }
