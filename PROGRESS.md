@@ -2,15 +2,15 @@
 
 Branch: feat/3d-scene-layer
 Plan: AUTONOMOUS-PLAN-3d-view.md
-Last updated: 2026-09-18T07:00:00-07:00
+Last updated: 2026-09-18T10:00:00-07:00
 Repo: `D:\CODING\PROJECTS - CURRENTLY WORKING ON\portfolio_local_repo_ready\04-autonomous-drone-mission-simulator`
 
 Claim marks: **V** = Verified (command named), **I** = Inferred (basis named), **U** = Unverified.
 
 ## State
-Current phase: 6
-Gate status: not attempted
-Next concrete action: Phase 6. (1) `src/scene3d/quality.ts`: `quality` enum `cinematic | balanced | tactical` with the FIXED degradation order: post-effects (none exist) -> smoke (`setSmokeAmount`) -> shadow resolution (`sun.shadow.mapSize` 2048 -> 1024, dispose the map) -> shadows off (`setShadows(false)`) -> LOD bands tightened (`LOD_FULL_MAX_M`/`LOD_LOW_MAX_M` become settable) -> layer off (`disable()`, DOM markers back). Auto-select from a 3 s frame-time sample on first run; user-overridable. (2) THE FRAME-BUDGET PROBLEM (read Open findings first): the BASELINE map alone runs p75 20-76 ms on this machine, so Gate 6.1's literal "p75 frame <= 16.7 ms in all 72 cells" cannot pass with or without this layer. Measure every cell BOTH ways (layer on and layer off, same camera) and report total AND added cost; do NOT tune the ladder against a budget the baseline blows, and do NOT lower the criterion - if 6.1 fails as written, write it up per the plan's abort/discipline rules (a truthful FAIL with evidence, plus the added-cost result). Degradation (6.2) must key off the LAYER'S OWN cost or an injected synthetic load, or it would switch the layer off on any pitched view. (3) 72-cell matrix {1,5,20 aircraft} x {dawn,noon,night} x {ground,orbit,FPV} x {terrain on,off}: terrain-off is ONE-WAY per page (maplibre 6.9), so run all 36 terrain-on cells, then disable terrain once, then the 36 terrain-off cells. Screenshots + probe JSON per cell into `artifacts/review/` with a contact-sheet `index.html`. (4) 6.4 baseline red set = EMPTY (must still be). 6.5 bundle: added gz JS was 164 KB at Phase 1 - re-measure (budget 400 KB / 6 MB transfer). (5) The user-facing mount: until now the layer is harness-only; Phase 6 is where a real toggle could land - that touches app files and the frozen v1.1 product, so keep it minimal and behind default-OFF.
+Current phase: **ABORTED at Gate 6, assertion 6.1** — see `ABORT.md`. Every other assertion in the plan passes.
+Gate status: Gate 6 = 10/11 (`failed=[6.1]`). Gates P0, 0, 1, 2, 3 (3.4 skipped under fallback), 4, 5 = PASS, re-run inside Gate 6.6.
+Next concrete action (owner decision, not an engineering step): **run `npm run gate -- 6` on a discrete-GPU machine** - the hardware `SPEC-3d-view.md` section 5 names. On this integrated-GPU machine the map ALONE costs 36-78 ms per pitched terrain frame, so "p75 frame <= 16.7 ms" fails in all 72 cells with the 3D layer REMOVED; the layer adds a median 0.2 ms. Then the aesthetic pass: open `artifacts/review/index.html` (72 cells) and try the real app with `?scene3d=1&camera=orbit` (console: `__scene3d`).
 
 ## Completed phases
 - [x] P-0 preflight — `c352cb4` — `GATE P0 PASS assertions=17/17 failed=[]`, screenshots byte-identical (sha256 `54fc703b429ef5f9…`) across 4 cold launches in 2 gate runs **V** (`node harness/gates/run.mjs p0`)
@@ -24,7 +24,25 @@ Next concrete action: Phase 6. (1) `src/scene3d/quality.ts`: `quality` enum `cin
 
 - [x] Phase 4 camera + volumes - `f015e77` - `GATE 4 PASS assertions=9/9 failed=[] p75_layer_ms=1.8` **V** (`node harness/gates/run.mjs 4`).
 
-- [x] Phase 5 atmosphere - commit `feat(scene3d): sky, visibility fog, seeded smoke column, sun glare` - `GATE 5 PASS assertions=8/8 failed=[] p75_layer_ms=0.7` **V** (`node harness/gates/run.mjs 5`).
+- [x] Phase 5 atmosphere - `390e032` - `GATE 5 PASS assertions=8/8 failed=[] p75_layer_ms=0.7` **V** (`node harness/gates/run.mjs 5`).
+
+- [ ] Phase 6 quality + verification - commit `feat(scene3d): quality tiers, degradation ladder, full verification matrix` - `GATE 6 FAIL assertions=10/11 failed=[6.1] p75_layer_ms=0.9` **V** (`node harness/gates/run.mjs 6`, ~45 min). **Aborted on 6.1 per plan Part 5; `ABORT.md` has the evidence and recommendation.** The work is committed so the branch stays intact and inspectable; it is NOT a passed gate.
+
+## Gate 6 record
+| # | Result **V** |
+|---|---|
+| **6.1 frame budget (as written)** | **FAIL.** 0/72 cells have whole-frame p75 <= 16.7 ms; worst 83 ms (1 aircraft, noon, FPV, terrain on). **72/72 are also over budget with the 3D layer removed.** Medians, terrain on: GROUND 44.6 ms (map alone 36.4), ORBIT 67.8 (64.9), FPV 79.7 (78.2). Terrain off: 17.6-17.8 ms with or without the layer (60 Hz vsync + timer jitter - a p75 of rAF intervals cannot be below the refresh interval). Reading it as "holds 60 Hz" (<= 18.4 ms): 36/72 with the layer, the identical 36/72 without |
+| 6.1b (diagnostic) what the layer costs | PASS. Layer `render()` p75 worst **0.9 ms** (budget 8); frame time added over the map alone: median **0.2 ms**, p90 8.2 ms (the p90 is GROUND: ~8 ms of GPU overdraw the CPU-timed governor cannot see); identical for 1, 5 and 20 aircraft |
+| 6.2 degradation | PASS. Rehearsed slow GPU (synthetic cost 30 ms at full quality, falling as features are given up): balanced -> smoke-off -> shadows-1024 -> shadows-off in 357 frames, HELD there (6 ms, layer still on at 5 aircraft), constraint lifted -> back to rung 1 after 703 frames |
+| 6.2b (extra) rung effects | PASS. Read back from the live objects: smoke 1 / 0.5 / 0; shadow map 2048 -> 1024; shadows off; LOD 300/1500 -> 150/800; layer off -> DOM markers opacity 1 |
+| 6.3 kill switch | PASS. With the whole feature set having been on (fleet, volumes, atmosphere, the full ladder), `disable()` restores the never-mounted frame: **0.0000 %** |
+| 6.3b (extra) after a camera journey | PASS. Residue after a look-up journey + `disable()`: 0.0991 %. The SAME journey in a fresh page with the layer never mounted: 0.0991 %. It is MapLibre's camera-history-dependent label placement, not layer residue |
+| 6.4 no baseline regression | PASS. typecheck 0, lint 0, tests `171 passed / 1 skipped`, `1272 passed / 3 skipped` - identical to P-0.2; red set still empty |
+| 6.5 bundle | PASS. **177.1 KB gz / 0.65 MB raw** in two lazy chunks (`mount-*`, `GLTFLoader-*`); nothing in the entry chunk; repo guards `assert:bundles` (startup 1,771,378 / 1,950,000 bytes), `assert:training-scope`, `assert:fixtures` all exit 0 |
+| 6.6 all prior gates | PASS. P0 17/17, 0 9/9, 1 8/8, 2 10/10, 3 9/9 (3.4 skipped), 4 9/9, 5 8/8 |
+| 6.7 review bundle | PASS. 72 screenshots + per-cell probe JSON + `artifacts/review/index.html` contact sheet (+ `app-mount-scene3d-orbit.png`: the real app, no harness) |
+
+**The real product path was exercised, not just the harness** **V**: public-style load with `?scene3d=1&camera=orbit&quality=balanced` and NO harness flag, scenario launched through the app's own welcome button -> layer enabled, ORBIT, tier balanced / rung smoke-half, 3 aircraft in the full LOD band, trails drawn, **0 console errors**; `__scene3d.disable()` -> TACTICAL, DOM marker opacity back to 1.
 
 ## Gate 5 record
 | # | Result **V** |
@@ -153,6 +171,13 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 | `UsagePolicyGate` (public-demo usage clock) | sessionStorage clock expiry | **deliberately NOT bypassed** — product/licensing control. Each probe launch is a cold profile, so the clock restarts |
 
 ## Decisions taken
+- **The quality governor watches the LAYER'S OWN cost, not whole-frame time** (`quality.ts`). On this GPU the map alone blows a 16.7 ms frame on any pitched terrain view; a whole-frame governor would walk to "layer-off" every time and make nothing faster. Budget 8 ms p75 (the plan's own layer ceiling), step down after ~1 s over, step up after ~3 s under 4 ms, never above the tier's rung. Ladder (fixed, cumulative): full -> smoke-half -> smoke-off -> shadows-1024 -> shadows-off -> lod-tight -> layer-off (terminal; `enable()` restarts the tier). Tiers: cinematic = rung 0, balanced = 1, tactical = 4. Auto mode opens at full quality and picks the tier from the first three seconds.
+- **Gate 6.2's "constrain to 30 ms" is a rehearsed slow GPU**: a synthetic per-rung cost added to the governor's input (30/24/18/12/6/3/0 ms), so giving features up buys the time back. It proves order, stopping point, hysteresis and recovery deterministically; 6.2b separately proves each rung really changes the live objects.
+- **The matrix has 72 cells because it has FOUR suns.** The plan lists {dawn, noon, night} but counts 72; 3x3x3x2 = 54. Dusk is added - the same four Gate 2 uses and the app's own `timeOfDay` values. A superset of what was listed, and the reading under which the plan's number is right.
+- **Every matrix cell is measured twice at the same camera** - layer mounted, layer removed (`setMounted`, which leaves camera, sky and the 2D hand-off alone) - so the layer's added cost is separable from the map's.
+- **User-facing mount = a URL flag, default OFF**: `?scene3d=1[&quality=cinematic|balanced|tactical][&camera=orbit|chase|fpv|ground]`, handle on `window.__scene3d`. No UI was added to the frozen v1.1 product; three.js reaches nobody who did not ask. One line in `TacticalMap.tsx`, next to the harness line.
+- **Each sim tick asks the map for a frame while the layer is on** (`createBoundScene`). MapLibre paints on demand; without this, aircraft at a resting camera would only move when something else repainted.
+- **Gate 6.3 is two claims**: exact restore with the camera never moved (0.0000 %), and after a look-up journey no more residue than the identical journey with the layer never mounted (0.0991 % both). The floor for a journeyed frame has to be measured, because MapLibre's label placement depends on camera history.
 - **The scene owns the sky whenever it is enabled** (`atmosphere.ts`), not just while the camera is unlocked; the style's own sky (none today) is restored on `disable()`. `map.setSky()` dirties the style, so it is written only when the palette / fog colour / visibility key actually changes (instrumented: `skyWrites`).
 - **Fog data source = the sim's own `weatherState.visibilityMi`** (seeded, deterministic). The plan's "open-meteo visibility field" does not exist (ERA5 fixtures carry none), but the sim's weather state does carry visibility, so no proxy was needed. Fog is applied twice so the two renderers agree: MapLibre's `fog-ground-blend` / `horizon-fog-blend` for the map, and a matching three.js `FogExp2` (95 % extinction at the stated visibility) for the scene.
 - **It is distance fog, not true height fog.** MapLibre's fog is a horizon term and a per-material height-fog shader patch across every three material was not worth the risk; recorded as a deviation.
@@ -197,6 +222,8 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 - **Gate "tree clean"** → interpreted as "no changes outside this phase's declared paths", since the gate necessarily runs before its own commit.
 
 ## Deviations from plan
+- **Phase 6 is committed although Gate 6 did not pass.** The plan commits "at every phase gate, immediately after the gate passes" and, on abort, says leave the branch intact and do not clean up. Leaving a day of verified work uncommitted in a working tree is the fragile reading of "intact", so it is committed with a message that says FAIL on 6.1 in its first line. It must not be read as a passed gate.
+- `harness/gates/gate-p0.mjs`: `ABORT.md` added to the declared-paths allowlist (it is a plan-mandated artifact at the repo root).
 - **Phase 5 "height fog" shipped as visibility-keyed DISTANCE fog** (see Decisions). Gate 5.2 is met as written (26 %).
 - **Sky installation moved earlier and wider than planned**: Phase 4 needed it for Gate 4.4; Phase 5 moved ownership from the camera rig to the atmosphere so it is present at every pitch.
 - **FALLBACK 3 taken NARROWLY - for buildings only.** The plan's fallback is all-or-nothing (drop the receiver mesh for blob decals; mark 3.3-3.6 N/A). But only 3.4 failed: the terrain receiver passed 3.1-3.3, 3.5-3.7 on its first run. Replacing a verified terrain receiver with blobs would be a downgrade made only to follow the letter, so the fallback is applied to the failing part alone: building stand-ins ship **OFF by default**, 3.4 is reported `[SKIP]` (never counted as a pass), and everything else stays a real, measured pass - strictly more verified than the plan's own fallback. No criterion was loosened. The 2-attempt limit was honoured:
@@ -216,6 +243,10 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 - **`/autocompact`, `/clear`** are interactive CLI commands not available to this runner; PROGRESS.md handoff discipline is kept regardless.
 
 ## Open findings (not blocking)
+- **A pitched terrain view costs this app 36-78 ms per frame on an integrated GPU, before this branch does anything.** That is the real performance finding; it predates the 3D layer and caps any animated 3D content (the layer asks for a repaint per sim tick, and each repaint is a full map render).
+- **The governor cannot see GPU cost.** GROUND adds ~8 ms of GPU time over the map alone (smoke/sky overdraw when looking up) while `render()` stays under 1 ms CPU. `EXT_disjoint_timer_query_webgl2` feeding the governor would close that.
+- HUD labels and the (transparent, still clickable) DOM markers sit at the GROUND-projected position, so in pitched views they separate from the 3D aircraft (visible in `artifacts/review/app-mount-scene3d-orbit.png`: "UAV-02 85ft" floats away from its airframe). Needs labels/picking in the layer.
+- Trail ribbons read thick at close range (2.4 m wide); taste item.
 - **Jumping straight to an unlocked, pitched camera at a place the map has not shown yet leaves the near field unloaded (raw canvas) for a long time** - `map.loaded()` stays false. Arriving with an ordinary camera first fixes it. Gates now do that (`view()` in gate-5); the CAMERA DIRECTOR does not yet, so a user switching to CHASE/FPV/GROUND on a far-away aircraft may see a half-blank frame until tiles arrive. Worth a pre-visit or a fade in Phase 6 / the polish pass.
 - **The fog band is heavy and grey at 4.8 km visibility** and the basemap still does not darken at night - both are taste items for the aesthetic pass, not gate failures.
 - Night smoke/fog darkening is verified by one measurement (16.3 % of noon with the atmosphere on), not by a standing gate assertion.
@@ -234,7 +265,7 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 - Plan docs + `cameraDirector.js` are committed at the repo root per *Before kickoff*. This repo is public; they go public if the branch is ever pushed.
 - `node_modules` had drifted from the lockfile before this work (first `npm install` re-synced 94 packages). Baseline and post-change test totals are nevertheless identical.
 
-## Files touched this phase (Phase 5)
-- new: `src/scene3d/atmosphere.ts`, `harness/gates/gate-5.mjs`
-- changed: `src/scene3d/cameraDirector.ts` (sky ownership removed), `src/scene3d/SceneLayer.ts` (`frame.mvp`), `src/scene3d/fleet.ts` (`fog: false` on additive sprites), `src/scene3d/index.ts` (atmosphere wiring, `setAtmosphere`, `setVisibilityOverride`, `setSmokeAmount`, `setGlare`, `atmosphereStats`), `src/scene3d/fleetBinding.ts` (`storeAtmosphereSource`), `src/scene3d/harness/installHarness.ts` (`atmosphere.*`), `harness/gates/gate-0..3.mjs` (atmosphere off for isolation), `src/scene3d/README.md`, `PROGRESS.md`
-- **No existing app file touched in Phase 5.**
+## Files touched this phase (Phase 6)
+- new: `src/scene3d/quality.ts`, `src/scene3d/mount.ts`, `src/scene3d/flag.ts`, `harness/matrix.mjs`, `harness/gates/gate-6.mjs`, `ABORT.md`
+- changed: `src/scene3d/index.ts` (governor, `quality.*`, `setMounted`, `enable()` restarts a switched-off tier), `src/scene3d/fleet.ts` (settable LOD band edges), `src/scene3d/lighting.ts` (`setShadowMapSize`), `src/scene3d/fleetBinding.ts` (`createBoundScene`, repaint per sim tick), `src/scene3d/harness/installHarness.ts` (uses `createBoundScene`; `quality.*`, `camera.relock`), `harness/gates/gate-p0.mjs` (allowlist), `src/scene3d/README.md`, `PROGRESS.md`
+- **One existing app file touched: `src/components/TacticalMap.tsx`, +2 lines** (import of the flag; `else if (SCENE3D_REQUESTED) void import('@/scene3d/mount')...` beside the harness line). Default off; justified in the commit body.

@@ -85,7 +85,7 @@ export class LightingRig {
     box.near = 1
     box.far = 2 * radius + 600
     // Bias in world units has to grow with the shadow texel, or a wide box acnes and a tight one peter-pans.
-    this.sun.shadow.normalBias = Math.max(0.04, ((2 * radius) / SHADOW_MAP_SIZE) * 1.5)
+    this.sun.shadow.normalBias = Math.max(0.04, ((2 * radius) / this.sun.shadow.mapSize.x) * 1.5)
     box.updateProjectionMatrix()
 
     const moved = !this.envAt
@@ -117,6 +117,14 @@ export class LightingRig {
     this.scene.environment = next.texture
     this.envAt = { ...this.position }
     this.pmremPasses++
+  }
+
+  /** Shadow map edge in texels. three only honours a new size once the old map is thrown away. */
+  setShadowMapSize(size: number): void {
+    if (this.sun.shadow.mapSize.x === size) return
+    this.sun.shadow.mapSize.set(size, size)
+    this.sun.shadow.map?.dispose()
+    this.sun.shadow.map = null
   }
 
   dispose(): void {

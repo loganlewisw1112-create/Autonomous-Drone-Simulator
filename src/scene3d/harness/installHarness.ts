@@ -12,10 +12,10 @@ import { tick, stopTicking } from '@/sim/SimulationLoop'
 import { runQuickDemo } from '@/sim/demo/quickDemo'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
 import { resolveTerrainFixtureId, terrainFixtureFor, terrainRasterFor } from '@/scenarios/terrainFixtures'
-import { createScene3D, type Scene3DHandle, type SceneDrone } from '@/scene3d'
-import { createLayerOwnership, storeAtmosphereSource, storeBuildingSource, storeFleetSource, storeSunSource, storeVolumeSource } from '@/scene3d/fleetBinding'
+import type { QualityTier, Scene3DHandle, SceneDrone } from '@/scene3d'
+import { createBoundScene, type createLayerOwnership } from '@/scene3d/fleetBinding'
 import type { CameraMode, VolumeFrame } from '@/scene3d'
-import { createTerrainModel, wholeTileBounds, type TerrainModel } from '@/scene3d/terrainModel'
+import { wholeTileBounds, type TerrainModel } from '@/scene3d/terrainModel'
 import { sunDirection } from '@/scene3d/sun'
 import { sunPosition, type SunPosition } from '@/scene3d/sun'
 import { containsLatLng, elevationAt } from '@/sim/terrain/terrainRaster'
@@ -100,6 +100,8 @@ export interface Harness {
   camera: {
     set(opts: HarnessCameraOptions): void
     fromTo(from: [number, number], fromAltM: number, to: [number, number], toAltM: number, fovDeg?: number): void
+    /** Undo `unlock` / `fromTo`: ground clamp on, pitch cap 60, default FOV, no roll — the operator's camera rules. */
+    relock(): void
     mode(name: string): void
     /** Same, but with the rig's own rAF loop running (for input-latency measurement). */
     live(name: string): void
@@ -149,6 +151,14 @@ export interface Harness {
     receiverStats(): ReturnType<Scene3DHandle['receiverStats']> | null
     timeOfDay(value: 'dawn' | 'day' | 'dusk' | 'night'): void
     stats(): ReturnType<Scene3DHandle['lightingStats']> | null
+  }
+  quality: {
+    tier(tier: QualityTier | 'auto'): void
+    /** Rehearse a slow GPU: extra layer cost, ms, per ladder rung (index = rung). */
+    syntheticCost(msByRung: number[] | null): void
+    state(): { tier: QualityTier; rung: number; rungName: string; auto: boolean; applied: ReturnType<Scene3DHandle['quality']['applied']>; history: ReturnType<Scene3DHandle['quality']['history']> } | null
+    /** Add/remove only the custom layer (camera, sky, hand-off untouched): the on/off pair for added-cost measurement. */
+    mounted(on: boolean): void
   }
   atmosphere: {
     visibilityKm(km: number | null): void
@@ -238,16 +248,16 @@ export function installHarness(map: maplibregl.Map): Harness {
     if (!result.ok) return { ok: false, reason: result.reason }
     const scenario = useDroneStore.getState().scenario
     harness.scene?.dispose()
-    harness.scene = scenario
-      ? createScene3D(map, { lng: scenario.startPosition.lng, lat: scenario.startPosition.lat }, (() => {
-          const terrain = createTerrainModel(map, scenario)
-          drawnGround = terrain
-          footprints = storeBuildingSource(scenario.id)
-          ownership = createLayerOwnership(map)
-          return { terrain, fleetSource: storeFleetSource(terrain), sunSource: storeSunSource(), buildings: storeBuildingSource(scenario.id),
-            volumeSource: storeVolumeSource(terrain), ownership, atmosphereSource: storeAtmosphereSource() }
-        })())
-      : null
+    harness.scene = null
+    if (scenario) {
+      const bound = createBoundScene(map, scenario)
+      drawnGround = bound.terrain
+      ownership = bound.ownership
+      footprints = bound.buildings
+      harness.scene = bound.handle
+      // Gates pin the tier: auto-selection re-tiers three seconds in, which would move frames under a test.
+      bound.handle.quality.setTier('cinematic')
+    }
     return { ok: true, seed: scenario?.seed, scenarioId: scenario?.id }
   }
 
@@ -384,6 +394,13 @@ export function installHarness(map: maplibregl.Map): Harness {
           new LngLat(to[0], to[1]), toAltM,
         ))
       },
+      relock: () => {
+        map.setCenterClampedToGround(true)
+        map.setVerticalFieldOfView(36.87)
+        map.setRoll(0)
+        if (map.getPitch() > 60) map.jumpTo({ pitch: 60 })
+        map.setMaxPitch(60)
+      },
       mode: (name) => harness.scene?.camera.setMode(name as CameraMode, true),
       live: (name) => harness.scene?.camera.setMode(name as CameraMode),
       advance: (dtSec) => harness.scene?.camera.update(dtSec),
@@ -456,6 +473,15 @@ export function installHarness(map: maplibregl.Map): Harness {
         map.triggerRepaint()
       },
       stats: () => harness.scene?.lightingStats() ?? null,
+    },
+    quality: {
+      tier: (tier) => harness.scene?.quality.setTier(tier),
+      syntheticCost: (msByRung) => harness.scene?.quality.setSyntheticCost(msByRung ? (rung) => msByRung[rung] ?? 0 : null),
+      state: () => {
+        const q = harness.scene?.quality
+        return q ? { tier: q.tier, rung: q.rung, rungName: q.rungName, auto: q.auto, applied: q.applied(), history: q.history() } : null
+      },
+      mounted: (on) => harness.scene?.setMounted(on),
     },
     atmosphere: {
       visibilityKm: (km) => harness.scene?.setVisibilityOverride(km),

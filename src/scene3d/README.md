@@ -6,8 +6,10 @@ untouched, and the scene tests against MapLibre's own depth buffer, so terrain h
 with no extra work. Proven by `npm run gate -- 0` (buried box, and natural ridges at pitch 60 and
 107 — camera below the subject, looking up).
 
-Status: **default OFF.** Until the quality tiers land (plan Phase 6) the layer is reachable only
-through `window.__harness.scene` in a harness build. No public bundle imports this directory yet.
+Status: **default OFF.** Open the app with `?scene3d=1` to mount it (`&quality=cinematic|balanced|tactical`,
+`&camera=orbit|chase|fpv|ground`); the handle is on `window.__scene3d` (`.disable()` is the kill switch).
+Everything here ships as two lazy chunks (177 KB gz) that load only behind that flag. Gates: `npm run gate -- <p0|0..6>`;
+Gate 6 is aborted on its whole-frame budget - see `/ABORT.md` - because the map alone exceeds it on an integrated GPU.
 
 ## Coordinate conventions
 
@@ -111,6 +113,16 @@ it again after any style swap (`style.load`), which drops custom layers.
 - Glare: one clip-space sprite at the sun, depth-tested at the far plane. **There is no
   post-processing pass in this directory and Gate 5.4 keeps it that way.**
 - `handle.setAtmosphere(false)` turns all four off; the isolation checks of Gates 0-3 use it.
+
+## Quality
+
+- `quality.ts`: tiers `cinematic | balanced | tactical` start the scene at rung 0 / 1 / 4 of a fixed ladder
+  (full -> smoke-half -> smoke-off -> shadows-1024 -> shadows-off -> lod-tight -> layer-off). `auto` picks the
+  tier from the first three seconds at full quality.
+- The governor watches the layer's OWN render cost (budget 8 ms p75), never whole-frame time: it can only give
+  back what the layer took. It does not see GPU time (open finding).
+- `harness/matrix.mjs` writes the 72-cell review bundle to `artifacts/review/` and measures every cell with the
+  layer mounted and removed.
 
 ## Things measured the hard way (maplibre-gl 6.9.0)
 

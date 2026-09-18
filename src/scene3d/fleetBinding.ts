@@ -19,6 +19,8 @@ import { buildGnssUncertaintyFeatures, buildIrFootprintFeatures } from '@/compon
 import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
 import type { VolumeFrame } from './volumes'
 import type { AtmosphereFrame } from './atmosphere'
+import { createScene3D, type Scene3DHandle } from './index'
+import { createTerrainModel } from './terrainModel'
 
 const FT_TO_M = 0.3048
 const HOVER_RPM = 5200
@@ -196,4 +198,37 @@ export function storeAtmosphereSource(): () => AtmosphereFrame | null {
       fires: (scenario.heatSources ?? []).map((h) => ({ lng: h.position.lng, lat: h.position.lat, radiusM: h.radiusM, tempC: h.tempC })),
     }
   }
+}
+
+export interface BoundScene {
+  handle: Scene3DHandle
+  terrain: TerrainModel
+  ownership: ReturnType<typeof createLayerOwnership>
+  buildings: () => BuildingFootprint[]
+}
+
+/** A scene wired to the live app for one scenario: ENU anchor, ground model, fleet, sun, volumes,
+ *  atmosphere, building footprints and the 2D/3D hand-off. */
+export function createBoundScene(map: maplibregl.Map, scenario: { id: string; terrainFixtureId?: string; startPosition: { lat: number; lng: number } }): BoundScene {
+  const terrain = createTerrainModel(map, scenario)
+  const ownership = createLayerOwnership(map)
+  const buildings = storeBuildingSource(scenario.id)
+  const handle = createScene3D(map, { lng: scenario.startPosition.lng, lat: scenario.startPosition.lat }, {
+    terrain, ownership, buildings,
+    fleetSource: storeFleetSource(terrain),
+    sunSource: storeSunSource(),
+    volumeSource: storeVolumeSource(terrain),
+    atmosphereSource: storeAtmosphereSource(),
+  })
+  // MapLibre paints on demand. The scene's content moves with the SIM clock, so each tick has to ask for
+  // a frame — otherwise, with the camera at rest, aircraft would only move when something else repainted.
+  let lastTick = -1
+  const unsubscribe = useDroneStore.subscribe((state) => {
+    if (state.tick === lastTick) return
+    lastTick = state.tick
+    if (handle.isEnabled()) map.triggerRepaint()
+  })
+  const dispose = handle.dispose.bind(handle)
+  handle.dispose = () => { unsubscribe(); dispose() }
+  return { handle, terrain, ownership, buildings }
 }

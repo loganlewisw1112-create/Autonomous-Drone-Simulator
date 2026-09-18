@@ -16,7 +16,7 @@ const read = (...p) => readFileSync(resolve(ROOT, ...p), 'utf8')
 // Paths this phase is allowed to have touched. Anything else dirty is a finding.
 const PHASE_PATHS = [/^harness\//, /^src\/scene3d\//, /^src\/App\.tsx$/, /^src\/components\/(TacticalMap|WelcomeOverlay)\.tsx$/,
   /^vite\.config\.ts$/, /^package(-lock)?\.json$/, /^\.gitignore$/, /^PROGRESS\.md$/,
-  /^(AUTONOMOUS-PLAN-3d-view|SPEC-3d-view)\.md$/, /^cameraDirector\.js$/]
+  /^(AUTONOMOUS-PLAN-3d-view|SPEC-3d-view|ABORT)\.md$/, /^cameraDirector\.js$/]
 
 // ── 1. Repo / branch / tree ─────────────────────────────────────────────────────────────────────
 const pkg = JSON.parse(read('package.json'))

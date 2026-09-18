@@ -8,6 +8,7 @@ import { FleetRenderer, type FleetFrame } from './fleet'
 import { Atmosphere, type AtmosphereFrame } from './atmosphere'
 import { createCameraDirector, type CameraDirector } from './cameraDirector'
 import { LightingRig } from './lighting'
+import { createQualityGovernor, LADDER, type QualityTier } from './quality'
 import { SensorVolumes, type VolumeFrame } from './volumes'
 import { ShadowReceivers, type BuildingFootprint, type ReceiverStats } from './shadowReceivers'
 import type { TerrainModel } from './terrainModel'
@@ -19,6 +20,7 @@ export type { SunPosition } from './sun'
 export type { BuildingFootprint } from './shadowReceivers'
 export type { VolumeFrame } from './volumes'
 export type { AtmosphereFrame } from './atmosphere'
+export type { QualityTier } from './quality'
 export type { CameraDirector, CameraMode } from './cameraDirector'
 
 export interface TestBoxOptions {
@@ -80,9 +82,25 @@ export interface Scene3DHandle {
   setGlare(on: boolean): void
   /** Sky + fog + smoke + glare as one switch. Off, the map keeps its own sky and the scene adds none of them. */
   setAtmosphere(on: boolean): void
+  readonly quality: {
+    readonly tier: QualityTier
+    readonly rung: number
+    readonly rungName: string
+    readonly auto: boolean
+    /** Pin a tier (user override), or 'auto' to let the first three seconds choose. */
+    setTier(tier: QualityTier | 'auto'): void
+    history(): Array<{ frame: number; rung: number; p75: number }>
+    /** Test seam: extra layer cost (ms) as a function of the current rung, to rehearse a slow GPU. */
+    setSyntheticCost(cost: ((rung: number) => number) | null): void
+    /** What the current rung actually set — read back from the live objects, not from the table. */
+    applied(): { smokeAmount: number; shadowMapSize: number; shadows: boolean; lodFullMaxM: number; lodLowMaxM: number; layerOn: boolean }
+  }
   atmosphereStats(): { smokeParticles: number; glareVisible: boolean; visibilityKm: number; fogDensity: number; skyWrites: number }
   /** Scene position → CSS pixels, from the last drawn frame. */
   project(lng: number, lat: number, elevationM: number): { x: number; y: number } | null
+  /** Low level: add/remove ONLY the custom layer, leaving camera, sky and 2D hand-off alone — for measuring
+   *  what the layer adds to a frame against the same view without it. */
+  setMounted(on: boolean): void
   lightingStats(): { sun: SunPosition; pmremPasses: number; darkness: number; sunIntensity: number }
   /** Matte white sphere, lit like everything else — for reading the light direction off pixels. */
   addTestSphere(options: { lng: number; lat: number; elevationM: number; radiusM: number }): void
@@ -122,6 +140,18 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
   })
   layer.scene.add(atmosphere.root)
   let visibilityOverride: number | null = null
+  let userShadows = true
+  let userSmoke = 1
+  let syntheticCost: ((rung: number) => number) | null = null
+  let turnLayerOff: (() => void) | null = null
+  const governor = createQualityGovernor((settings) => {
+    atmosphere.smokeAmount = userSmoke * settings.smokeAmount
+    lighting.setShadowMapSize(settings.shadowMapSize)
+    lighting.sun.castShadow = userShadows && settings.shadows
+    fleet.lodFullMaxM = settings.lodFullMaxM
+    fleet.lodLowMaxM = settings.lodLowMaxM
+    if (!settings.layerOn) turnLayerOff?.()
+  })
   const toSun = new THREE.Vector3()
   let followId: string | null = null
   let owning = false
@@ -132,6 +162,9 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
   const emptySky: FleetFrame = { drones: [], simTimeSec: 0 }
   let fleetSource = options.fleetSource ?? null
   layer.onBeforeRender = (frame, renderer) => {
+    // Last frame's layer cost feeds the governor (this frame's is not known until it has been drawn).
+    const lastMs = layer.layerRenderTimes().at(-1)
+    if (lastMs !== undefined) governor.sample(lastMs + (syntheticCost?.(governor.rung) ?? 0))
     options.terrain?.refresh()
     lighting.update(frame, renderer, sunOverride ?? options.sunSource?.() ?? FIXED_SUN)
     // Shadows fade out with the sun: full by day, gone once only twilight glow is left.
@@ -192,9 +225,11 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
     map.triggerRepaint()
   }
 
-  return {
+  const handle: Scene3DHandle = {
     enable() {
       enabled = true
+      // Coming back from the ladder's terminal rung: start the tier over rather than stay switched off.
+      if (governor.rung === LADDER.length - 1) governor.setTier(governor.auto ? 'auto' : governor.tier)
       ownDrones(fleetSource !== null)
       mount()
       map.triggerRepaint()
@@ -223,7 +258,8 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       map.triggerRepaint()
     },
     setShadows(on) {
-      lighting.sun.castShadow = on
+      userShadows = on
+      lighting.sun.castShadow = on && governor.rung < 4
       map.triggerRepaint()
     },
     receiverStats: () => ({ ...receivers.stats }),
@@ -234,13 +270,19 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       map.triggerRepaint()
     },
     project: (lng, lat, elevationM) => layer.project(lng, lat, elevationM),
+    setMounted(on) {
+      if (on) mount()
+      else if (map.getLayer(SCENE_LAYER_ID)) map.removeLayer(SCENE_LAYER_ID)
+      map.triggerRepaint()
+    },
     volumeStats: () => ({ ...volumes.stats }),
     setVisibilityOverride(km) {
       visibilityOverride = km
       map.triggerRepaint()
     },
     setSmokeAmount(amount) {
-      atmosphere.smokeAmount = Math.min(1, Math.max(0, amount))
+      userSmoke = Math.min(1, Math.max(0, amount))
+      atmosphere.smokeAmount = userSmoke * (governor.rung >= 2 ? 0 : governor.rung >= 1 ? 0.5 : 1)
       map.triggerRepaint()
     },
     setAtmosphere(on) {
@@ -252,6 +294,19 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       map.triggerRepaint()
     },
     atmosphereStats: () => ({ ...atmosphere.stats }),
+    quality: {
+      get tier() { return governor.tier },
+      get rung() { return governor.rung },
+      get rungName() { return LADDER[governor.rung] },
+      get auto() { return governor.auto },
+      setTier: (tier) => governor.setTier(tier),
+      history: () => governor.history(),
+      setSyntheticCost: (cost) => { syntheticCost = cost },
+      applied: () => ({
+        smokeAmount: atmosphere.smokeAmount, shadowMapSize: lighting.sun.shadow.mapSize.x, shadows: lighting.sun.castShadow,
+        lodFullMaxM: fleet.lodFullMaxM, lodLowMaxM: fleet.lodLowMaxM, layerOn: enabled,
+      }),
+    },
     setBuildingShadows(on) {
       receivers.setBuildingsEnabled(on)
       map.triggerRepaint()
@@ -300,4 +355,6 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       layer.dispose()
     },
   }
+  turnLayerOff = () => handle.disable() // the ladder's last rung IS the kill switch
+  return handle
 }

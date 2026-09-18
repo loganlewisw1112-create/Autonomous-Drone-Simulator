@@ -197,6 +197,9 @@ export class FleetRenderer {
   private readonly beacons: THREE.InstancedMesh
   private readonly lamp = new THREE.Vector3()
   private readonly bands = { full: 0, low: 0, sprite: 0 }
+  /** LOD band edges, metres from the camera. The quality ladder tightens them. */
+  lodFullMaxM = LOD_FULL_MAX_M
+  lodLowMaxM = LOD_LOW_MAX_M
 
   // Scratch — this runs every frame; allocate nothing in update().
   private readonly base = new THREE.Matrix4()
@@ -260,7 +263,7 @@ export class FleetRenderer {
       this.place(drone.lng, drone.lat, drone.elevationM, this.position)
       const distance = this.position.distanceTo(frame.cameraPosition)
 
-      if (distance > LOD_LOW_MAX_M) {
+      if (distance > this.lodLowMaxM) {
         const size = SPRITE_DIAMETER_PX * metresPerPixelAtUnitDistance * distance
         this.forward.crossVectors(frame.cameraRight, frame.cameraUp)
         this.out.makeBasis(frame.cameraRight, frame.cameraUp, this.forward).scale(this.spriteScale.set(size, size, size)).setPosition(this.position)
@@ -289,7 +292,7 @@ export class FleetRenderer {
         }
       }
 
-      if (distance > LOD_FULL_MAX_M) {
+      if (distance > this.lodFullMaxM) {
         batch.low.setMatrixAt(count.low++, this.base)
         continue
       }
