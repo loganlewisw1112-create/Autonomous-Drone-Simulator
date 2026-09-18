@@ -61,11 +61,12 @@ const STARTUP_BUDGET_BYTES = 1_950_000
 // which is deliberately pinned via manualChunks: the core map is needed at first paint, so it
 // is a documented static exception rather than a lazy candidate.
 const STARTUP_CHUNK_BUDGET_BYTES = 600 * 1024
-// The committed building fixtures ship as exactly two physical async chunks (demo_wildfire is
-// aliased by nist_obstructed_lane; hist_surfside_cts_2021 is the other). Their source files are
-// both named buildings.json, so both emitted chunks share the `buildings-` prefix.
+// The committed building fixtures ship as five physical async chunks: demo_wildfire (aliased by
+// nist_obstructed_lane), hist_surfside_cts_2021, and the urban disaster cores hist_katrina_
+// lower_ninth_2005, hist_harvey_houston_2017 and hist_marshall_fire_2021. Their source files are
+// all named buildings.json, so every emitted chunk shares the `buildings-` prefix.
 const BUILDING_CHUNK_PREFIX = 'buildings-'
-const BUILDING_CHUNK_COUNT = 2
+const BUILDING_CHUNK_COUNT = 5
 
 function build(mode, appTarget) {
   rmSync(dist, { recursive: true, force: true })
