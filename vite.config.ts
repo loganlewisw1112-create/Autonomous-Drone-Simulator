@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'path'
 import type { Plugin } from 'vite'
@@ -61,6 +61,55 @@ function targetParityArtifactPlugin(buildInfo: {
   }
 }
 
+function maplibreWorkerAssetPlugin(): Plugin {
+  // MapLibre v6 starts its tile/style worker at runtime via `new URL(`./${name}`, import.meta.url)`
+  // with a *dynamically-chosen* filename. Rollup cannot statically analyse that expression, so it
+  // never emits the worker chunk; the bundled maplibre chunk then requests
+  // `<assetsDir>/maplibre-gl-worker.mjs` at runtime, gets a 404, and the map silently renders zero
+  // features (no tiles are ever parsed). `optimizeDeps.exclude` below fixes only the dev server —
+  // the production build needs the worker and its shared chunk copied to the exact path the bundle
+  // resolves. This plugin does that and fails the build if the layout it depends on ever drifts,
+  // so a blank map can never ship silently again.
+  let outDir = ''
+  let assetsDir = 'assets'
+  return {
+    name: 'maplibre-worker-asset',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir)
+      assetsDir = config.build.assetsDir
+    },
+    closeBundle() {
+      const srcDir = resolve(__dirname, 'node_modules/maplibre-gl/dist')
+      const assetsOut = resolve(outDir, assetsDir)
+      for (const file of ['maplibre-gl-worker.mjs', 'maplibre-gl-shared.mjs']) {
+        const src = resolve(srcDir, file)
+        if (!existsSync(src)) {
+          throw new Error(
+            `[maplibre-worker-asset] ${src} not found — maplibre-gl's dist layout changed. ` +
+            `Update this plugin so the tile/style worker is still copied into the build.`,
+          )
+        }
+        copyFileSync(src, resolve(assetsOut, file))
+      }
+      // Guard against a future maplibre version requesting a worker filename we did not provide.
+      const chunk = readdirSync(assetsOut).find((name) => /^maplibre-.*\.js$/.test(name))
+      if (chunk) {
+        const code = readFileSync(resolve(assetsOut, chunk), 'utf8')
+        const prodWorker = [...code.matchAll(/maplibre-gl-worker(?:-dev)?\.mjs/g)]
+          .map((match) => match[0])
+          .find((name) => !name.includes('-dev'))
+        if (prodWorker && !existsSync(resolve(assetsOut, prodWorker))) {
+          throw new Error(
+            `[maplibre-worker-asset] the maplibre chunk requests ${prodWorker} at runtime but it ` +
+            `was not emitted. The map would render blank. Update this plugin's copy list.`,
+          )
+        }
+      }
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const appTarget = process.env.VITE_APP_TARGET ?? env.VITE_APP_TARGET ?? 'universal'
@@ -107,6 +156,7 @@ export default defineConfig(({ mode }) => {
   base: process.env.GITHUB_PAGES ? '/Autonomous-Drone-Simulator/' : '/',
   plugins: [
     react(),
+    maplibreWorkerAssetPlugin(),
     targetParityArtifactPlugin(buildInfo),
     {
       name: 'release-build-info',
