@@ -5,9 +5,12 @@
 import * as THREE from 'three'
 import type * as maplibregl from 'maplibre-gl'
 import { FleetRenderer, type FleetFrame } from './fleet'
+import { LightingRig } from './lighting'
+import type { SunPosition } from './sun'
 import { SCENE_LAYER_ID, SceneLayer, type SceneOrigin } from './SceneLayer'
 
 export type { FleetFrame, SceneDrone } from './fleet'
+export type { SunPosition } from './sun'
 
 export interface TestBoxOptions {
   lng: number
@@ -24,6 +27,8 @@ export interface TestBoxOptions {
 export interface Scene3DOptions {
   /** Where aircraft poses come from, pulled once per rendered frame. Omit for an empty sky. */
   fleetSource?: () => FleetFrame
+  /** Where the sun is, pulled once per rendered frame from the SCENARIO clock. Omit for a fixed mid-morning sun. */
+  sunSource?: () => SunPosition
 }
 
 export interface Scene3DHandle {
@@ -35,6 +40,12 @@ export interface Scene3DHandle {
   /** Swap the pose source (the gates fly synthetic fleets); `null` restores the one given at creation. */
   setFleetSource(source: (() => FleetFrame) | null): void
   fleetStats(): ReturnType<FleetRenderer['stats']>
+  /** Pin the sun (gates, photo mode); `null` returns it to the scenario clock. */
+  setSunOverride(position: SunPosition | null): void
+  setBeacons(on: boolean): void
+  lightingStats(): { sun: SunPosition; pmremPasses: number; darkness: number; sunIntensity: number }
+  /** Matte white sphere, lit like everything else — for reading the light direction off pixels. */
+  addTestSphere(options: { lng: number; lat: number; elevationM: number; radiusM: number }): void
   addTestBox(options: TestBoxOptions): void
   clearTestObjects(): void
   dispose(): void
@@ -51,16 +62,19 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
   const fleet = new FleetRenderer((lng, lat, elevationM, target) => layer.toScene(lng, lat, elevationM, target))
   layer.scene.add(testObjects, fleet.root)
 
-  // PLACEHOLDER RIG — Phase 2 replaces this with the solar-driven sun/sky/IBL. It exists only so
-  // PBR airframes are not black. Fixed and clock-free, so Phase 1 frames stay deterministic.
-  const placeholderSky = new THREE.HemisphereLight(0xdfe9f5, 0x4a4f45, 1.4)
-  const placeholderSun = new THREE.DirectionalLight(0xffffff, 2.2)
-  placeholderSun.position.set(-0.4, -0.5, 0.8) // direction only: from the south-west, high
-  layer.scene.add(placeholderSky, placeholderSun)
+  const lighting = new LightingRig(layer.scene)
+  const FIXED_SUN: SunPosition = { azimuthDeg: 135, elevationDeg: 42 }
+  let sunOverride: SunPosition | null = null
+  let beaconsOn = true
 
   const emptySky: FleetFrame = { drones: [], simTimeSec: 0 }
   let fleetSource = options.fleetSource ?? null
-  layer.onBeforeRender = (frame) => fleet.update(frame, fleetSource ? fleetSource() : emptySky)
+  layer.onBeforeRender = (frame, renderer) => {
+    lighting.update(frame, renderer, sunOverride ?? options.sunSource?.() ?? FIXED_SUN)
+    // Nav lights never go out; they are simply lost in daylight.
+    const beaconGain = beaconsOn ? 0.3 + 0.7 * lighting.palette.darkness : 0
+    fleet.update(frame, { ...(fleetSource ? fleetSource() : emptySky), beaconGain })
+  }
 
   let enabled = false
   let style: HTMLStyleElement | null = null
@@ -112,6 +126,27 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       map.triggerRepaint()
     },
     fleetStats: () => fleet.stats(),
+    setSunOverride(position) {
+      sunOverride = position
+      map.triggerRepaint()
+    },
+    setBeacons(on) {
+      beaconsOn = on
+      map.triggerRepaint()
+    },
+    lightingStats: () => ({
+      sun: lighting.position, pmremPasses: lighting.pmremPasses,
+      darkness: lighting.palette.darkness, sunIntensity: lighting.palette.sunIntensity,
+    }),
+    addTestSphere({ lng, lat, elevationM, radiusM }) {
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(radiusM, 48, 24),
+        new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, metalness: 0 }),
+      )
+      layer.toScene(lng, lat, elevationM, mesh.position)
+      testObjects.add(mesh)
+      map.triggerRepaint()
+    },
     addTestBox({ lng, lat, elevationM, sizeM, color = '#ff00ff', depthTest = true }) {
       const [sx, sy, sz] = typeof sizeM === 'number' ? [sizeM, sizeM, sizeM] : sizeM
       const mesh = new THREE.Mesh(
@@ -129,6 +164,7 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       style?.remove()
       if (map.getLayer(SCENE_LAYER_ID)) map.removeLayer(SCENE_LAYER_ID)
       clearTestObjects()
+      lighting.dispose()
       fleet.dispose()
       layer.dispose()
     },

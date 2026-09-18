@@ -2,21 +2,36 @@
 
 Branch: feat/3d-scene-layer
 Plan: AUTONOMOUS-PLAN-3d-view.md
-Last updated: 2026-09-18T01:30:00-07:00
+Last updated: 2026-09-18T02:30:00-07:00
 Repo: `D:\CODING\PROJECTS - CURRENTLY WORKING ON\portfolio_local_repo_ready\04-autonomous-drone-mission-simulator`
 
 Claim marks: **V** = Verified (command named), **I** = Inferred (basis named), **U** = Unverified.
 
 ## State
-Current phase: 2
+Current phase: 3
 Gate status: not attempted
-Next concrete action: write `src/scene3d/sun.ts` (inline NOAA solar position, ~80 lines, input = SCENARIO clock + AOI centroid, never wall clock) and check it against a reference table computed by an INDEPENDENT implementation (Gate 2.1 is the non-circular anchor - do this first). Then replace the placeholder rig in `src/scene3d/index.ts` (`placeholderSky` / `placeholderSun`) with sun `DirectionalLight` + `HemisphereLight` keyed to solar elevation, IBL via one `PMREMGenerator` pass per significant sun-angle change (instrument the call count for 2.6), frustum-fitted shadow camera, night nav lights + 1 Hz strobe. Find where the scenario's clock/date lives (`realDate` in fixture manifests; `scenario` time-of-day fields) before designing the API.
+Next concrete action: build the invisible shadow receivers. (1) `src/scene3d/terrainReceiver.ts`: mesh a heightfield from the LOCAL DEM fixture (`terrainRasterFor(fixtureId)` + `elevationAt`, x exactly the live exaggeration 1.15) - NOT from S3 tiles - covering only the shadow box (start 2 km radius around `frame.focus`, regenerate on camera move with hysteresis), `ShadowMaterial`, polygon offset per zoom band. CAUTION: MapLibre only DRAWS relief inside the whole-tile block and only at zoom >= 14 (see findings) - the receiver must be flat-at-0 exactly where the map is, or shadows will float; move the `liveTerrainBounds` logic out of the harness into `src/scene3d/`. (2) building receivers from the Overture `buildings.json` fixtures (`buildingFixtures.ts`). `train_wildfire_flank` has NO buildings - Gate 3.4 needs a second scenario (`demo_wildfire` or `hist_surfside_cts_2021`; check it launches via `runQuickDemo`). FALLBACK 3 is pre-approved: after 2 failed remediation attempts on 3.3/3.4/3.5 switch to projected blob-shadow decals and re-gate 3.1/3.2/3.7 only.
 
 ## Completed phases
 - [x] P-0 preflight — `c352cb4` — `GATE P0 PASS assertions=17/17 failed=[]`, screenshots byte-identical (sha256 `54fc703b429ef5f9…`) across 4 cold launches in 2 gate runs **V** (`node harness/gates/run.mjs p0`)
 - [x] Phase 0 render harness — `50d9260` — `GATE 0 PASS assertions=9/9 failed=[] p75_layer_ms=0.1` **V** (`node harness/gates/run.mjs 0`). **Architecture go/no-go: GO.** Terrain occludes scene geometry through the shared depth buffer at pitch 0, 60 **and 107**.
 
-- [x] Phase 1 airframes + LOD - commit `feat(scene3d): procedural TEAL2/X10 airframes...` - `GATE 1 PASS assertions=8/8 failed=[] p75_layer_ms=0.3` **V** (`node harness/gates/run.mjs 1`), first run, no remediation.
+- [x] Phase 1 airframes + LOD - `3e6a2c7` - `GATE 1 PASS assertions=8/8 failed=[] p75_layer_ms=0.3` **V** (`node harness/gates/run.mjs 1`), first run, no remediation.
+
+- [x] Phase 2 lighting - commit `feat(scene3d): solar-driven lighting...` - `GATE 2 PASS assertions=10/10 failed=[] p75_layer_ms=0.4` **V** (`node harness/gates/run.mjs 2`). One remediation: night levels (a lighting value, not a criterion).
+
+## Gate 2 record
+| # | Result **V** |
+|---|---|
+| 2.1 sun position | vs independent PSA/Python table at the AOI: dawn dAz 0.001 dEl 0.157, noon 0.004/0.008, dusk 0.001/0.162, night 0.002/0.010 (the low-sun elevation gap is refraction, which the reference omits); vs **NREL SPA published example: dAz 0.003 dEl 0.003**. Need <= 0.5 |
+| 2.2 light follows sun | bright side of a matte sphere vs sun azimuth: dawn 0.0, noon 0.0, dusk 0.0, night 0.1 deg (need <= 10) |
+| 2.3 night dark not black | night airframe luminance **4.7 %** of noon (need 2-20). First run 1.0 % -> raised night fill/environment intensities in `skyPalette.ts` |
+| 2.4 strobe | exactly 2 upward mid-luminance crossings in 2 s of SIM time (1 Hz) |
+| 2.5 determinism | lit frame across two cold launches: **0.0000 %** |
+| 2.6 PMREM | 0 rebuilds over 300 frames at a fixed sun; exactly +1 when the sun moves |
+| 2.7 budget | p75 **0.4 ms** with lighting + shadow pass, 20 aircraft, 18 draw calls (budget 5 ms) |
+| 2.8 (extra) | lit-but-empty scene vs unmounted map: 0.0003 % - shadow/PMREM framebuffer switches do not bleed into MapLibre |
+| 2.9 (extra) | scenario `timeOfDay` drives the sun: dawn az 72 el 5.0 / day az 180 el 67 / dusk az 288 el 4.8 / night el -33 |
 
 ## Gate 1 record
 | # | Result **V** |
@@ -92,6 +107,12 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 | `UsagePolicyGate` (public-demo usage clock) | sessionStorage clock expiry | **deliberately NOT bypassed** — product/licensing control. Each probe launch is a cold profile, so the clock restarts |
 
 ## Decisions taken
+- **Scenario clock = scenario date + `scenarioVariant.timeOfDay` + sim elapsed seconds** (`sceneClock.ts`). The variant enum is exactly `dawn|day|dusk|night`; each resolves to a real solar event at the AOI on the scenario's date (dawn/dusk = sun at 5 deg, day = local solar noon, night = solar midnight). Date = the observed-weather fixture's `realDate` where the scenario has one, else the 2024 September equinox (neutral, documented, not a claim about the incident). No wall clock anywhere.
+- **Gate 2.1 reference is a different algorithm in a different language** (PSA, Python, `harness/reference/solar_reference.py`), and that script is itself checked against NREL SPA's published worked example. It caught a real bug in ITSELF first (Python `//` floors where the C original truncates: 0.75 deg elevation error) - the published value is what exposed it.
+- **Gate 2.4 "crosses its midpoint exactly 2 times" is read as 2 UPWARD crossings = 2 flashes in 2 s = 1 Hz.** A flash crosses the midpoint twice (up, down), so any 1 Hz strobe gives 4 total crossings in 2 s; counting rises is the only reading under which "exactly 2" describes a 1 Hz strobe. Strobe phase is offset 0.5 s so a flash never straddles a whole-second boundary.
+- **Below the horizon the directional light becomes twilight glow from the sun's azimuth** (elevation clamped to +6 deg, palette intensity) - physically where twilight comes from, and it keeps 2.2 meaningful at -10 deg.
+- **Shadow box is fitted to the view**: centred on the camera's look-at point, radius = view width at that distance x1.8, clamped 40-1500 m, 2048^2. No tone mapping, so unlit test geometry keeps exact colours.
+- **Nav lights are always on, scaled by palette darkness** (0.3 by day -> 1.0 at night), mounted on the front motor pods; strobe only with rotors turning.
 - **Aircraft are drawn at 6x true size** (`AIRFRAME_VISUAL_SCALE`, one constant in `fleet.ts`). A 0.5 m quad is sub-pixel beyond ~60 m; the plan's own Phase 0 stand-in was a 3 m box. LOD distances are unchanged. Tune in the aesthetic pass.
 - **Authoring vs rendering are separate:** builders return a `Group` of >= 12 named meshes (what 1.1 counts); `fleet.ts` bakes them into hull / props / gimbal / low InstancedMeshes per type + one shared sprite batch = 9 draw calls at any fleet size.
 - **Prop phase = f(SIM elapsedSec), never wall clock**, so frozen-clock frames and replays are identical. Consequence: at 20 Hz sim ticks the props (and positions) advance in steps; inter-tick smoothing belongs to Phase 4 with the camera smoothing.
@@ -124,6 +145,8 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 - **`/autocompact`, `/clear`** are interactive CLI commands not available to this runner; PROGRESS.md handoff discipline is kept regardless.
 
 ## Open findings (not blocking)
+- **The basemap does not get dark at night.** Phase 2 lights the MODELS; MapLibre's 2D style stays daytime-bright, so a correctly dark night airframe sits on a bright map and additive nav-light glows wash out toward white. Not in the plan's Phase 2 scope; Phase 5 (sky/fog) is the natural place for a night dimming treatment. Needs an owner/taste decision.
+- **Observed-weather fixtures carry no visibility field** ("visibility not in ERA5" in the fixture's own `aggregation` note). Plan Phase 5 keys height fog to "the open-meteo visibility field already being fetched" - that field does not exist here. Phase 5 will need a documented proxy or a new fixture field.
 - **The map draws less relief than the sim flies over (pre-existing).** `scenarioTerrainLayers.impl.ts` `extractTile` serves only DEM tiles lying *wholly* inside the committed crop. `train_wildfire_flank`: 2x2 z14 tiles (~3.7 km) inside a ~5 km DEM. Outside that block MapLibre's ground is flat at 0 m while the sim uses real elevation — 3D aircraft there will float ~1.2-1.5 km above a flat map. Fix is small (pad partial tiles with edge/zero elevation) but it edits an existing file outside this plan's scope; needs an owner decision before Phase 3/4, where it becomes visible.
 - **DEM source is `minzoom = maxzoom = 14`**: below zoom 14 the map shows no terrain at all (pre-existing).
 - **maplibre-gl 6.9.0:** `setTerrain(null)` -> `setTerrain(spec)` leaves `queryTerrainElevation()` at 0 indefinitely (measured over 2.4 s with repaints). Harness treats `terrain.disable()` as one-way per page. Matters to Phase 6's "terrain on/off" matrix: each terrain-off cell needs its own page load, or terrain-off cells run last.
@@ -132,7 +155,7 @@ Cut from `e07f1bc` (see Deviations). `git status --porcelain` empty at cut. **V*
 - Plan docs + `cameraDirector.js` are committed at the repo root per *Before kickoff*. This repo is public; they go public if the branch is ever pushed.
 - `node_modules` had drifted from the lockfile before this work (first `npm install` re-synced 94 packages). Baseline and post-change test totals are nevertheless identical.
 
-## Files touched this phase (Phase 1)
-- new: `src/scene3d/airframes/{parts,teal2,x10,glbOverride}.ts`, `src/scene3d/fleet.ts`, `src/scene3d/fleetBinding.ts`, `harness/gates/gate-1.mjs`
-- changed: `src/scene3d/SceneLayer.ts` (per-frame camera context recovered from the inverse MVP), `src/scene3d/index.ts` (fleet, placeholder lights, DOM-marker handoff), `src/scene3d/harness/installHarness.ts` (`fleet.synthetic/stats`), `harness/assert.mjs` (`diffMask`), `harness/server.mjs` (`buildApp({harness:false})`), `harness/gates/gate-0.mjs` (empty sky), `src/scene3d/README.md`, `PROGRESS.md`
-- **No existing app file touched in Phase 1.**
+## Files touched this phase (Phase 2)
+- new: `src/scene3d/{sun,sceneClock,skyPalette,lighting}.ts`, `harness/reference/solar_reference.py`, `harness/gates/gate-2.mjs`
+- changed: `src/scene3d/SceneLayer.ts` (focus point, shadow map on, renderer handed to the frame hook), `src/scene3d/fleet.ts` (nav lights + strobe batch, shadow casting), `src/scene3d/fleetBinding.ts` (`storeSunSource`), `src/scene3d/index.ts` (placeholder rig deleted -> `LightingRig`; sun override, beacons, test sphere), `src/scene3d/harness/installHarness.ts` (`lighting.*`), `src/scene3d/README.md`, `PROGRESS.md`
+- **No existing app file touched in Phase 2.**

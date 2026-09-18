@@ -63,6 +63,19 @@ it again after any style swap (`style.load`), which drops custom layers.
 - While the layer owns the fleet the DOM markers are `opacity:0` (still clickable); `disable()` and
   `dispose()` give them back.
 
+## Light and time
+
+- **Time source = the scenario clock, never the wall clock** (`sceneClock.ts`): scenario date +
+  `scenarioVariant.timeOfDay` (resolved to a real solar event at the AOI) + sim elapsed seconds.
+- `sun.ts` is the NOAA solar-position algorithm, inline (no dependency), held by Gate 2.1 to an
+  independent PSA/Python reference and to NREL SPA's published example (0.003 deg).
+- `skyPalette.ts` is the single source of colour and intensity for the sun light, sky fill, IBL
+  environment and (Phase 5) `map.setSky()`. If models and sky disagree, fix it there.
+- `lighting.ts`: shadow box fitted to the VIEW (never the AOI); the environment map is rebuilt only
+  when the sun moves > 1 deg elevation / 3 deg azimuth (`pmremPasses` is the instrumented count).
+- Nav lights and the 1 Hz strobe are additive billboards with the glow baked into the texture - no
+  post-processing pass exists, by design.
+
 ## Things measured the hard way (maplibre-gl 6.9.0)
 
 - **The map draws less relief than the sim flies over.** `scenarioTerrainLayers.impl.ts › extractTile`

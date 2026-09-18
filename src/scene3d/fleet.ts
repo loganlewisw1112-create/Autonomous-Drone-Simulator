@@ -22,6 +22,12 @@ export const AIRFRAME_VISUAL_SCALE = 6
 export const LOD_FULL_MAX_M = 300
 export const LOD_LOW_MAX_M = 1500
 const SPRITE_DIAMETER_PX = 12
+const BEACON_MIN_PX = 5
+const BEACON_SIZE_M = 0.16 // true metres, before the visual scale
+const STROBE_ON_SEC = 0.15 // 1 Hz anti-collision strobe, lit for this long each second
+const RED = new THREE.Color('#ff2a1a')
+const GREEN = new THREE.Color('#1aff5a')
+const WHITE = new THREE.Color('#ffffff')
 const MAX_AIRCRAFT = 64
 
 export const AIRFRAME_BUILDERS: Record<AirframeId, (detail: Detail) => AirframeModel> = {
@@ -48,8 +54,10 @@ export interface SceneDrone {
 
 export interface FleetFrame {
   drones: SceneDrone[]
-  /** SIM seconds — never wall clock — so prop phase replays identically. */
+  /** SIM seconds — never wall clock — so prop phase and strobe replay identically. */
   simTimeSec: number
+  /** Nav-light / strobe brightness, 0–1. Faint by day, full at night. Omit for none. */
+  beaconGain?: number
 }
 
 interface Batch {
@@ -59,6 +67,8 @@ interface Batch {
   low: THREE.InstancedMesh
   hubs: Array<{ position: THREE.Vector3; direction: 1 | -1 }>
   pivot: THREE.Vector3
+  /** Airframe-local lamp positions: port (red), starboard (green), dorsal strobe (white). */
+  lamps: { port: THREE.Vector3; starboard: THREE.Vector3; strobe: THREE.Vector3 }
   /** True once a glTF hull replaced the procedural one: it has no rotor/gimbal parts to animate. */
   glb: boolean
   stats: { meshes: number; trianglesFull: number; trianglesLow: number; spanM: number }
@@ -95,7 +105,34 @@ function instanced(geometry: THREE.BufferGeometry, material: THREE.Material, cap
   mesh.visible = false
   mesh.frustumCulled = false // instances roam the whole AO; one bounding sphere cannot cover them
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+  mesh.castShadow = true
+  mesh.receiveShadow = true
   return mesh
+}
+
+/** Soft round glow, baked into the texture: the bloom is in the sprite, there is no post pass. */
+function glowTexture(): THREE.Texture {
+  const size = 64
+  const data = new Uint8Array(size * size * 4)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const r = Math.hypot(x - (size - 1) / 2, y - (size - 1) / 2) / (size / 2)
+      const v = Math.max(0, 1 - r)
+      const glow = Math.min(1, v * v * 1.4 + (r < 0.18 ? 1 : 0))
+      data.set([255, 255, 255, Math.round(glow * 255)], (y * size + x) * 4)
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size)
+  texture.magFilter = texture.minFilter = THREE.LinearFilter
+  texture.needsUpdate = true
+  return texture
+}
+
+/** The forward hub on one side (-1 port, +1 starboard), as a fresh vector. */
+function frontHub(hubs: Batch['hubs'], side: 1 | -1): THREE.Vector3 {
+  const candidates = hubs.filter((h) => Math.sign(h.position.x) === side)
+  const front = candidates.reduce((best, h) => (h.position.y > best.position.y ? h : best), candidates[0])
+  return front.position.clone()
 }
 
 function buildBatch(id: AirframeId, material: THREE.Material): Batch {
@@ -137,6 +174,12 @@ function buildBatch(id: AirframeId, material: THREE.Material): Batch {
     low: instanced(lowGeometry, material, MAX_AIRCRAFT, `${id}-low`),
     hubs,
     pivot: full.gimbalPivot.clone(),
+    lamps: {
+      // Nav lights ride the front motor pods (outermost hub each side); the strobe sits on the spine.
+      port: frontHub(hubs, -1).add(new THREE.Vector3(0, 0, -0.03)),
+      starboard: frontHub(hubs, 1).add(new THREE.Vector3(0, 0, -0.03)),
+      strobe: new THREE.Vector3(0, -0.06, box.max.z + 0.01),
+    },
     glb: false,
     stats: {
       meshes,
@@ -151,6 +194,8 @@ export class FleetRenderer {
   readonly root = new THREE.Group()
   private readonly batches: Record<AirframeId, Batch>
   private readonly sprites: THREE.InstancedMesh
+  private readonly beacons: THREE.InstancedMesh
+  private readonly lamp = new THREE.Vector3()
   private readonly bands = { full: 0, low: 0, sprite: 0 }
 
   // Scratch — this runs every frame; allocate nothing in update().
@@ -174,7 +219,16 @@ export class FleetRenderer {
 
     this.sprites = instanced(new THREE.CircleGeometry(0.5, 16), new THREE.MeshBasicMaterial({ toneMapped: false }), MAX_AIRCRAFT, 'fleet-sprites')
     this.sprites.setColorAt(0, this.colour.set('#ffffff')) // allocates instanceColor
+    this.sprites.castShadow = this.sprites.receiveShadow = false
     this.root.add(this.sprites)
+
+    this.beacons = instanced(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
+      map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+    }), MAX_AIRCRAFT * 3, 'fleet-beacons')
+    this.beacons.castShadow = this.beacons.receiveShadow = false
+    this.beacons.renderOrder = 10 // additive glow goes on after every opaque airframe
+    this.beacons.setColorAt(0, this.colour.set('#ffffff'))
+    this.root.add(this.beacons)
 
     for (const id of Object.keys(this.batches) as AirframeId[]) {
       const url = glbOverrideUrl(id)
@@ -188,7 +242,10 @@ export class FleetRenderer {
     }
   }
 
-  update(frame: FrameContext, { drones, simTimeSec }: FleetFrame): void {
+  update(frame: FrameContext, { drones, simTimeSec, beaconGain = 0 }: FleetFrame): void {
+    let beacons = 0
+    // Offset half a second so a flash never straddles a whole-second boundary of the sim clock.
+    const strobeOn = (((simTimeSec + 0.5) % 1) + 1) % 1 < STROBE_ON_SEC
     const counts: Record<AirframeId, { full: number; props: number; low: number }> = {
       teal2: { full: 0, props: 0, low: 0 },
       x10: { full: 0, props: 0, low: 0 },
@@ -216,6 +273,20 @@ export class FleetRenderer {
       const noseDown = Math.min(drone.speedMs * 1.5, 20) * (Math.PI / 180)
       this.attitude.set(-noseDown, 0, -drone.headingDeg * (Math.PI / 180))
       this.base.compose(this.position, this.quaternion.setFromEuler(this.attitude), this.scale)
+
+      if (beaconGain > 0) {
+        const size = Math.max(BEACON_SIZE_M * AIRFRAME_VISUAL_SCALE, BEACON_MIN_PX * metresPerPixelAtUnitDistance * distance)
+        this.forward.crossVectors(frame.cameraRight, frame.cameraUp)
+        const lamps: Array<[THREE.Vector3, THREE.Color, number]> = [[batch.lamps.port, RED, 1], [batch.lamps.starboard, GREEN, 1]]
+        if (strobeOn && drone.propRpm > 0) lamps.push([batch.lamps.strobe, WHITE, 2.4])
+        for (const [local, colour, boost] of lamps) {
+          this.lamp.copy(local).applyMatrix4(this.base)
+          this.out.makeBasis(frame.cameraRight, frame.cameraUp, this.forward).scale(this.spriteScale.set(size * boost, size * boost, 1)).setPosition(this.lamp)
+          this.beacons.setMatrixAt(beacons, this.out)
+          this.beacons.setColorAt(beacons, this.colour.copy(colour).multiplyScalar(beaconGain))
+          beacons++
+        }
+      }
 
       if (distance > LOD_FULL_MAX_M) {
         batch.low.setMatrixAt(count.low++, this.base)
@@ -252,6 +323,8 @@ export class FleetRenderer {
       this.bands.low += count.low
     }
     this.commit(this.sprites, sprites)
+    this.commit(this.beacons, beacons)
+    if (this.beacons.instanceColor) this.beacons.instanceColor.needsUpdate = true
     if (this.sprites.instanceColor) this.sprites.instanceColor.needsUpdate = true
     this.bands.sprite = sprites
   }
@@ -274,5 +347,7 @@ export class FleetRenderer {
       for (const mesh of [batch.hull, batch.props, batch.gimbal, batch.low]) mesh.geometry.dispose()
     }
     this.sprites.geometry.dispose()
+    this.beacons.geometry.dispose()
+    ;(this.beacons.material as THREE.MeshBasicMaterial).map?.dispose()
   }
 }

@@ -6,10 +6,13 @@
  * its true AGL above whatever ground is on screen, or it visibly floats or sinks.
  */
 import type * as maplibregl from 'maplibre-gl'
+import { observedWeatherFor } from '@/scenarios/observedWeather'
 import { useDroneStore } from '@/store/droneStore'
 import type { DroneState, MissionState } from '@/types'
 import type { AirframeId } from './airframes/parts'
 import type { FleetFrame, SceneDrone } from './fleet'
+import { sceneInstant } from './sceneClock'
+import { sunPosition, type SunPosition } from './sun'
 
 const FT_TO_M = 0.3048
 const HOVER_RPM = 5200
@@ -56,5 +59,21 @@ export function storeFleetSource(map: maplibregl.Map): () => FleetFrame {
       simTimeSec: elapsedSec,
       drones: drones.map((d) => poseOf(d, map.queryTerrainElevation([d.position.lng, d.position.lat]) ?? 0)),
     }
+  }
+}
+
+/** Sun from the SCENARIO clock: the scenario's date (observed-weather fixture, where it has one), its
+ *  time-of-day variant, and sim elapsed seconds — at the scenario's own coordinates. */
+export function storeSunSource(): () => SunPosition {
+  return () => {
+    const { scenario, scenarioVariant, elapsedSec } = useDroneStore.getState()
+    if (!scenario) return { azimuthDeg: 135, elevationDeg: 42 }
+    const { lat, lng } = scenario.startPosition
+    const instant = sceneInstant({
+      date: observedWeatherFor(scenario.id)?.provenance?.observedDate,
+      timeOfDay: scenarioVariant.timeOfDay,
+      latDeg: lat, lngDeg: lng, elapsedSec,
+    })
+    return sunPosition(instant, lat, lng)
   }
 }

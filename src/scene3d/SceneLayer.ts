@@ -21,6 +21,8 @@ export interface FrameContext {
   /** Unit vectors spanning the image plane — what a billboard must align to. */
   cameraRight: THREE.Vector3
   cameraUp: THREE.Vector3
+  /** The point the camera looks at: map centre at its elevation. Shadows are fitted around it. */
+  focus: THREE.Vector3
   fovRad: number
   viewportHeightPx: number
 }
@@ -46,11 +48,12 @@ export class SceneLayer implements maplibregl.CustomLayerInterface {
     cameraPosition: new THREE.Vector3(),
     cameraRight: new THREE.Vector3(1, 0, 0),
     cameraUp: new THREE.Vector3(0, 1, 0),
+    focus: new THREE.Vector3(),
     fovRad: 0.6435,
     viewportHeightPx: 1,
   }
   /** Called inside render(), after the camera is solved and before three draws. */
-  onBeforeRender: ((frame: FrameContext) => void) | null = null
+  onBeforeRender: ((frame: FrameContext, renderer: THREE.WebGLRenderer) => void) | null = null
   private renderer: THREE.WebGLRenderer | null = null
   private map: maplibregl.Map | null = null
   private originX = 0
@@ -86,6 +89,8 @@ export class SceneLayer implements maplibregl.CustomLayerInterface {
     if (!this.renderer) {
       this.renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: true })
       this.renderer.autoClear = false
+      this.renderer.shadowMap.enabled = true
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     }
   }
 
@@ -121,7 +126,9 @@ export class SceneLayer implements maplibregl.CustomLayerInterface {
 
     if (this.onBeforeRender) {
       this.solveFrame(args.fov, canvas.height)
-      this.onBeforeRender(this.frame)
+      const centre = map.getCenter()
+      this.toScene(centre.lng, centre.lat, map.getCenterElevation(), this.frame.focus)
+      this.onBeforeRender(this.frame, renderer)
     }
     renderer.render(this.scene, this.camera)
 

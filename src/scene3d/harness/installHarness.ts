@@ -13,7 +13,8 @@ import { runQuickDemo } from '@/sim/demo/quickDemo'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
 import { resolveTerrainFixtureId, terrainFixtureFor, terrainRasterFor } from '@/scenarios/terrainFixtures'
 import { createScene3D, type Scene3DHandle, type SceneDrone } from '@/scene3d'
-import { storeFleetSource } from '@/scene3d/fleetBinding'
+import { storeFleetSource, storeSunSource } from '@/scene3d/fleetBinding'
+import { sunPosition, type SunPosition } from '@/scene3d/sun'
 import { containsLatLng, elevationAt } from '@/sim/terrain/terrainRaster'
 import { useDroneStore } from '@/store/droneStore'
 
@@ -114,6 +115,14 @@ export interface Harness {
     synthetic(drones: SceneDrone[] | null): void
     stats(): ReturnType<Scene3DHandle['fleetStats']> | null
   }
+  lighting: {
+    /** The production solar algorithm, exposed so the gate can hold it to an independent table. */
+    sunPosition(utcMs: number, latDeg: number, lngDeg: number): SunPosition
+    override(position: SunPosition | null): void
+    beacons(on: boolean): void
+    timeOfDay(value: 'dawn' | 'day' | 'dusk' | 'night'): void
+    stats(): ReturnType<Scene3DHandle['lightingStats']> | null
+  }
   dom: {
     /** Hide every DOM overlay above the GL canvas so pixel assertions see only what GL drew. */
     glOnly(on: boolean): void
@@ -188,7 +197,7 @@ export function installHarness(map: maplibregl.Map): Harness {
     const scenario = useDroneStore.getState().scenario
     harness.scene?.dispose()
     harness.scene = scenario
-      ? createScene3D(map, { lng: scenario.startPosition.lng, lat: scenario.startPosition.lat }, { fleetSource: storeFleetSource(map) })
+      ? createScene3D(map, { lng: scenario.startPosition.lng, lat: scenario.startPosition.lat }, { fleetSource: storeFleetSource(map), sunSource: storeSunSource() })
       : null
     return { ok: true, seed: scenario?.seed, scenarioId: scenario?.id }
   }
@@ -357,6 +366,17 @@ export function installHarness(map: maplibregl.Map): Harness {
       synthetic: (drones) => harness.scene?.setFleetSource(
         drones ? () => ({ drones, simTimeSec: useDroneStore.getState().elapsedSec }) : null),
       stats: () => harness.scene?.fleetStats() ?? null,
+    },
+    lighting: {
+      sunPosition,
+      override: (position) => harness.scene?.setSunOverride(position),
+      beacons: (on) => harness.scene?.setBeacons(on),
+      timeOfDay: (value) => {
+        const s = useDroneStore.getState()
+        useDroneStore.setState({ scenarioVariant: { ...s.scenarioVariant, timeOfDay: value } })
+        map.triggerRepaint()
+      },
+      stats: () => harness.scene?.lightingStats() ?? null,
     },
     dom: {
       glOnly: (on) => {
