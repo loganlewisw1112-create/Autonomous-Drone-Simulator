@@ -30,6 +30,12 @@ const BUILDING_LOADERS: Readonly<Record<string, BuildingLoader>> = {
   nist_obstructed_lane: loadWildfireBuildings,
   // Phase 6 — Surfside collapse AO (Overture footprints + small DEM for base MSL).
   hist_surfside_cts_2021: () => import('./fixtures/hist_surfside_cts_2021/buildings.json'),
+  // Buildings coverage pass — the urban disaster AOs whose terrain already shipped, cropped to
+  // the mission core to stay inside §21's footprint budget (New Orleans and Houston are too dense
+  // for a full 5 km box; the Marshall Fire suburbs fit whole).
+  hist_katrina_lower_ninth_2005: () => import('./fixtures/hist_katrina_lower_ninth_2005/buildings.json'),
+  hist_harvey_houston_2017: () => import('./fixtures/hist_harvey_houston_2017/buildings.json'),
+  hist_marshall_fire_2021: () => import('./fixtures/hist_marshall_fire_2021/buildings.json'),
 }
 
 const preparedBuildings = new Map<string, BuildingFeatureCollection>()

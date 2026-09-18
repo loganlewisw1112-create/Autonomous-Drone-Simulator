@@ -5,11 +5,13 @@ import { normalizeOvertureBuildings, OVERTURE_CLIENT_VERSION, OVERTURE_DATA_RELE
 
 describe('Overture building fixture authoring tool', () => {
   it('pins the exact source catalog and authoring client', () => {
-    expect(OVERTURE_DATA_RELEASE).toBe('2026-06-17.0')
-    expect(OVERTURE_SCHEMA_VERSION).toBe('v1.17.0')
-    expect(OVERTURE_CLIENT_VERSION).toBe('1.0.1')
+    // Bumped 2026-09 when the buildings coverage pass ran: Overture keeps only ~2 monthly
+    // releases on S3, so 2026-06-17.0 / v1.17.0 / client 1.0.1 had all expired.
+    expect(OVERTURE_DATA_RELEASE).toBe('2026-08-19.0')
+    expect(OVERTURE_SCHEMA_VERSION).toBe('v1.18.0')
+    expect(OVERTURE_CLIENT_VERSION).toBe('1.0.2')
     expect(OVERTURE_STAC_COLLECTION).toBe(
-      'https://stac.overturemaps.org/2026-06-17.0/buildings/building/collection.json',
+      'https://stac.overturemaps.org/2026-08-19.0/buildings/building/collection.json',
     )
   })
 

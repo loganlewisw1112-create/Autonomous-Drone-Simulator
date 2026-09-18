@@ -11,7 +11,7 @@
     ]
   },
   "realDate": "2021-12-30",
-  "generatedAt": "2026-09-17",
+  "generatedAt": "2026-09-18",
   "sources": [
     {
       "fixture": "airspace.json",
@@ -28,6 +28,26 @@
         0,
         400
       ]
+    },
+    {
+      "fixture": "buildings.json",
+      "source": "Overture Maps Foundation — buildings theme",
+      "url": "https://docs.overturemaps.org/guides/buildings/",
+      "license": "ODbL 1.0; upstream attribution retained by Overture",
+      "attribution": "© OpenStreetMap contributors, Overture Maps Foundation",
+      "retrievedAt": "2026-09-18",
+      "sha256": "c7293862b2dcaa23e50d1796d756229632dbc13cb433bf0c3007e0e2ed4d5f09",
+      "rawBytes": 1412084,
+      "gzipBytes": 189757,
+      "input": "ov-marshall.geojson",
+      "dataRelease": "2026-08-19.0",
+      "schemaVersion": "v1.18.0",
+      "stacCollection": "https://stac.overturemaps.org/2026-08-19.0/buildings/building/collection.json",
+      "client": {
+        "package": "overturemaps",
+        "version": "1.0.2"
+      },
+      "filters": "measured height, or num_floors × 3m; unknown-height footprints excluded"
     },
     {
       "fixture": "constellation.json",

@@ -4,14 +4,14 @@
     "lat": 29.76,
     "lng": -95.37,
     "aoBbox": [
-      -95.39586967387429,
-      29.737542220625226,
-      -95.34413032612572,
-      29.782457779374777
+      -95.385522,
+      29.746525,
+      -95.354478,
+      29.773475
     ]
   },
   "realDate": "2017-08-28",
-  "generatedAt": "2026-09-17",
+  "generatedAt": "2026-09-18",
   "sources": [
     {
       "fixture": "airspace.json",
@@ -28,6 +28,26 @@
         200,
         200
       ]
+    },
+    {
+      "fixture": "buildings.json",
+      "source": "Overture Maps Foundation — buildings theme",
+      "url": "https://docs.overturemaps.org/guides/buildings/",
+      "license": "ODbL 1.0; upstream attribution retained by Overture",
+      "attribution": "© OpenStreetMap contributors, Overture Maps Foundation",
+      "retrievedAt": "2026-09-18",
+      "sha256": "ac28024c5ec2f66c129c60cc01362dc09f37883052d84cfe38a2bb2ebfe5ecfc",
+      "rawBytes": 779836,
+      "gzipBytes": 95058,
+      "input": "overturemaps==1.0.2",
+      "dataRelease": "2026-08-19.0",
+      "schemaVersion": "v1.18.0",
+      "stacCollection": "https://stac.overturemaps.org/2026-08-19.0/buildings/building/collection.json",
+      "client": {
+        "package": "overturemaps",
+        "version": "1.0.2"
+      },
+      "filters": "measured height, or num_floors × 3m; unknown-height footprints excluded"
     },
     {
       "fixture": "constellation.json",
