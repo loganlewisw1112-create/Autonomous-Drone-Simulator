@@ -11,7 +11,14 @@ const MAP_SELECTOR = '.maplibregl-map'
 export const INTERSTITIAL_SELECTORS = ['[aria-modal="true"]', '.modal-overlay', '.ls-check-row']
 
 async function launchBrowser() {
-  const opts = { headless: false, args: ['--window-position=0,0', `--window-size=${VIEWPORT.width + 40},${VIEWPORT.height + 140}`] }
+  // Anti-throttling: a headed window that loses focus or is occluded otherwise has its rAF loop throttled
+  // to ~1 Hz, which turns every frame-time measurement into ~1000 ms of garbage and stalls the matrix.
+  // These flags keep the renderer running at full rate regardless of window focus — the timing a user
+  // looking at the foreground app would actually see.
+  const opts = { headless: false, args: [
+    '--window-position=0,0', `--window-size=${VIEWPORT.width + 40},${VIEWPORT.height + 140}`,
+    '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
+  ] }
   try {
     return { browser: await chromium.launch(opts), channel: 'bundled-chromium' }
   } catch {

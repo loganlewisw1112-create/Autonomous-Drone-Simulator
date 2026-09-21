@@ -40,6 +40,7 @@ export function mountScene3D(map: maplibregl.Map): () => void {
     if (!handle) return
     handle.quality.setTier(tier ?? 'auto')
     handle.enable()
+    handle.setBuildingShadows(true) // fixed (caster/receiver split); harmless where a scenario has no footprints
     if (mode && mode !== 'TACTICAL') handle.camera.setMode(mode)
   }
   sync()

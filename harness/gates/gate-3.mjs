@@ -215,9 +215,10 @@ try {
     boxPx[0] === 0 && boxPx[1] >= 100, `inside ${boxPx[0]} px / above the roof ${boxPx[1]} px (${building.heightM} m building)`)
 
   // ── 3.4 shadows climb buildings (second scenario: it has Overture footprints) ───────────────
-  if (!process.argv.includes('--with-buildings')) {
-    gate.skip('3.4', 'shadows climb buildings', 'FALLBACK 3 taken for buildings only: stand-ins self-shadow (2 remediation attempts, see PROGRESS.md); building stand-ins ship OFF. Reproduce with --with-buildings')
-  } else {
+  // Once FALLBACK-3 skipped while the single caster/receiver mesh self-shadowed every roof. Fixed by
+  // splitting the caster (walls + cap) from the receiver (roof lifted a clear margin above it) in
+  // shadowReceivers.ts, so this now runs in the standard suite. `--with-buildings` is kept as a no-op alias.
+  {
     await H(() => window.__harness.lighting.buildingShadows(true))
     const sun55 = { azimuthDeg: 135, elevationDeg: 55 }
     await H((s) => window.__harness.lighting.override(s), sun55)

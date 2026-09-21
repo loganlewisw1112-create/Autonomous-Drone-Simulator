@@ -77,16 +77,27 @@ function extractTile(z: number, x: number, y: number): ArrayBuffer | null {
   const offX = tileAbsX - originX
   const offY = tileAbsY - originY
 
-  // Entire tile must lie inside the committed crop — partial tiles omitted.
-  if (offX < 0 || offY < 0 || offX + TILE_PX > decodedWidth || offY + TILE_PX > decodedHeight) {
+  // Reject only tiles that do not touch the crop at all. A tile that straddles the crop edge used to be
+  // dropped whole, which stopped the drawn relief a full tile (up to 256 px) short of the DEM's real bounds
+  // on every side. Instead, serve it: pixels inside the crop are the DEM, pixels outside are edge-clamped —
+  // the SAME clamp `elevationAt` (terrainRaster.ts) applies, so the scene's ground model and MapLibre agree.
+  if (offX + TILE_PX <= 0 || offY + TILE_PX <= 0 || offX >= decodedWidth || offY >= decodedHeight) {
     return null
   }
 
+  const clampInt = (v: number, hi: number) => (v < 0 ? 0 : v > hi ? hi : v)
   const tile = new Uint8ClampedArray(TILE_PX * TILE_PX * 4)
   for (let row = 0; row < TILE_PX; row++) {
-    const src = ((offY + row) * decodedWidth + offX) * 4
-    const dst = row * TILE_PX * 4
-    tile.set(decodedPixels.subarray(src, src + TILE_PX * 4), dst)
+    const sy = clampInt(offY + row, decodedHeight - 1)
+    for (let col = 0; col < TILE_PX; col++) {
+      const sx = clampInt(offX + col, decodedWidth - 1)
+      const src = (sy * decodedWidth + sx) * 4
+      const dst = (row * TILE_PX + col) * 4
+      tile[dst] = decodedPixels[src]
+      tile[dst + 1] = decodedPixels[src + 1]
+      tile[dst + 2] = decodedPixels[src + 2]
+      tile[dst + 3] = 255
+    }
   }
   return encodeRgbPngTile(tile, TILE_PX, TILE_PX)
 }

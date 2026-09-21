@@ -3,9 +3,10 @@
  * (aircraft heights, shadow receivers, later the sensor volumes), so they can never disagree.
  *
  * It is the sim's own DEM (the same pixels the app feeds MapLibre) times the live exaggeration,
- * with two measured caveats about what the map actually renders:
- *   1. relief exists only inside the block of WHOLE DEM tiles (`extractTile` drops partial tiles);
- *   2. relief exists only above a zoom floor (measured: none at z14, present at z15).
+ * with one measured caveat about what the map actually renders:
+ *   - relief exists only above a zoom floor (measured: none at z14, present at z15).
+ * (`extractTile` now serves edge-clamped partial tiles, so relief reaches the whole DEM crop — not just
+ *  the block of whole tiles it used to; the ground model follows, using the crop bounds below.)
  * Everywhere else the drawn ground is flat at 0 m. Rather than model MapLibre's zoom rule, the
  * model ASKS it once per frame: one `queryTerrainElevation` at an on-block point, compared with the
  * DEM. Pure array maths after that — no per-vertex MapLibre calls, and no dependence on which
@@ -39,7 +40,8 @@ interface HeaderWithOrigin {
   mercatorPixelOrigin?: { x: number; y: number }
 }
 
-/** The lng/lat box covered by whole DEM tiles — the only place the map draws relief. */
+/** The lng/lat box covered by whole DEM tiles. Still used by the harness ridge search as a conservative
+ *  "relief definitely here" region; the drawn area is now the larger `cropBounds`. */
 export function wholeTileBounds(header: HeaderWithOrigin | undefined): Bounds | null {
   if (!header?.mercatorPixelOrigin) return null
   const tile = header.tileSize ?? 256
@@ -53,10 +55,23 @@ export function wholeTileBounds(header: HeaderWithOrigin | undefined): Bounds | 
   return { west: lng(x0), east: lng(x1), north: lat(y0), south: lat(y1) }
 }
 
+/** The lng/lat box of the DEM crop itself — where the fixture has data and, now that `extractTile` serves
+ *  edge-clamped partial tiles, where MapLibre draws relief. Wider than `wholeTileBounds` by up to a tile per
+ *  side; this is the region over which the drawn-ground model is valid. */
+export function cropBounds(header: HeaderWithOrigin | undefined): Bounds | null {
+  if (!header?.mercatorPixelOrigin) return null
+  const tile = header.tileSize ?? 256
+  const { x: ox, y: oy } = header.mercatorPixelOrigin
+  const nPix = 2 ** header.zoom * tile
+  const lng = (px: number) => (px / nPix) * 360 - 180
+  const lat = (py: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * py) / nPix))) * 180) / Math.PI
+  return { west: lng(ox), east: lng(ox + header.width), north: lat(oy), south: lat(oy + header.height) }
+}
+
 export function createTerrainModel(map: maplibregl.Map, scenario: { id: string; terrainFixtureId?: string } | null): TerrainModel {
   const fixtureId = scenario ? resolveTerrainFixtureId(scenario) : undefined
   const raster: TerrainRaster | undefined = fixtureId ? terrainRasterFor(fixtureId) : undefined
-  const bounds = fixtureId ? wholeTileBounds(terrainFixtureFor(fixtureId)?.header as HeaderWithOrigin | undefined) : null
+  const bounds = fixtureId ? cropBounds(terrainFixtureFor(fixtureId)?.header as HeaderWithOrigin | undefined) : null
   let exaggeration = 0
   let live = false
 

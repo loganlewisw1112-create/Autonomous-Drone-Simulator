@@ -14,7 +14,10 @@ const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8'
 const read = (...p) => readFileSync(resolve(ROOT, ...p), 'utf8')
 
 // Paths this phase is allowed to have touched. Anything else dirty is a finding.
+// scenarioTerrainLayers.impl.ts is an OWNER-AUTHORIZED deviation (2026-09-18): the terrain-coverage fix
+// (edge-clamped partial tiles) is the one existing app file the plan reserved for the owner's explicit call.
 const PHASE_PATHS = [/^harness\//, /^src\/scene3d\//, /^src\/App\.tsx$/, /^src\/components\/(TacticalMap|WelcomeOverlay)\.tsx$/,
+  /^src\/components\/scenarioTerrainLayers\.impl\.ts$/,
   /^vite\.config\.ts$/, /^package(-lock)?\.json$/, /^\.gitignore$/, /^PROGRESS\.md$/,
   /^(AUTONOMOUS-PLAN-3d-view|SPEC-3d-view|ABORT)\.md$/, /^cameraDirector\.js$/]
 

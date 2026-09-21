@@ -68,7 +68,8 @@ export interface Scene3DHandle {
   /** Turn the sun's shadow casting off/on (the receivers stay mounted either way). */
   setShadows(on: boolean): void
   receiverStats(): ReceiverStats
-  /** Experimental, default off — see the KNOWN DEFECT note in shadowReceivers.ts. */
+  /** Building roofs receive aircraft shadows and buildings cast their own (caster/receiver split in
+   *  shadowReceivers.ts). On by default in the product mount; a no-op where the scenario has no footprints. */
   setBuildingShadows(on: boolean): void
   readonly camera: CameraDirector
   /** Which aircraft the camera modes follow; `null` = the first one airborne. */

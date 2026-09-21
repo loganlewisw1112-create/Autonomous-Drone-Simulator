@@ -11,6 +11,12 @@
  *    time. No Math.random, no wall clock — a replay smokes exactly as the original run did.
  *  - GLARE is one screen-space sprite at the sun's projected position. There is no post-processing
  *    pass anywhere in this directory, by design (the gate greps for one).
+ *  - GRADE is a screen-space aerial-perspective wash: the map basemap is a flat, bright tactical
+ *    theme that knows nothing about the time of day, so on its own a pitched view is a wall of pale
+ *    ground at noon AND at midnight. This composites a vertical gradient (ground colour low, horizon
+ *    colour high) over the whole frame, keyed to the palette's darkness, so the ground reads as lit
+ *    by the same sun as everything else. It is drawn BEFORE the airframes (renderOrder −1000, in the
+ *    opaque queue) so they stay lit and legible on top of it; it is not a post-process pass.
  */
 import * as THREE from 'three'
 import type * as maplibregl from 'maplibre-gl'
@@ -83,7 +89,7 @@ function softDisc(): THREE.Texture {
 export class Atmosphere {
   readonly root = new THREE.Group()
   /** `skyWrites` counts map.setSky() calls: each one dirties the style, so it must stay rare. */
-  readonly stats = { smokeParticles: 0, glareVisible: false, visibilityKm: 0, fogDensity: 0, skyWrites: 0 }
+  readonly stats = { smokeParticles: 0, glareVisible: false, visibilityKm: 0, fogDensity: 0, skyWrites: 0, gradeAlpha: 0 }
   /** 0–1. The quality ladder turns this down before anything else. */
   smokeAmount = 1
   glareEnabled = true
@@ -93,6 +99,11 @@ export class Atmosphere {
   private readonly smoke: THREE.InstancedMesh
   private readonly alpha: THREE.InstancedBufferAttribute
   private readonly glare: THREE.Mesh
+  private readonly grade: THREE.Mesh
+  private readonly gGround = new THREE.Vector3()
+  private readonly gHorizon = new THREE.Vector3()
+  /** Warm khaki the daylight ground multiplies toward — a sunlit-terrain tone, not the palette's flat olive. */
+  private readonly gWarm = new THREE.Vector3(0.82, 0.75, 0.58)
   private readonly fog = new THREE.FogExp2(0xffffff, 0)
   private particles: Particle[] = []
   private builtFor = ''
@@ -144,7 +155,29 @@ export class Atmosphere {
     this.glare.frustumCulled = false
     this.glare.renderOrder = 20
     this.glare.visible = false
-    this.root.add(this.smoke, this.glare)
+
+    // Aerial-perspective wash. A full-frame quad in clip space (the camera is ignored, exactly like
+    // the glare). It sits in the OPAQUE queue at renderOrder −1000 so it draws right after MapLibre's
+    // framebuffer and BEFORE the airframes — which then draw over it and keep their own lighting.
+    // Colours are raw sRGB (a Vector3, not a Color) so they composite in the same space the map wrote.
+    // MULTIPLY, not alpha-over: framebuffer *= mix(white, tint, strength). Multiplying deepens and warms
+    // the basemap while keeping its road/feature contrast, where an alpha wash only flattens it toward grey.
+    this.grade = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+      uniforms: { uGround: { value: new THREE.Vector3() }, uSky: { value: new THREE.Vector3() }, uAlphaBottom: { value: 0 }, uAlphaTop: { value: 0 } },
+      vertexShader: 'varying float vY; void main() { vY = position.y * 0.5 + 0.5; gl_Position = vec4(position.x, position.y, 0.9999, 1.0); }',
+      fragmentShader: 'uniform vec3 uGround; uniform vec3 uSky; uniform float uAlphaBottom; uniform float uAlphaTop; varying float vY;'
+        + ' void main() { float g = smoothstep(0.92, 0.02, vY); vec3 tint = mix(uSky, uGround, g); float s = mix(uAlphaTop, uAlphaBottom, g); gl_FragColor = vec4(mix(vec3(1.0), tint, s), 1.0); }',
+      transparent: false, depthTest: false, depthWrite: false, toneMapped: false,
+      blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor,
+    }))
+    this.grade.frustumCulled = false
+    this.grade.renderOrder = -1000
+    this.grade.visible = false
+    this.root.add(this.grade, this.smoke, this.glare)
+  }
+
+  private static srgb(hex: string, out: THREE.Vector3): THREE.Vector3 {
+    return out.set(parseInt(hex.slice(1, 3), 16) / 255, parseInt(hex.slice(3, 5), 16) / 255, parseInt(hex.slice(5, 7), 16) / 255)
   }
 
   update(frame: FrameContext, mvp: THREE.Matrix4, palette: SkyPalette, toSun: THREE.Vector3, sunElevationDeg: number, atmosphere: AtmosphereFrame | null): void {
@@ -159,8 +192,30 @@ export class Atmosphere {
     this.daylight = 0.06 + 0.94 * (1 - palette.darkness)
     const visibilityKm = atmosphere?.visibilityKm ?? 40
     this.applySky(palette, visibilityKm, (atmosphere?.fires.length ?? 0) > 0 && visibilityKm < 8)
+    this.updateGrade(palette)
     this.updateSmoke(frame, atmosphere)
     this.updateGlare(frame, mvp, palette, toSun, sunElevationDeg)
+  }
+
+  /** Time-of-day wash over the (lighting-blind) map basemap. Alpha rises with the palette's darkness;
+   * the low frame is weighted toward the ground colour and the high frame toward the horizon. */
+  private updateGrade(palette: SkyPalette): void {
+    const d = THREE.MathUtils.clamp(palette.darkness, 0, 1)
+    const u = (this.grade.material as THREE.ShaderMaterial).uniforms
+    Atmosphere.srgb(palette.ground, this.gGround)
+    Atmosphere.srgb(palette.horizon, this.gHorizon)
+    // Ground multiply target: warm sunlit khaki by day, the palette's dark ground by night. The high frame
+    // multiplies gently toward the horizon colour (haze). Strength rises with darkness but is real even at noon,
+    // so a pitched view of the pale tactical basemap reads as lit terrain instead of a white sheet.
+    ;(u.uGround.value as THREE.Vector3).copy(this.gWarm).lerp(this.gGround, d)
+    ;(u.uSky.value as THREE.Vector3).copy(this.gHorizon)
+    const aBottom = 0.42 + 0.42 * d
+    u.uAlphaBottom.value = aBottom
+    // Horizon haze is real even at noon: the distance fades to the horizon colour instead of the basemap's
+    // bare cream. (This scenario runs at ~4.8 km smoke visibility, so a hazy far field is the correct read.)
+    u.uAlphaTop.value = 0.14 + 0.12 * d
+    this.grade.visible = aBottom > 0.02
+    this.stats.gradeAlpha = Number(aBottom.toFixed(3))
   }
 
   private applySky(palette: SkyPalette, visibilityKm: number, smoky: boolean): void {
@@ -285,5 +340,7 @@ export class Atmosphere {
     ;(this.smoke.material as THREE.Material).dispose()
     this.glare.geometry.dispose()
     ;(this.glare.material as THREE.Material).dispose()
+    this.grade.geometry.dispose()
+    ;(this.grade.material as THREE.Material).dispose()
   }
 }
