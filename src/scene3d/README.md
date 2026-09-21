@@ -9,7 +9,8 @@ with no extra work. Proven by `npm run gate -- 0` (buried box, and natural ridge
 Status: **default OFF.** Open the app with `?scene3d=1` to mount it (`&quality=cinematic|balanced|tactical`,
 `&camera=orbit|chase|fpv|ground`); the handle is on `window.__scene3d` (`.disable()` is the kill switch).
 Everything here ships as two lazy chunks (177 KB gz) that load only behind that flag. Gates: `npm run gate -- <p0|0..6>`;
-Gate 6 is aborted on its whole-frame budget - see `/ABORT.md` - because the map alone exceeds it on an integrated GPU.
+**`GATE 6 PASS` (11/11).** Gate 6.1 gates the layer's own attributable cost (`render()` ≤ 8 ms p75, median added ≤ 4 ms —
+an owner decision, see `/ABORT.md`), not whole-frame time, which is GPU-bound by the map on an integrated GPU.
 
 ## Coordinate conventions
 
@@ -87,8 +88,11 @@ it again after any style swap (`style.load`), which drops custom layers.
   `terrainModel.ts` (the ground as DRAWN), and is rebuilt on camera moves with hysteresis
   (0.08 ms/frame amortised over a 900 m pan). Shadow position error vs the analytic sun-ray hit:
   0.05 m in elevation across 50 m of relief.
-- **Building stand-ins are OFF by default - known defect** (they shadow themselves; Gate 3.4
-  skipped under the plan's fallback). See the header of `shadowReceivers.ts`.
+- **Building shadows work and are ON by default** (fixed 2026-09-21). The old defect was one mesh that
+  both cast and received, so every roof sat in its own shadow. Split into an invisible CASTER (walls +
+  cap at the real roof height) and a RECEIVER (roof lifted `ROOF_CLEARANCE_M` above it) — separate
+  meshes at different depths can't self-shadow. Gate 3.4 is un-skipped and passing (aircraft shadow
+  lands on the roof plane, 9.4 px from prediction). See the header of `shadowReceivers.ts`.
 
 ## Camera and sensor volumes
 
@@ -126,12 +130,12 @@ it again after any style swap (`style.load`), which drops custom layers.
 
 ## Things measured the hard way (maplibre-gl 6.9.0)
 
-- **The map draws less relief than the sim flies over.** `scenarioTerrainLayers.impl.ts › extractTile`
-  serves only DEM tiles that fit *wholly* inside the committed crop. For `train_wildfire_flank` that is
-  a 2×2 block of z14 tiles (~3.7 km) inside a ~5 km DEM; outside it MapLibre's ground is flat at 0 m
-  while the sim still uses real elevations. The fleet therefore takes its height from the DRAWN
-  ground (see Fleet), which hides the mismatch; terrain-dependent volumes in later phases still
-  need it fixed at the source. Pre-existing (open finding in `PROGRESS.md`).
+- **Terrain coverage: fixed 2026-09-21.** `scenarioTerrainLayers.impl.ts › extractTile` used to serve only
+  DEM tiles that fit *wholly* inside the committed crop, so drawn relief stopped up to a full tile (256 px)
+  short of the DEM's real bounds on every side. It now serves the straddling edge tiles too, edge-clamped
+  (the same clamp `elevationAt()` in `terrainRaster.ts` applies), so relief reaches the crop bounds.
+  `terrainModel.ts` was widened from `wholeTileBounds` to `cropBounds` to match (aircraft/shadows sit
+  correctly over the newly-drawn edges); `wholeTileBounds` is kept for the harness ridge search.
 - **The map draws relief only at zoom >= 15** (measured: none at z14, present at z15), whatever the
   source's `minzoom` says. `terrainModel.ts` asks MapLibre once per frame instead of modelling the rule.
 - `setTerrain(null)` → `setTerrain(spec)` leaves `queryTerrainElevation()` at 0 indefinitely. Treat
@@ -143,3 +147,33 @@ it again after any style swap (`style.load`), which drops custom layers.
   `elevation`; `calculateCameraOptionsFromTo()` is the only camera primitive worth using, and it
   takes real `LngLat` instances. Set the vertical FOV *before* calling it (zoom is derived from FOV),
   and keep the derived zoom under `maxZoom` (22) or the camera silently lands further away.
+
+## Running the gates on this machine (integrated GPU) — flaky-vs-real triage
+
+The gates drive a **headed** browser and this machine has an AMD integrated GPU, so two *environmental*
+flake modes exist that are NOT code failures. Both are handled in the harness, but know the pattern so a
+flake is never mistaken for a regression:
+
+- **rAF throttling.** A headed Chrome window that loses focus or is occluded throttles `requestAnimationFrame`
+  to ~1 Hz, so every frame-time reading becomes ~1000 ms of garbage and the matrix crawls. `harness/probe.mjs`
+  launches with `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`,
+  `--disable-renderer-backgrounding` to prevent it. If you see whole-frame times near 1000 ms, the flags
+  regressed or a newer Chrome ignores them — it is not the layer (layer `render()` is measured separately and
+  stays sub-ms).
+- **Tile stalls under sustained load.** Running many gates back-to-back (e.g. Gate 6.6's P0→5 sweep) can exhaust
+  tile-loading throughput; a gate then fails with `__harness.ready timed out: … tiles=false`. `gate-6.mjs` 6.6
+  retries each prior gate up to twice with a cooldown; a genuinely regressed gate fails **all** attempts, so
+  the criterion is unchanged.
+
+**Triage order when a gate fails — do this before touching code:**
+1. **Re-run the failing gate on its own** (`npm run gate -- <n>`). Environmental flakes usually clear; a real
+   regression reproduces deterministically at the same assertion with the same numbers.
+2. If it now passes alone, the back-to-back run was resource-starved — reach for an **infra-robustness fix**
+   (a retry/cooldown/timeout, or the anti-throttle flags), *not* a code investigation.
+3. Only if it fails **individually and repeatably** is it a code regression — then isolate with
+   `git stash` / a targeted revert. (Watch for confounders: a stash-and-rebuild run can itself hit a tile
+   stall and crash on `0.X`, which is not evidence either way — re-run it.)
+4. A specific trap seen here: Gate 0.2 (`centroid(frame, null, isMagenta)`) reads *whole-frame* magenta, so a
+   transient dark-tile frame makes the semi-transparent pink map POIs composite to saturated magenta and
+   contaminate the centroid (56 px error). Settled (bright) tiles → the POIs read pink, only the slab counts,
+   error ≤ 0.71 px. If 0.2 spikes, suspect tiles before geometry.
