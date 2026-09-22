@@ -14,7 +14,19 @@ permissions:
 
 concurrency:
   group: vercel-production
-  cancel-in-progress: false
+  # `true`, deliberately. A promote run holds this group until it finishes, and
+  # GitHub keeps only one queued run per group -- so any run that never finishes
+  # wedges the pipeline and every later run is cancelled while queued behind it.
+  # That happened: a run sat in `waiting` on an environment approval from
+  # 2026-09-17 to 2026-09-22, the seven runs behind it were cancelled, and
+  # production stopped tracking main entirely (it was kept current by hand with
+  # `vercel alias set`, which is why a preview SHA served production).
+  # Cancelling in progress means the newest verified SHA always wins, which is
+  # what promotion should do anyway. Trade-off, stated: two merges landing close
+  # together can cancel an in-flight promote, briefly leaving the three targets
+  # on mixed revisions until the newer run finishes. `npm run deploy:status`
+  # reports exactly that state.
+  cancel-in-progress: true
 
 jobs:
   promote:
