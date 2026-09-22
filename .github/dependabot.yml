@@ -7,6 +7,20 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    # Majors closed 2026-09-22 (#92, #93, #95). Each is half of a version-locked
+    # pair, so the bump alone cannot install: @types/react-dom@19 needs
+    # @types/react@19 (this project is React 18.3.1), @vitejs/plugin-react@6 needs
+    # Vite 7 (on 6.4.3), and @vitest/coverage-v8@5 needs vitest 5 (on 4.1.11).
+    # Each is a migration that must move its peer at the same time, on its own
+    # branch. Only the majors are ignored -- minor and patch updates, including
+    # security fixes, still come through the minor-and-patch group.
+    ignore:
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/coverage-v8"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
