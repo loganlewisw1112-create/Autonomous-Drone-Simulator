@@ -15,9 +15,10 @@ Gate status: Gate 6 = 11/11. Every prior gate passes both inside Gate 6.6 and in
 The owner then reviewed the four open decisions and authorized four fixes (all done, all verified): (1) adopt the
 layer-attributable frame budget; (2) fix building shadows; (3) fix terrain coverage; (4) fix the "all white background"
 look. Nothing pushed — branch `feat/3d-scene-layer` remains local only; pushing/PR is the owner's call.
-Remaining owner-side items: the aesthetic pass is still theirs to steer (open `artifacts/review/index.html`, or the app
-with `?scene3d=1&camera=orbit`; the grade/tint values are simple knobs); running Gate 6.1's whole-frame budget on a
-discrete GPU is still available as an alternative to the adopted layer budget.
+A **deep aesthetic pass** was then done at the owner's request (see the section below) — also `GATE 6 PASS 11/11`.
+Remaining owner-side items: further visual fine-tuning is optional (the grade/vignette alphas, size floor and fog terms
+are simple knobs); running Gate 6.1's whole-frame budget on a discrete GPU is still available as an alternative to the
+adopted layer budget; push/PR remains the owner's call.
 
 ## Completed phases
 - [x] P-0 preflight — `c352cb4` — `GATE P0 PASS assertions=17/17 failed=[]`, screenshots byte-identical (sha256 `54fc703b429ef5f9…`) across 4 cold launches in 2 gate runs **V** (`node harness/gates/run.mjs p0`)
@@ -61,6 +62,12 @@ After the abort, the owner reviewed the four open decisions and authorized all f
 4. **#4 "All white background" — fixed** (`atmosphere.ts`). The MapLibre basemap is a flat, bright tactical theme that knows nothing about the time of day, so a pitched view was a wall of pale ground at noon AND at midnight. Added an aerial-perspective GRADE: a screen-space vertical gradient (warm sunlit khaki low, horizon haze high) composited over the frame with a MULTIPLY blend, keyed to the sky palette's darkness — subtle warmth by day, warm wash at dusk, dark cool at night. Drawn in the OPAQUE queue at renderOrder -1000 so it lands before the airframes (which keep their own lighting). Multiply (not alpha-over) deepens the map while preserving road/feature contrast. Off with the atmosphere (Gates 0-3 unaffected), gone with the kill switch. Tint strengths are simple knobs for the ongoing aesthetic pass.
 
 **Harness robustness (this machine's iGPU):** `harness/probe.mjs` launches Chrome with `--disable-background-timer-throttling` / `--disable-backgrounding-occluded-windows` / `--disable-renderer-backgrounding` — a headed window that loses focus was throttling rAF to ~1 Hz, turning every frame-time measurement into ~1000 ms of garbage. `gate-6.mjs` 6.6 retries each prior gate up to twice with a cooldown, because sustained back-to-back headed-browser launches intermittently stall a basemap tile; a genuinely regressed gate fails all attempts, so the criterion is unchanged.
+
+## Deep aesthetic pass (2026-09-21)
+The visual pass the plan reserved for a human, done at the owner's request by looking at controlled renders across time-of-day and camera and re-verifying the gates. `GATE 6 PASS 11/11`, review bundle re-rendered, no regression. Files: `fleet.ts`, `index.ts`, `atmosphere.ts`.
+- **Aircraft readability at distance** (`fleet.ts`, `index.ts`): the fixed 6× world scale shrank each airframe to a dark speck at orbit/FPV. Added a screen-space size floor (`MIN_AIRCRAFT_PX = 34`) — the mesh never renders below ~34 px, while close hero shots keep 6× (the floor is below it there). A 20-aircraft orbit now reads as a swarm of legible quadcopters. Sprite 12→16 px, nav-light floor 5→7 px, daytime nav-light gain 0.3→0.45 (a red/green point stays visible by day). Gate-safe: Gate 2 runs beacons off; Gate 1 renders close so the floor doesn't perturb silhouette/LOD.
+- **Day/night grade** (`atmosphere.ts`): the gradient is a daytime aerial-perspective model, so night left the distant ground flat mid-grey. Top-of-frame strength now climbs with darkness (`uAlphaTop = 0.12 + 0.5·darkness`) — night goes dark and flat across the whole ground (mood + nav-light/volume contrast); day keeps its horizon haze. Added a mild cinematic vignette (`uVignette = 0.12 + 0.1·darkness`) for depth on the otherwise-flat daytime orbit.
+- **Left as knobs:** grade/vignette alphas, size floor, MapLibre fog terms. **Not touched:** the label/marker drift in pitched views (the 2D map's own route/POI labels composite at the ground under the 3D scene) — an architectural picking item, not a tuning one.
 
 ## Gate 5 record
 | # | Result **V** |

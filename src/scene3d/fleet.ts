@@ -21,8 +21,12 @@ import { glbOverrideUrl, loadGlbHull } from './airframes/glbOverride'
 export const AIRFRAME_VISUAL_SCALE = 6
 export const LOD_FULL_MAX_M = 300
 export const LOD_LOW_MAX_M = 1500
-const SPRITE_DIAMETER_PX = 12
-const BEACON_MIN_PX = 5
+const SPRITE_DIAMETER_PX = 16
+/** Screen-space floor for the airframe's span: beyond ~150 m the true 6× scale shrinks to a speck, so the
+ *  mesh scale is lifted to keep the aircraft at least this many pixels tall. Close hero shots keep 6×
+ *  (the floor is below it there); orbit/FPV read as aircraft, not dots. Tuned by eye in the aesthetic pass. */
+const MIN_AIRCRAFT_PX = 34
+const BEACON_MIN_PX = 7
 const BEACON_SIZE_M = 0.16 // true metres, before the visual scale
 const STROBE_ON_SEC = 0.15 // 1 Hz anti-collision strobe, lit for this long each second
 const RED = new THREE.Color('#ff2a1a')
@@ -273,6 +277,10 @@ export class FleetRenderer {
         continue
       }
 
+      // Screen-space size floor: keep the airframe at least MIN_AIRCRAFT_PX tall. Close up the true 6× wins;
+      // far out the floor lifts it so an orbiting fleet reads as aircraft rather than dark specks.
+      const floorScale = (MIN_AIRCRAFT_PX * metresPerPixelAtUnitDistance * distance) / batch.stats.spanM
+      this.scale.setScalar(Math.max(AIRFRAME_VISUAL_SCALE, floorScale))
       // Heading is clockwise from north; +Z rotation is counter-clockwise. Nose dips with speed.
       const noseDown = Math.min(drone.speedMs * 1.5, 20) * (Math.PI / 180)
       this.attitude.set(-noseDown, 0, -drone.headingDeg * (Math.PI / 180))

@@ -171,8 +171,9 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
     // Shadows fade out with the sun: full by day, gone once only twilight glow is left.
     const strength = lighting.sun.castShadow && lighting.position.elevationDeg > 0 ? Math.min(1, lighting.palette.sunIntensity / 2.2) : 0
     receivers.update(frame, lighting.shadowRadius, strength, options.terrain?.reliefLive() ?? false)
-    // Nav lights never go out; they are simply lost in daylight.
-    const beaconGain = beaconsOn ? 0.3 + 0.7 * lighting.palette.darkness : 0
+    // Nav lights never go out; they are simply lost in daylight. Kept a touch brighter by day than strict
+    // realism so an orbiting aircraft still shows a red/green point (aesthetic pass); full at night.
+    const beaconGain = beaconsOn ? 0.45 + 0.55 * lighting.palette.darkness : 0
     fleet.update(frame, { ...(fleetSource ? fleetSource() : emptySky), beaconGain })
     const air = options.atmosphereSource?.() ?? null
     toSun.fromArray(sunDirection(lighting.position))

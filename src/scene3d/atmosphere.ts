@@ -163,10 +163,12 @@ export class Atmosphere {
     // MULTIPLY, not alpha-over: framebuffer *= mix(white, tint, strength). Multiplying deepens and warms
     // the basemap while keeping its road/feature contrast, where an alpha wash only flattens it toward grey.
     this.grade = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
-      uniforms: { uGround: { value: new THREE.Vector3() }, uSky: { value: new THREE.Vector3() }, uAlphaBottom: { value: 0 }, uAlphaTop: { value: 0 } },
-      vertexShader: 'varying float vY; void main() { vY = position.y * 0.5 + 0.5; gl_Position = vec4(position.x, position.y, 0.9999, 1.0); }',
-      fragmentShader: 'uniform vec3 uGround; uniform vec3 uSky; uniform float uAlphaBottom; uniform float uAlphaTop; varying float vY;'
-        + ' void main() { float g = smoothstep(0.92, 0.02, vY); vec3 tint = mix(uSky, uGround, g); float s = mix(uAlphaTop, uAlphaBottom, g); gl_FragColor = vec4(mix(vec3(1.0), tint, s), 1.0); }',
+      uniforms: { uGround: { value: new THREE.Vector3() }, uSky: { value: new THREE.Vector3() }, uAlphaBottom: { value: 0 }, uAlphaTop: { value: 0 }, uVignette: { value: 0 } },
+      vertexShader: 'varying float vY; varying vec2 vP; void main() { vY = position.y * 0.5 + 0.5; vP = position.xy; gl_Position = vec4(position.x, position.y, 0.9999, 1.0); }',
+      fragmentShader: 'uniform vec3 uGround; uniform vec3 uSky; uniform float uAlphaBottom; uniform float uAlphaTop; uniform float uVignette; varying float vY; varying vec2 vP;'
+        + ' void main() { float g = smoothstep(0.92, 0.02, vY); vec3 tint = mix(uSky, uGround, g); float s = mix(uAlphaTop, uAlphaBottom, g);'
+        + ' float vig = 1.0 - uVignette * smoothstep(0.55, 1.35, length(vP));' // subtle cinematic edge darkening
+        + ' gl_FragColor = vec4(mix(vec3(1.0), tint, s) * vig, 1.0); }',
       transparent: false, depthTest: false, depthWrite: false, toneMapped: false,
       blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor,
     }))
@@ -209,11 +211,14 @@ export class Atmosphere {
     // so a pitched view of the pale tactical basemap reads as lit terrain instead of a white sheet.
     ;(u.uGround.value as THREE.Vector3).copy(this.gWarm).lerp(this.gGround, d)
     ;(u.uSky.value as THREE.Vector3).copy(this.gHorizon)
-    const aBottom = 0.42 + 0.42 * d
+    const aBottom = 0.42 + 0.44 * d
     u.uAlphaBottom.value = aBottom
-    // Horizon haze is real even at noon: the distance fades to the horizon colour instead of the basemap's
-    // bare cream. (This scenario runs at ~4.8 km smoke visibility, so a hazy far field is the correct read.)
-    u.uAlphaTop.value = 0.14 + 0.12 * d
+    // The gradient is a DAYTIME aerial-perspective model (dark ground low, light haze high). At night there is
+    // no bright horizon, so the top strength climbs steeply with darkness — the whole ground goes dark and
+    // flat, not just the foreground, which also lets the nav lights and sensor volumes read. By day the top
+    // stays a light haze so the distance fades to the horizon colour instead of the basemap's bare cream.
+    u.uAlphaTop.value = 0.12 + 0.5 * d
+    u.uVignette.value = 0.12 + 0.1 * d // mild by day, a touch deeper at night for mood
     this.grade.visible = aBottom > 0.02
     this.stats.gradeAlpha = Number(aBottom.toFixed(3))
   }
