@@ -124,9 +124,44 @@ for (const r of results) {
 }
 
 console.log('');
-console.log('Promotion path: push to main -> CI must pass -> .github/workflows/deploy.yml');
-console.log('fires the protected Vercel Deploy Hook per target. Vercel git auto-deploy from');
-console.log('main is disabled in vercel.json, so nothing reaches production without CI.');
+console.log('Designed promotion path: push to main -> CI must pass -> .github/workflows/deploy.yml');
+console.log('fires the protected Vercel Deploy Hook per target. Vercel git auto-deploy from main is');
+console.log('disabled in vercel.json, so nothing reaches production without CI. (There is no GitHub');
+console.log('Pages deployment; `npm run deploy` is retired.)');
+
+// The designed path has not always dispatched — runs have sat queued with zero jobs, and
+// production was then put live by aliasing an existing Ready preview build
+// (`vercel alias set <preview-url> <prod-domain>`), which is why a deployed SHA can be a
+// preview commit rather than a main SHA. Surface the promote workflow's real state so
+// "why is prod behind main?" is answerable here instead of being re-diagnosed by hand.
+const promote = git(
+  'log -1 --format=%h', // probe: is git usable at all
+  null,
+) === null ? null : (() => {
+  try {
+    const out = execSync(
+      'gh run list --workflow=deploy.yml --limit 1 --json status,conclusion,createdAt',
+      { stdio: ['ignore', 'pipe', 'ignore'] },
+    ).toString();
+    const [run] = JSON.parse(out);
+    return run ?? null;
+  } catch {
+    return null; // gh not installed / not authed / offline — best effort only
+  }
+})();
+
+if (promote) {
+  const { status, conclusion, createdAt } = promote;
+  const when = typeof createdAt === 'string' ? createdAt.slice(0, 16) : '?';
+  const verdict = conclusion || status;
+  console.log('');
+  console.log(`Last promote run (${when}): status=${status} conclusion=${conclusion || '-'}`);
+  if (status !== 'completed' || (conclusion && conclusion !== 'success')) {
+    console.log(`  ^ promote did NOT complete successfully (${verdict}). If production is behind`);
+    console.log('    main, this is very likely why — check the run in the Actions UI.');
+  }
+}
+
 console.log('');
 
 process.exit(failed ? 1 : 0);

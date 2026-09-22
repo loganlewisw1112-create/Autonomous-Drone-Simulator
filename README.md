@@ -82,7 +82,9 @@ npm audit --audit-level=high
 
 **Deployment.** Production promotion is designed to run only after CI succeeds on the exact `main` SHA: CI qualifies the code and builds all three targets, the workflow confirms `main` still equals that SHA, protected Vercel deploy hooks build the revision, and the workflow verifies `/build-info.json` on every public alias. Tagged Windows releases re-run the full gate, require signing credentials, and produce checksums, an SBOM, and provenance attestation. See [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) and the [Windows signing runbook](docs/WINDOWS_SIGNING_RUNBOOK.md).
 
-This is the *only* promotion path. There is no GitHub Pages deployment — `npm run deploy` is retired and now fails with a pointer, because a stale `gh-pages` script in `package.json` had previously been mistaken for the real mechanism. Vercel's own git auto-deploy from `main` is deliberately disabled in [`vercel.json`](vercel.json) so a push cannot reach production without passing CI first.
+There is no GitHub Pages deployment — `npm run deploy` is retired and now fails with a pointer, because a stale `gh-pages` script in `package.json` had previously been mistaken for the real mechanism. Vercel's own git auto-deploy from `main` is deliberately disabled in [`vercel.json`](vercel.json) so a push cannot reach production without passing CI first.
+
+That is the *designed* path, and it is worth knowing that it has not always dispatched: promote runs have sat queued with zero jobs, and production has then been brought up to date by aliasing an existing Ready preview build (`vercel alias set <preview-url> <prod-domain>`) instead. That is why a live target's `gitSha` can be a preview-branch commit rather than a `main` SHA — the content can still be identical to `main`. `npm run deploy:status` reports both the deployed SHA's relationship to `main` and the last promote run's state, so a lagging production is diagnosable in one command rather than by hand.
 
 ## Safety, privacy, and limitations
 
