@@ -50,7 +50,8 @@
     "qualify:classroom:40": "node tools/classroom/qualify-40.mjs",
     "package:classroom": "npm run verify:licensed-packaging && npm run build:classroom && electron-builder --win nsis",
     "sbom": "npm sbom --sbom-format cyclonedx > dist/sbom.cdx.json",
-    "deploy": "npm run build:windows && gh-pages -d dist"
+    "deploy": "npm run build:windows && gh-pages -d dist",
+    "gate": "node harness/gates/run.mjs"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
@@ -63,11 +64,13 @@
     "react-dom": "^18.3.1",
     "recharts": "^3.10.1",
     "reflect-metadata": "^0.2.2",
+    "three": "0.186.0",
     "ws": "^8.21.3",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
@@ -75,6 +78,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/three": "0.186.0",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.70.0",
     "@typescript-eslint/parser": "^8.65.0",

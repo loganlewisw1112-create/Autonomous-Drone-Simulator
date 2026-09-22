@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDroneStore } from '@/store/droneStore'
 import { runQuickDemo } from '@/sim/demo/quickDemo'
+import { HARNESS_ENABLED } from '@/scene3d/harness/flag'
 
 const WELCOME_KEY = 'drone-sim:welcome-seen:v1'
 
@@ -35,7 +36,7 @@ export function WelcomeOverlay() {
     if (scenario) markSeen()
   }, [scenario])
 
-  if (scenario || dismissed) return null
+  if (scenario || dismissed || HARNESS_ENABLED) return null
 
   function dismiss() {
     markSeen()

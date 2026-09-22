@@ -45,3 +45,6 @@ desktop/licensing/public-config.generated.json
 # Local-only iPhone/iOS device diagnostic page — useful for on-device QA, must never
 # ship to production (see drone-sim memory). Kept on disk, never committed.
 public/ios-check.html
+
+# 3D scene layer harness output (screenshots, probe JSON, harness build) — never source
+artifacts/
