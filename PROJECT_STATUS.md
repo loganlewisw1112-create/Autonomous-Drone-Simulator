@@ -1,8 +1,14 @@
 # Project status
 
-Status date: 2026-09-16
-Release line: `main`. The **v1.1 web beta is published** — all three public
-targets serve the verified SHA `cb6833c` (see CHANGELOG.md "Release status").
+Status date: 2026-09-22
+Release line: `main`. The **v1.1 web beta is published** and all three public
+targets are promoted automatically from `main` by CI. Do not trust a SHA quoted
+here — it goes stale on the next merge. Run `npm run deploy:status` for the
+live answer; it reads `/build-info.json` from each public target and reports how
+that SHA relates to `origin/main`. At this status date the three targets served
+`24a274b` while `main` was at `0e380ea`, which is the healthy steady state:
+production tracks the last CI-verified SHA and follows one promote behind a
+fresh merge.
 
 This is a local-first, high-fidelity agency drone-training platform with a
 shared, fail-closed training-assurance architecture for classroom and Windows
@@ -72,8 +78,9 @@ evidence in `RELEASE_CHECKLIST.md`.
   and institutional accessibility/security evidence remain unproven.
 - Operational modes and live-aircraft/external aviation connectors have been
   removed from the product contract. Every build remains training-only.
-- Production Deploy Hook secrets and protected environments are scaffolding
-  until configured by repository/deployment administrators.
+- Production Deploy Hook secrets and the `production-*` environments are
+  configured and exercised: four consecutive unattended promotions succeeded on
+  2026-09-22 (`f19078e`, `9a73b15`, `24a274b`, `0e380ea`).
 - A local gate result does not qualify beta until the same SHA passes CI and
   all three public aliases serve matching build metadata.
 
@@ -90,6 +97,39 @@ evidence in `RELEASE_CHECKLIST.md`.
 The CI workflow applies these gates. Production promotion checks out the exact
 successful `main` SHA and verifies `/build-info.json` after deployment.
 
+### Promotion stall, 2026-09-17 to 2026-09-22 (resolved)
+
+Recorded because the failure was silent and the repository looked healthy
+throughout. Two settings combined into a total stall:
+
+1. `production-windows`, `production-mobile` and `production-classroom` each
+   carried a **required-reviewer** rule, so every promotion waited on a manual
+   approval. Run `35276994011` (`5890dfc`) entered `waiting` on 2026-09-17 and
+   was never approved.
+2. `deploy.yml` set `concurrency.cancel-in-progress: false`. A promote run holds
+   the `vercel-production` group until it finishes, and GitHub keeps only one
+   queued run per group — so the run that never finished wedged the pipeline and
+   each new arrival cancelled the previously queued one.
+
+Net effect: seven cancelled runs, one permanently `pending`, and no promotion
+for five days. Production was kept current by hand with `vercel alias set`
+against a Ready preview build, which is why the public targets served a
+preview-branch SHA (`27f06c8`) rather than a `main` commit while every tracked
+document described the CI path as the only route.
+
+Resolved 2026-09-22: the wedged runs were cancelled, the required-reviewer rules
+were removed from the three `production-*` environments (their `main`-only
+branch restriction is retained), and `cancel-in-progress` is now `true` so a
+stalled run fails fast instead of accumulating. The promote job's own
+verification — exact SHA, target identity, security headers, CSP, and a headless
+render check that the application mounted — is unchanged and remains the real
+gate.
+
+The durable lesson is the reason `scripts/live-status.mjs` exists: a deployment
+claim in a document cannot be checked, and this one was wrong for five days
+without anything failing. `npm run deploy:status` makes the truth cheaper to get
+than the guess.
+
 ## External blockers
 
 Repository implementation cannot complete these on its own:
@@ -99,9 +139,11 @@ Repository implementation cannot complete these on its own:
 - real two-machine school-network testing and a supervised 40-student load;
 - school privacy/retention/incident-response authorization;
 - independent security and accessibility assessment;
-- GitHub/Vercel administrator changes for branch protection, protected
-  environments, deployment secrets, and disabling automatic unverified
-  production promotion.
+- GitHub/Vercel administrator changes for branch protection and any further
+  environment policy. Deployment secrets, the protected `production-*`
+  environments, and the suppression of unverified promotion (Vercel git
+  auto-deploy is disabled in `vercel.json`) are configured and working as of
+  2026-09-22; branch protection on `main` remains administrator-owned.
 
 These block release-candidate or stable promotion even if all local tests pass.
 
