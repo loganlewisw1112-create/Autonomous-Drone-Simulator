@@ -12,6 +12,7 @@ import { AccountChip } from '@/components/account/AccountChip'
 import { BuildInfoFooter } from '@/components/BuildInfoFooter'
 import { useDeviceMode } from '@/hooks/useDeviceMode'
 import { APP_TARGET, isWindowsClient } from '@/platform/appTarget'
+import { HARNESS_ENABLED } from '@/scene3d/harness/flag'
 import { useDroneStore } from '@/store/droneStore'
 import '@/styles/tactical.css'
 
@@ -41,7 +42,7 @@ export default function App() {
   const { scenario, isRunning, mapReady } = useDroneStore(
     useShallow((s) => ({ scenario: s.scenario, isRunning: s.ui.isRunning, mapReady: s.mapReady })),
   )
-  const [loadingDone, setLoadingDone] = useState(false)
+  const [loadingDone, setLoadingDone] = useState(HARNESS_ENABLED)
   const deviceMode = useDeviceMode()
 
   // The public Windows deployment fails closed before any simulator UI loads.

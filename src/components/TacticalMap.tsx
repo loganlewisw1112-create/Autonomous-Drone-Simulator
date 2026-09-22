@@ -9,6 +9,8 @@ import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
 import { buildAirspaceCeilingFeatures, buildConflictFeatures, buildGnssUncertaintyFeatures, buildIrFootprintFeatures, buildNextWpFeatures } from '@/components/tacticalMapGeoJson'
 import { addScenarioBuildingLayer, removeScenarioBuildingLayer } from '@/components/scenarioBuildingLayers.target'
 import { addScenarioTerrainLayer, removeScenarioTerrainLayer } from '@/components/scenarioTerrainLayers.target'
+import { HARNESS_ENABLED } from '@/scene3d/harness/flag'
+import { SCENE3D_REQUESTED } from '@/scene3d/flag'
 import { airspaceCeilingCaption, airspaceForScenario } from '@/sim/mission/airspace'
 import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
 import { resolveTerrainFixtureId } from '@/scenarios/terrainFixtures'
@@ -836,6 +838,8 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     })
 
     mapRef.current = map
+    if (HARNESS_ENABLED) void import('@/scene3d/harness/installHarness').then((m) => m.installHarness(map))
+    else if (SCENE3D_REQUESTED) void import('@/scene3d/mount').then((m) => m.mountScene3D(map))
 
     // Container-size tracking: the mobile shell mounts the map in a flex slot
     // whose size changes on device rotation / browser-chrome collapse. MapLibre
