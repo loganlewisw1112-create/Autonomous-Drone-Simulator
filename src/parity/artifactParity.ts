@@ -1,5 +1,5 @@
-import { sha256 } from '@noble/hashes/sha256'
-import { bytesToHex } from '@noble/hashes/utils'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
 import {
   buildingFixtureFor,
@@ -527,7 +527,7 @@ function firstBuildingInteriorPoint(scenarioId: string): LatLng {
 }
 
 function digest(value: unknown): string {
-  return bytesToHex(sha256(canonicalJson(value)))
+  return bytesToHex(sha256(utf8ToBytes(canonicalJson(value))))
 }
 
 function canonicalJson(value: unknown): string {

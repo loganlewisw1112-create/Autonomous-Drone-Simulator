@@ -1,11 +1,11 @@
-import { sha256 } from '@noble/hashes/sha256'
-import { bytesToHex } from '@noble/hashes/utils'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
 import type { MissionSituation } from '@/sim/mission/tacticalAdvisor'
 import type { Waypoint } from '@/types'
 
 export function hashMissionSituation(situation: MissionSituation): string {
-  return bytesToHex(sha256(JSON.stringify(canonicalize(situation))))
+  return bytesToHex(sha256(utf8ToBytes(JSON.stringify(canonicalize(situation)))))
 }
 
 export function clampAdvisorRoute(route: readonly Waypoint[]): Waypoint[] {

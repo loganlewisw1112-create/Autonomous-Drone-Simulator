@@ -57,7 +57,7 @@
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
     "@noble/curves": "^2.4.0",
-    "@noble/hashes": "^1.8.0",
+    "@noble/hashes": "^2.4.0",
     "@peculiar/x509": "^2.1.0",
     "maplibre-gl": "^6.10.0",
     "qrcode": "^1.5.4",

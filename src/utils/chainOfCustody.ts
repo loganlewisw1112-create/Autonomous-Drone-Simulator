@@ -1,5 +1,5 @@
-import { sha256 } from '@noble/hashes/sha256'
-import { bytesToHex } from '@noble/hashes/utils'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js'
 import type { MissionEvent, EventType, OperatorRole } from '@/types'
 
 const GENESIS_HASH = '0'.repeat(64)
@@ -11,7 +11,7 @@ const GENESIS_HASH = '0'.repeat(64)
 // crypto.subtle-based implementation was async, which let every event emitted within a single
 // sim tick capture the same stale prevHash and fork the chain.
 function sha256Hex(message: string): string {
-  return bytesToHex(sha256(message))
+  return bytesToHex(sha256(utf8ToBytes(message)))
 }
 
 type MissionEventPartial = Omit<MissionEvent, 'hash'>
