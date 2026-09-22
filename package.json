@@ -50,7 +50,8 @@
     "qualify:classroom:40": "node tools/classroom/qualify-40.mjs",
     "package:classroom": "npm run verify:licensed-packaging && npm run build:classroom && electron-builder --win nsis",
     "sbom": "npm sbom --sbom-format cyclonedx > dist/sbom.cdx.json",
-    "deploy": "npm run build:windows && gh-pages -d dist",
+    "deploy:status": "node scripts/live-status.mjs",
+    "deploy": "node -e \"console.error('\\n`npm run deploy` is retired: this project does NOT deploy via gh-pages.\\n\\nProduction is promoted by .github/workflows/deploy.yml -- CI must pass on a push\\nto main, which then fires a protected Vercel Deploy Hook per target. Vercel git\\nauto-deploy from main is disabled in vercel.json so nothing bypasses CI.\\n\\nTo see what is actually live:  npm run deploy:status\\n'); process.exit(1)\"",
     "gate": "node harness/gates/run.mjs"
   },
   "dependencies": {
