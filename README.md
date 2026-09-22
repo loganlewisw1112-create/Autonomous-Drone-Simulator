@@ -59,7 +59,13 @@ npm run classroom:desktop
 
 The host owns the local relay and shutdown lifecycle. It generates a persistent 3072-bit RSA school-local certificate authority plus a renewable LAN leaf certificate, serves HTTPS/WSS, and pins its own loopback relay by fingerprint. It rejects insecure non-loopback traffic by default, and it does **not** install its CA onto student machines — administrators must deploy the exported CA through their own managed process. Message encryption protects sealed student/instructor content but not network metadata (addresses, timing, sizes). A public classroom installer is deliberately not promoted until CA trust and a real two-machine HTTPS/WSS test are proven, a Windows code-signing certificate is supplied, and the signed release checklist passes. See [`docs/EVALUATOR_LICENSING_RUNBOOK.md`](docs/EVALUATOR_LICENSING_RUNBOOK.md), [CLASSROOM_ADMIN.md](CLASSROOM_ADMIN.md), [SECURITY_THREAT_MODEL.md](SECURITY_THREAT_MODEL.md), and [DATA_PRIVACY_RETENTION.md](DATA_PRIVACY_RETENTION.md).
 
-**Verification.** Every deployed target exposes its version, target, and Git SHA at `/build-info.json`; use those when reporting a verified release. The full gate, from a clean checkout:
+**Verification.** Every deployed target exposes its version, target, and Git SHA at `/build-info.json`; use those when reporting a verified release. To answer "is my change actually live?" without inferring it from build scripts, ask the deployments directly:
+
+```powershell
+npm run deploy:status            # fetches /build-info.json from all three targets
+```
+
+It prints each target's deployed version and SHA and how that SHA relates to `origin/main` — including the common case where a deployed SHA is a pre-squash branch commit whose content is identical to `main`. The full gate, from a clean checkout:
 
 ```powershell
 $releaseSha = git rev-parse HEAD
@@ -75,6 +81,8 @@ npm audit --audit-level=high
 `assert:target-parity` compares deterministic output across targets; `assert:training-scope` rejects any reintroduction of real operational modes. Don't call the gate green unless every command passed for the exact reported SHA — current state and known blockers live in [PROJECT_STATUS.md](PROJECT_STATUS.md).
 
 **Deployment.** Production promotion is designed to run only after CI succeeds on the exact `main` SHA: CI qualifies the code and builds all three targets, the workflow confirms `main` still equals that SHA, protected Vercel deploy hooks build the revision, and the workflow verifies `/build-info.json` on every public alias. Tagged Windows releases re-run the full gate, require signing credentials, and produce checksums, an SBOM, and provenance attestation. See [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) and the [Windows signing runbook](docs/WINDOWS_SIGNING_RUNBOOK.md).
+
+This is the *only* promotion path. There is no GitHub Pages deployment — `npm run deploy` is retired and now fails with a pointer, because a stale `gh-pages` script in `package.json` had previously been mistaken for the real mechanism. Vercel's own git auto-deploy from `main` is deliberately disabled in [`vercel.json`](vercel.json) so a push cannot reach production without passing CI first.
 
 ## Safety, privacy, and limitations
 
