@@ -208,8 +208,9 @@ export default defineConfig(({ mode }) => {
         // recharts is NOT listed here: it's only reached via the lazy TelemetryCharts
         // component, so Rollup splits it into an async chunk automatically — listing it
         // in manualChunks would pull it back into the entry's modulepreload graph.
-        manualChunks: {
-          maplibre: ['maplibre-gl'],
+        // Function form: Vite 8's Rolldown bundler rejects the object form.
+        manualChunks(id: string) {
+          return /[\\/]node_modules[\\/]maplibre-gl[\\/]/.test(id) ? 'maplibre' : undefined
         },
       },
     },

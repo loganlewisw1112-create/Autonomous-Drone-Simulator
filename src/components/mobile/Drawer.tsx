@@ -118,7 +118,7 @@ export function Drawer({ side, open, title, onClose, children, testId, dataSurfa
         onTouchMove={stopTouch}
         role="dialog"
         aria-hidden={!open}
-        {...(!open ? { inert: '' } : {})}
+        inert={!open}
         data-surface={dataSurface ?? undefined}
         data-testid={testId ?? `drawer-${side}`}
       >
