@@ -33,6 +33,8 @@ export default defineConfig({
         'src/main.tsx',
         'src/vite-env.d.ts',
         'src/scenarios/fixtures/**',
+        // coverage-v8 5 feeds every non-excluded file under `include` to the JS parser.
+        'src/**/*.md',
       ],
       thresholds: {
         statements: 50,
