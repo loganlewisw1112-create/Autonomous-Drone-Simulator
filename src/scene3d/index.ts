@@ -110,10 +110,11 @@ export interface Scene3DHandle {
   dispose(): void
 }
 
-// While the layer draws the aircraft, their DOM markers go transparent rather than hidden:
-// they stay in the hit-test tree, so click-to-select keeps working on top of the 3D airframe.
+// While the layer draws the aircraft, only the 2D glyph inside each DOM marker goes transparent. The marker
+// stays in the hit-test tree, so click-to-select keeps working on top of the 3D airframe, and the red alert
+// outline (an inline style on .drone-inner, TacticalMap.tsx) stays visible around it.
 const OWNS_DRONES_CLASS = 'scene3d-owns-drones'
-const OWNS_DRONES_CSS = `.${OWNS_DRONES_CLASS} .drone-marker{opacity:0!important}`
+const OWNS_DRONES_CSS = `.${OWNS_DRONES_CLASS} .drone-marker svg{opacity:0!important}`
 
 export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options: Scene3DOptions = {}): Scene3DHandle {
   const layer = new SceneLayer(origin)
@@ -210,9 +211,20 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
     map.getContainer().classList.toggle(OWNS_DRONES_CLASS, owns)
   }
 
+  // The 2D markers hand over only once the layer is actually on the map, and take back over if it cannot be.
   const mount = () => {
-    // Top of the GL stack — see README › Render order.
-    if (enabled && !map.getLayer(SCENE_LAYER_ID)) map.addLayer(layer)
+    if (!enabled) return
+    if (!map.getLayer(SCENE_LAYER_ID)) {
+      try {
+        map.addLayer(layer) // top of the GL stack — see README › Render order
+      } catch (err) {
+        ownDrones(false)
+        // 'Style is not done loading.': the style.load listener below mounts it once the style lands.
+        if (!/not done loading/i.test(String(err))) console.warn('[scene3d] layer not mounted; the 2D markers stay', err)
+        return
+      }
+    }
+    ownDrones(fleetSource !== null)
   }
   // A style swap (remote → local fallback) drops every custom layer; re-mount when it lands.
   map.on('style.load', mount)
@@ -232,7 +244,6 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
       enabled = true
       // Coming back from the ladder's terminal rung: start the tier over rather than stay switched off.
       if (governor.rung === LADDER.length - 1) governor.setTier(governor.auto ? 'auto' : governor.tier)
-      ownDrones(fleetSource !== null)
       mount()
       map.triggerRepaint()
     },
@@ -251,7 +262,7 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
     layerRenderTimes: () => layer.layerRenderTimes(),
     setFleetSource(source) {
       fleetSource = source ?? options.fleetSource ?? null
-      if (enabled) ownDrones(fleetSource !== null)
+      if (enabled && map.getLayer(SCENE_LAYER_ID)) ownDrones(fleetSource !== null)
       map.triggerRepaint()
     },
     fleetStats: () => fleet.stats(),
