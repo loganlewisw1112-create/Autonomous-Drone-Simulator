@@ -49,7 +49,10 @@ dispatch, camera, weather, or aircraft-telemetry services.
 | Licensing | Public-demo wall/idle/debrief windows; evaluation/pilot expiry channels; 30-180 minute classroom schedule |
 
 The mobile presentation intentionally omits desktop 3D extrusion, but may not
-omit simulation fixtures or produce different mission math.
+omit simulation fixtures or produce different mission math. The three.js scene
+layer (`src/scene3d/`) follows the same line: on by default wherever the desktop
+presentation shows (windows, classroom on a desktop-sized screen), opt-in
+(`?scene3d=1`) on mobile and phone shells, and `?scene3d=0` turns it off.
 
 ## v1.1 closure objective
 

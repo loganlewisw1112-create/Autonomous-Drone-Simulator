@@ -10,7 +10,7 @@ import { buildAirspaceCeilingFeatures, buildConflictFeatures, buildGnssUncertain
 import { addScenarioBuildingLayer, removeScenarioBuildingLayer } from '@/components/scenarioBuildingLayers.target'
 import { addScenarioTerrainLayer, removeScenarioTerrainLayer } from '@/components/scenarioTerrainLayers.target'
 import { HARNESS_ENABLED } from '@/scene3d/harness/flag'
-import { SCENE3D_REQUESTED } from '@/scene3d/flag'
+import { BUILD_TARGET, scene3dEnabled } from '@/scene3d/flag'
 import { airspaceCeilingCaption, airspaceForScenario } from '@/sim/mission/airspace'
 import { buildingFixtureFor } from '@/scenarios/buildingFixtures'
 import { resolveTerrainFixtureId } from '@/scenarios/terrainFixtures'
@@ -838,8 +838,16 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     })
 
     mapRef.current = map
+    // The 3D import can resolve after this map is gone (StrictMode, ErrorBoundary reset, shell flip), so it
+    // mounts only onto a live map and its teardown runs with the map's. A failed chunk load stays 2D.
+    let mapRemoved = false
+    let disposeScene3D: (() => void) | undefined
     if (HARNESS_ENABLED) void import('@/scene3d/harness/installHarness').then((m) => m.installHarness(map))
-    else if (SCENE3D_REQUESTED) void import('@/scene3d/mount').then((m) => m.mountScene3D(map))
+    else if (scene3dEnabled(window.location.search, BUILD_TARGET, latestDeviceModeRef.current)) {
+      import('@/scene3d/mount')
+        .then((m) => { if (!mapRemoved) disposeScene3D = m.mountScene3D(map) })
+        .catch((err: unknown) => console.warn('[scene3d] 3D layer unavailable; the 2D map stays in charge', err))
+    }
 
     // Container-size tracking: the mobile shell mounts the map in a flex slot
     // whose size changes on device rotation / browser-chrome collapse. MapLibre
@@ -871,6 +879,8 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       groundUnitMarkersAtSetup.forEach((m) => m.remove())
       groundUnitMarkersAtSetup.clear()
       if (fallbackTimer) window.clearTimeout(fallbackTimer)
+      mapRemoved = true
+      disposeScene3D?.()
       map.remove()
       mapRef.current = null
       mapStyleLoadedRef.current = false

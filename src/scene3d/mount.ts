@@ -1,9 +1,12 @@
 /**
- * The app-side mount for the 3D scene layer. DEFAULT OFF: it loads only when the page is opened with
- * `?scene3d=1`, so nothing here — three.js included — reaches a user who did not ask for it.
+ * The app-side mount for the 3D scene layer. ON by default for the desktop presentation of the windows and
+ * classroom targets, opt-in on mobile and phone shells (flag.ts). It is still a lazy import, so three.js never
+ * reaches a page where the flag is off.
  *
- *   ?scene3d=1                     mount the layer (quality: auto)
- *   &quality=cinematic|balanced|tactical     pin a tier instead of auto-selecting
+ *   (default)                      quality: balanced, the tier Gate 6 measured
+ *   ?scene3d=1                     force the layer on, mobile included (quality: auto)
+ *   ?scene3d=0                     force it off
+ *   &quality=cinematic|balanced|tactical     pin a tier
  *   &camera=orbit|chase|fpv|ground           start in a camera mode (default: tactical — hands off)
  *
  * The live handle is left on `window.__scene3d` for the console: `__scene3d.camera.setMode('GROUND')`,
@@ -25,29 +28,58 @@ const MODES: CameraMode[] = ['TACTICAL', 'ORBIT', 'CHASE', 'FPV', 'GROUND']
 
 export function mountScene3D(map: maplibregl.Map): () => void {
   const params = new URLSearchParams(window.location.search)
-  const tier = TIERS.find((t) => t === params.get('quality'))
+  // Default-on visitors start at 'balanced', the tier Gate 6's matrix measured: the governor sees only the
+  // layer's CPU time inside render(), not its GPU cost, so 'auto' could hold a weak GPU at 'cinematic'.
+  // An explicit ?scene3d=1 keeps auto-selection; ?quality= pins any tier.
+  const tier = TIERS.find((t) => t === params.get('quality')) ?? (params.get('scene3d') === '1' ? 'auto' : 'balanced')
   const mode = MODES.find((m) => m === params.get('camera')?.toUpperCase())
   let handle: Scene3DHandle | null = null
   let scenarioId: string | null = null
+  let waitingForStyle = false
+  let disposed = false
 
+  const dropHandle = () => {
+    handle?.dispose()
+    handle = null
+    window.__scene3d = undefined
+  }
+
+  // Runs inside the store's subscribers, i.e. inside setScenario(): nothing may escape it, or the scenario load
+  // itself is cut short. A 3D failure leaves the 2D map in charge.
   const sync = () => {
+    if (disposed || waitingForStyle) return
     const scenario = useDroneStore.getState().scenario
     if ((scenario?.id ?? null) === scenarioId) return
     scenarioId = scenario?.id ?? null
-    handle?.dispose() // one scene per scenario: the ENU anchor, DEM and footprints all belong to it
-    handle = scenario ? createBoundScene(map, scenario).handle : null
-    window.__scene3d = handle ?? undefined
-    if (!handle) return
-    handle.quality.setTier(tier ?? 'auto')
-    handle.enable()
-    handle.setBuildingShadows(true) // fixed (caster/receiver split); harmless where a scenario has no footprints
-    if (mode && mode !== 'TACTICAL') handle.camera.setMode(mode)
+    dropHandle() // one scene per scenario: the ENU anchor, DEM and footprints all belong to it
+    if (!scenario) return
+    try {
+      handle = createBoundScene(map, scenario).handle
+      window.__scene3d = handle
+      handle.quality.setTier(tier)
+      handle.enable()
+      handle.setBuildingShadows(true) // fixed (caster/receiver split); harmless where a scenario has no footprints
+      if (mode && mode !== 'TACTICAL') handle.camera.setMode(mode)
+    } catch (err) {
+      dropHandle()
+      if (/not done loading/i.test(String(err))) {
+        // Scenario set before the basemap style arrived: build the scene once it has.
+        scenarioId = null
+        waitingForStyle = true
+        map.once('style.load', () => {
+          waitingForStyle = false
+          sync()
+        })
+      } else {
+        console.warn('[scene3d] scene not built; the 2D map stays in charge', err)
+      }
+    }
   }
-  sync()
   const unsubscribe = useDroneStore.subscribe(sync)
+  sync()
   return () => {
+    disposed = true
     unsubscribe()
-    handle?.dispose()
-    window.__scene3d = undefined
+    dropHandle()
   }
 }

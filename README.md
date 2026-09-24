@@ -40,6 +40,7 @@ Requires Node.js 24.x and npm 11.12.1.
 npm ci
 npm run dev
 # open http://127.0.0.1:5173/  (add ?map=fallback if map tiles are unavailable)
+# the 3D scene layer is on by default on desktop: ?camera=orbit to see it in 3D, ?scene3d=0 to turn it off
 ```
 
 ---

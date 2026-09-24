@@ -6,9 +6,12 @@ untouched, and the scene tests against MapLibre's own depth buffer, so terrain h
 with no extra work. Proven by `npm run gate -- 0` (buried box, and natural ridges at pitch 60 and
 107 — camera below the subject, looking up).
 
-Status: **default OFF.** Open the app with `?scene3d=1` to mount it (`&quality=cinematic|balanced|tactical`,
-`&camera=orbit|chase|fpv|ground`); the handle is on `window.__scene3d` (`.disable()` is the kill switch).
-Everything here ships as two lazy chunks (177 KB gz) that load only behind that flag. Gates: `npm run gate -- <p0|0..6>`;
+Status: **ON by default for the desktop presentation of the windows and classroom targets; opt-in on mobile and
+on phone shells** (owner decision, 2026-09-23). Default visitors run the `balanced` tier, the one Gate 6's matrix
+measured. `?scene3d=1` forces it on anywhere (quality: auto), `?scene3d=0` forces it off
+(`&quality=cinematic|balanced|tactical`, `&camera=orbit|chase|fpv|ground`); the handle is on `window.__scene3d`
+(`.disable()` is the kill switch). Everything here ships as two lazy chunks (177 KB gz) that load only when the
+flag (`flag.ts`) is on. A failed chunk load or scene build leaves the 2D map and markers in charge. Gates: `npm run gate -- <p0|0..6>`;
 **`GATE 6 PASS` (11/11).** Gate 6.1 gates the layer's own attributable cost (`render()` ≤ 8 ms p75, median added ≤ 4 ms —
 an owner decision, see `/ABORT.md`), not whole-frame time, which is GPU-bound by the map on an integrated GPU.
 
