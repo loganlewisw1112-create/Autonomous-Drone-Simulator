@@ -11,6 +11,7 @@ import { buildSectorPodReport, type SectorPodReport, type SectorSweep } from '@/
 import { buildUtmAirspaceState } from '@/sim/demo/utmEngine'
 import { platformForDrone, LEGACY_FAA_SPEED_LIMIT_MS } from '@/sim/drone/platformCatalog'
 import { thermalPayloadStatus } from '@/sim/sensors/ThermalSim'
+import { batteryAlert } from '@/sim/drone/DroneEntity'
 import { occlusionServiceFor, resolveTerrainFixtureId } from '@/scenarios/terrainFixtures'
 import { laneForScenario } from '@/scenarios/nistLanes'
 import { scoreLane } from '@/sim/mission/laneScoring'
@@ -97,9 +98,9 @@ export function TelemetryPanel() {
   // (one SHA-256 per event); memoized so it does NOT run on every sim tick — only on new events.
   const chainValid = useMemo(() => verifyChain(events), [events])
 
-  const batColor = selected
-    ? selected.batteryPct < 10 ? C_RED : selected.batteryPct < 25 ? C_YELLOW : C_GREEN
-    : C_GREEN
+  // Colours follow the gates the autopilot acts on, not fixed percentages.
+  const selectedBatteryAlert = selected ? batteryAlert(selected) : 'ok'
+  const batColor = selectedBatteryAlert === 'critical' ? C_RED : selectedBatteryAlert === 'reserve' ? C_YELLOW : C_GREEN
 
   // Generate MAVLink feed on every tick (throttled to every ~20 ticks to avoid flooding)
   const mavTickRef = useRef(0)
@@ -233,7 +234,7 @@ export function TelemetryPanel() {
                 )}
                 <TRow label="SPEED" value={`${selected.speedMs.toFixed(1)} m/s`} warn={selected.speedMs > certifiedSpeedLimitMs(scenario, selected.id) + 0.5} />
                 <TRow label="HEADING" value={`${Math.round(selected.headingDeg)}° (${compassDir(selected.headingDeg)})`} />
-                <TRow label="BATTERY" value={`${Math.round(selected.batteryPct)}%`} warn={selected.batteryPct < 25} crit={selected.batteryPct < 10} />
+                <TRow label="BATTERY" value={`${Math.round(selected.batteryPct)}%`} warn={selectedBatteryAlert === 'reserve'} crit={selectedBatteryAlert === 'critical'} />
                 <TRow label="SIGNAL" value={`${selected.signalDbm} dBm`} warn={selected.signalDbm < -80} crit={selected.signalDbm < -90} />
                 <TRow label="STATE" value={selected.missionState.replace(/_/g, ' ').toUpperCase()} />
                 <TRow label="WP INDEX" value={`${selected.currentWaypointIndex + 1}`} />
@@ -297,8 +298,8 @@ export function TelemetryPanel() {
             <div className="panel-section">
               <div className="panel-label">Warnings</div>
               <div className="warnings-list">
-                {selected.batteryPct < 10 && <WarnBadge level="critical" text="BATTERY CRITICAL — EMERGENCY LAND" />}
-                {selected.batteryPct < 25 && selected.batteryPct >= 10 && <WarnBadge level="critical" text="LOW BATTERY — RTB INITIATED" />}
+                {selectedBatteryAlert === 'critical' && <WarnBadge level="critical" text="BATTERY CRITICAL — EMERGENCY LAND" />}
+                {selectedBatteryAlert === 'reserve' && <WarnBadge level="critical" text="BATTERY RESERVE — RTB" />}
                 {selected.conflictFlag && <WarnBadge level="critical" text="AIRSPACE CONFLICT DETECTED" />}
                 {selected.geofenceBreachFlag && <WarnBadge level="critical" text="GEOFENCE BREACH" />}
                 {selected.signalDbm < -90 && <WarnBadge level="critical" text="COMMS LOST — BVLOS DEGRADED" />}
@@ -306,7 +307,7 @@ export function TelemetryPanel() {
                 {selected.altitudeFt > 390 && <WarnBadge level="caution" text="APPROACHING 400ft AGL LIMIT" />}
                 {selected.missionState === 'avoid' && <WarnBadge level="caution" text="CONFLICT AVOIDANCE — GIVING WAY" />}
                 {selected.missionState === 'emergency' && <WarnBadge level="critical" text="EMERGENCY LANDING IN PROGRESS" />}
-                {selected.batteryPct >= 25 && !selected.conflictFlag && !selected.geofenceBreachFlag &&
+                {selectedBatteryAlert === 'ok' && !selected.conflictFlag && !selected.geofenceBreachFlag &&
                  selected.signalDbm >= -80 && selected.altitudeFt <= 390 &&
                  selected.missionState !== 'avoid' && selected.missionState !== 'emergency' && (
                   <WarnBadge level="info" text="ALL SYSTEMS NOMINAL" />
@@ -457,7 +458,7 @@ export function TelemetryPanel() {
               }}>
                 <span style={{ color: d.color, minWidth: 64 }}>{d.label}</span>
                 <span style={{ color: 'var(--text-secondary)' }}>{d.missionState.replace(/_/g, ' ').toUpperCase()}</span>
-                <span style={{ color: d.batteryPct < 25 ? C_YELLOW : C_GREEN }}>{Math.round(d.batteryPct)}%</span>
+                <span style={{ color: batteryAlert(d) === 'ok' ? C_GREEN : batteryAlert(d) === 'reserve' ? C_YELLOW : C_RED }}>{Math.round(d.batteryPct)}%</span>
                 <span style={{ color: 'var(--text-dim)' }}>{Math.round(d.altitudeFt)}ft</span>
               </div>
             ))}

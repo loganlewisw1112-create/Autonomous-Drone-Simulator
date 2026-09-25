@@ -23,6 +23,8 @@ function makeScenario(): ScenarioConfig {
     description: 'Deterministic tactical planning fixture',
     seed: 7,
     droneCount: 2,
+    // Search-capable airframes: an airframe with no thermal payload is never offered a search task.
+    dronePlatforms: { 'uav-01': 'skydio_x10', 'uav-02': 'skydio_x10' },
     missionType: 'waypoint',
     startPosition: origin,
     waypoints: [{ id: 'base-route', position: { lat: 37.001, lng: -121.999 }, altitudeFt: 120 }],
@@ -146,6 +148,36 @@ describe('tactical advisor core', () => {
       'rtb_now',
     ])
     expect(candidates.filter((candidate) => candidate.action === 'deep_scan').slice(0, 2)).toHaveLength(2)
+  })
+
+  it('never offers a detection task to an airframe with no thermal payload', () => {
+    const input = situationInput({ drones: [makeDrone('uav-01')] })
+    const mapping = { ...input, scenario: { ...input.scenario, dronePlatforms: { 'uav-01': 'freefly_astro_max' as const } } }
+    const actions = planFleetRetask(buildMissionSituation(mapping)).candidatesByDrone['uav-01'].map((candidate) => candidate.action)
+    for (const search of ['deep_scan', 'street_sweep', 'expanding_search', 'route_lkl']) {
+      expect(actions).not.toContain(search)
+    }
+    expect(actions).toEqual(expect.arrayContaining(['hold_station', 'rtb_now']))
+  })
+
+  it('never offers a detection task to an airframe whose optics the sensor model cannot evaluate', () => {
+    // BRINC Lemur 2: FLIR Lepton with unpublished NETD and optics — the live model fails closed.
+    const input = situationInput({ drones: [makeDrone('uav-01')] })
+    const lemur = { ...input, scenario: { ...input.scenario, dronePlatforms: { 'uav-01': 'brinc_lemur_2' as const } } }
+    const actions = planFleetRetask(buildMissionSituation(lemur)).candidatesByDrone['uav-01'].map((candidate) => candidate.action)
+    expect(actions).not.toContain('deep_scan')
+    expect(actions).not.toContain('expanding_search')
+  })
+
+  it('prices a task against the reserve at which a tasked aircraft actually turns home', () => {
+    const atMargin = planFleetRetask(buildMissionSituation(situationInput({ drones: [makeDrone('uav-01', { batteryPct: 38 })] })))
+    const actions = atMargin.candidatesByDrone['uav-01'].map((candidate) => candidate.action)
+    // Above the 25% floor, but any task would take the pack through its ~37.5% voltage reserve.
+    expect(actions).not.toContain('deep_scan')
+    expect(actions).toContain('rtb_now')
+    const healthy = planFleetRetask(buildMissionSituation(situationInput({ drones: [makeDrone('uav-01')] })))
+    const scan = healthy.candidatesByDrone['uav-01'].find((candidate) => candidate.action === 'deep_scan')
+    expect(scan?.reservePct).toBeCloseTo(37.5, 0)
   })
 
   it('uses a true no-op hold and positive, subtractive score terms', () => {

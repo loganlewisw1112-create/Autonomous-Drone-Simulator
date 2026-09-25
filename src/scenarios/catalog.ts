@@ -10,6 +10,7 @@ import { auditScenarioRoutes, buildSafeDroneRoutes, droneIdForIndex, relocatePoi
 import { getWeatherProfile } from '@/sim/weather/weatherEngine'
 import { haversineDistanceM } from '@/utils/geometry'
 import { BAY_SPACING_M } from '@/sim/mission/LaunchCoordinator'
+import { reserveBatteryPct } from '@/sim/drone/DroneEntity'
 import { launchSiteForDrone, recoverySiteForDrone } from '@/sim/mission/siteAssignments'
 import type {
   DispatchTimelineCategory,
@@ -419,7 +420,7 @@ function deriveDispatchTimeline(scenario: ScenarioConfig): DispatchTimelineEntry
 
   if (scenario.batteryProfile) {
     entries.push(entry(scenario, 'battery-kit', 8, 'AIR UNIT', 'advisory', 'agency_update',
-      `${scenario.batteryProfile.label} installed; ${scenario.batteryProfile.reservePct} percent reserve threshold active for staged recovery.`))
+      `${scenario.batteryProfile.label} installed; aircraft turn for recovery at ${scenario.batteryProfile.reservePct} percent or at the pack's voltage reserve (about ${Math.round(reserveBatteryPct())} percent), whichever comes first.`))
   }
 
   if (scenario.rechargeStations?.length) {

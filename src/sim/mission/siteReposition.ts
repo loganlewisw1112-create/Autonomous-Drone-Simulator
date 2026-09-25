@@ -1,9 +1,8 @@
-import { platformForDrone } from '@/sim/drone/platformCatalog'
 import {
   batteryReservePctForDrone,
-  effectiveBatteryDrainRateForDrone,
   rechargeStationsForDrone,
 } from '@/sim/mission/rechargeStations'
+import { plannedLegEnergyPct, plannedSpeedMs, RTB_THROTTLE, type PlanningWeather } from '@/sim/mission/plannedEnergy'
 import { firstBreachedGeofence } from '@/sim/mission/routeAudit'
 import { isMobileLaunchSite, resolveLaunchSite, type SiteOverrides } from '@/sim/mission/siteResolver'
 import { bearingDeg, haversineDistanceM, offsetLatLng } from '@/utils/geometry'
@@ -13,7 +12,6 @@ import type {
   LaunchRecoverySite,
   MissionState,
   ScenarioConfig,
-  WeatherVariantState,
 } from '@/types'
 
 export { isMobileLaunchSite, resolveLaunchSite, type SiteOverrides } from '@/sim/mission/siteResolver'
@@ -27,7 +25,7 @@ export interface SiteRepositionInput {
   launchAssignments?: Record<string, string>
   recoveryAssignments?: Record<string, string>
   objectivePosition?: LatLng
-  weather?: Pick<WeatherVariantState, 'batteryDrainMultiplier' | 'speedCapMultiplier'>
+  weather?: PlanningWeather
 }
 
 export interface SiteRepositionResult {
@@ -275,10 +273,10 @@ function canReachRecovery(
   batteryPct: number,
   weather: SiteRepositionInput['weather'],
 ): boolean {
-  const speedMs = Math.max(0.1, platformForDrone(scenario, droneId).maxSpeedMs * (weather?.speedCapMultiplier ?? 1))
-  const drainPct = haversineDistanceM(from, to) / speedMs
-    * effectiveBatteryDrainRateForDrone(scenario, droneId)
-    * (weather?.batteryDrainMultiplier ?? 1)
+  // A recovery leg is flown at RTB throttle.
+  const drainPct = plannedLegEnergyPct(scenario, droneId, haversineDistanceM(from, to), weather, {
+    speedMs: plannedSpeedMs(scenario, droneId, weather, RTB_THROTTLE),
+  })
   return batteryPct - drainPct >= batteryReservePctForDrone(scenario, droneId)
 }
 
@@ -292,11 +290,9 @@ function conservativeReserveDelta(
 ): number {
   if (droneIds.length === 0) return 0
   const deltas = droneIds.map((droneId) => {
-    const speedMs = Math.max(0.1, platformForDrone(scenario, droneId).maxSpeedMs * (weather?.speedCapMultiplier ?? 1))
-    const drainRate = effectiveBatteryDrainRateForDrone(scenario, droneId)
-      * (weather?.batteryDrainMultiplier ?? 1)
-    const oldRequired = haversineDistanceM(objective, from) / speedMs * drainRate
-    const newRequired = haversineDistanceM(objective, to) / speedMs * drainRate
+    const speed = { speedMs: plannedSpeedMs(scenario, droneId, weather, RTB_THROTTLE) }
+    const oldRequired = plannedLegEnergyPct(scenario, droneId, haversineDistanceM(objective, from), weather, speed)
+    const newRequired = plannedLegEnergyPct(scenario, droneId, haversineDistanceM(objective, to), weather, speed)
     return oldRequired - newRequired
   })
   return round(Math.min(...deltas), 1)

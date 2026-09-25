@@ -7,6 +7,7 @@
 // live region can update deterministically. Nothing here is on the sim's hot path.
 
 import type { DroneState, MissionState, LatLng } from '@/types'
+import { batteryAlert } from '@/sim/drone/DroneEntity'
 
 /** Plain-English label for each mission state, for readers who can't see marker color/shape. */
 const MISSION_STATE_WORDS: Record<MissionState, string> = {
@@ -80,7 +81,7 @@ export function describeDrone(d: DroneState): string {
 /** Warning conditions on a single drone, in plain words. Shared by the line and the alert list. */
 function droneAlertFlags(d: DroneState): string[] {
   const flags: string[] = []
-  if (d.batteryPct < 25) flags.push('low battery')
+  if (batteryAlert(d) !== 'ok') flags.push('low battery')
   if (d.geofenceBreachFlag) flags.push('geofence breach')
   if (d.conflictFlag) flags.push('traffic conflict')
   if (d.missionState === 'emergency') flags.push('EMERGENCY')
