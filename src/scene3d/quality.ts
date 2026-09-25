@@ -17,7 +17,9 @@
  * governor may step DOWN from there when the layer runs over budget, and back UP to — never past —
  * the tier's own rung when there is headroom.
  *
- * What it measures is the LAYER'S OWN cost (ms inside render()), not whole-frame time. On an
+ * What it measures is the LAYER'S OWN cost, not whole-frame time: the larger of the CPU ms inside
+ * render() and, where the browser exposes EXT_disjoint_timer_query_webgl2, the GPU ms for the same
+ * draw (SceneLayer), so a weak GPU steps down even while the CPU timing looks cheap. On an
  * integrated GPU the baseline map alone can exceed a 16.7 ms frame on a pitched terrain view; a
  * governor watching the whole frame would walk the ladder to "layer-off" on every such view without
  * making the map any faster. It can only give back what the layer took.

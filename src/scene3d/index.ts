@@ -59,6 +59,8 @@ export interface Scene3DHandle {
   isEnabled(): boolean
   info(): { calls: number; triangles: number; programs: number } | null
   layerRenderTimes(): number[]
+  /** GPU ms for the layer's draw, last 300 measured frames; empty where WebGL2 timer queries are unavailable. */
+  layerGpuTimes(): number[]
   /** Swap the pose source (the gates fly synthetic fleets); `null` restores the one given at creation. */
   setFleetSource(source: (() => FleetFrame) | null): void
   fleetStats(): ReturnType<FleetRenderer['stats']>
@@ -164,9 +166,10 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
   const emptySky: FleetFrame = { drones: [], simTimeSec: 0 }
   let fleetSource = options.fleetSource ?? null
   layer.onBeforeRender = (frame, renderer) => {
-    // Last frame's layer cost feeds the governor (this frame's is not known until it has been drawn).
+    // Last frame's layer cost feeds the governor (this frame's is not known until it has been drawn): the larger
+    // of its CPU time and, where timer queries exist, its GPU time, so a weak GPU steps down too.
     const lastMs = layer.layerRenderTimes().at(-1)
-    if (lastMs !== undefined) governor.sample(lastMs + (syntheticCost?.(governor.rung) ?? 0))
+    if (lastMs !== undefined) governor.sample(Math.max(lastMs, layer.latestGpuMs() ?? 0) + (syntheticCost?.(governor.rung) ?? 0))
     options.terrain?.refresh()
     lighting.update(frame, renderer, sunOverride ?? options.sunSource?.() ?? FIXED_SUN)
     // Shadows fade out with the sun: full by day, gone once only twilight glow is left.
@@ -260,6 +263,7 @@ export function createScene3D(map: maplibregl.Map, origin: SceneOrigin, options:
     isEnabled: () => enabled,
     info: () => layer.info(),
     layerRenderTimes: () => layer.layerRenderTimes(),
+    layerGpuTimes: () => layer.layerGpuTimes(),
     setFleetSource(source) {
       fleetSource = source ?? options.fleetSource ?? null
       if (enabled && map.getLayer(SCENE_LAYER_ID)) ownDrones(fleetSource !== null)
