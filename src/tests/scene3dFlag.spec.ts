@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { scene3dEnabled } from '@/scene3d/flag'
+import { SCENE3D_FIT_PITCH, scenarioFitCamera } from '@/components/TacticalMap'
+
+describe('scenarioFitCamera', () => {
+  it('tilts scenario framing when the 3D layer is on', () => {
+    expect(scenarioFitCamera('desktop', true)).toEqual({ padding: 80, maxZoom: 16, pitch: SCENE3D_FIT_PITCH })
+  })
+
+  it('passes no pitch at all with the layer off, so 2D framing is unchanged (a manual tilt survives a recenter)', () => {
+    expect(scenarioFitCamera('desktop', false)).toEqual({ padding: 80, maxZoom: 16 })
+    expect('pitch' in scenarioFitCamera('phone-portrait', false)).toBe(false)
+    expect('pitch' in scenarioFitCamera('phone-landscape', false)).toBe(false)
+  })
+})
 
 const TARGETS = ['windows', 'classroom', 'mobile'] as const
 const MODES = ['desktop', 'phone-portrait', 'phone-landscape'] as const

@@ -369,6 +369,17 @@ function scenarioFitOptions(deviceMode: DeviceMode): { padding: number | { top: 
   return { padding: { top: 60, bottom: 100, left: 72, right: 72 }, maxZoom: 14 }
 }
 
+// Camera tilt for scenario framing while the 3D scene layer is on. Top-down, the airframes read as flat
+// dots and the 3D layer looks like it did nothing; 45° shows height, terrain and shadows while keeping the
+// whole mission envelope readable and waypoint picking easy. With the layer off, no pitch is passed, so 2D
+// framing behaves exactly as it always has.
+export const SCENE3D_FIT_PITCH = 45
+
+export function scenarioFitCamera(deviceMode: DeviceMode, scene3dOn: boolean) {
+  const fit = scenarioFitOptions(deviceMode)
+  return scene3dOn ? { ...fit, pitch: SCENE3D_FIT_PITCH } : fit
+}
+
 // Insets for the badges rendered inside .map-area. On desktop these are the
 // historical literals (8 / 36 / 28) — the map has reserved chrome around it, so
 // nothing overlaps. On mobile the map is full-bleed under a floating translucent
@@ -465,6 +476,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   const latestScenarioRef      = useRef(scenario)
   const latestSuggestionsRef   = useRef(routeSuggestions)
   const latestDeviceModeRef    = useRef(deviceMode)
+  const scene3dOnRef           = useRef(false)   // this map mounted the 3D layer; scenario fits tilt
   // UTM state used to recompute on every render via a useMemo keyed on elapsedSec — which
   // changes every physics tick (20-200Hz), rebuilding traffic/reservation geometry far more
   // often than the map can even show it. Now computed inside the existing 10fps interval below,
@@ -844,9 +856,15 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     let disposeScene3D: (() => void) | undefined
     if (HARNESS_ENABLED) void import('@/scene3d/harness/installHarness').then((m) => m.installHarness(map))
     else if (scene3dEnabled(window.location.search, BUILD_TARGET, latestDeviceModeRef.current)) {
+      scene3dOnRef.current = true
       import('@/scene3d/mount')
         .then((m) => { if (!mapRemoved) disposeScene3D = m.mountScene3D(map) })
-        .catch((err: unknown) => console.warn('[scene3d] 3D layer unavailable; the 2D map stays in charge', err))
+        .catch((err: unknown) => {
+          console.warn('[scene3d] 3D layer unavailable; the 2D map stays in charge', err)
+          // No 3D to look at, so level the camera back to the top-down 2D view.
+          scene3dOnRef.current = false
+          if (!mapRemoved) map.easeTo({ pitch: 0, duration: 400 })
+        })
     }
 
     // Container-size tracking: the mobile shell mounts the map in a flex slot
@@ -928,7 +946,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
 
       // WS7: fit the whole scenario envelope (sites/routes/waypoints) instead of a flat
       // zoom-15 flyTo — small scenarios frame tighter, wide ones no longer clip off-screen.
-      map.fitBounds(computeScenarioBounds(scenario), { ...scenarioFitOptions(latestDeviceModeRef.current), duration: 600 })
+      map.fitBounds(computeScenarioBounds(scenario), { ...scenarioFitCamera(latestDeviceModeRef.current, scene3dOnRef.current), duration: 600 })
 
       // NOTE: the static yellow waypoint dots were removed — they duplicated the
       // faint route backbone below and the numbered draggable per-drone nodes
@@ -1234,7 +1252,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     const lats = allPoints.map((p) => p.lat)
     map.fitBounds(
       [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { ...scenarioFitOptions(latestDeviceModeRef.current), duration: 800 }
+      { ...scenarioFitCamera(latestDeviceModeRef.current, scene3dOnRef.current), duration: 800 }
     )
     cameraLockedRef.current = false
     setCameraLocked(false)
@@ -1256,7 +1274,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     lockedDroneIdRef.current = null
     setLockedDroneId(null)
     map.fitBounds(computeScenarioBounds(scenario), {
-      ...scenarioFitOptions(latestDeviceModeRef.current),
+      ...scenarioFitCamera(latestDeviceModeRef.current, scene3dOnRef.current),
       duration: 600,
     })
   }, [recenterRequest, scenario])
