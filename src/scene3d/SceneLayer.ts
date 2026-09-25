@@ -9,6 +9,7 @@ import type * as maplibregl from 'maplibre-gl'
 
 export const SCENE_LAYER_ID = 'scene3d'
 const RENDER_TIME_BUFFER = 300
+const MAX_PENDING_GPU_QUERIES = 4
 
 export interface SceneOrigin {
   lng: number
@@ -64,6 +65,14 @@ export class SceneLayer implements maplibregl.CustomLayerInterface {
   private metresToMercator = 1
   private viewportW = 0
   private viewportH = 0
+  // GPU cost of the layer's own draw. performance.now() around render() only sees the CPU issuing commands;
+  // the GPU runs them later, so a weak GPU could be over budget while the CPU timing looks fine. A WebGL2
+  // timer query brackets the same work; results arrive a frame or two later. Absent the extension (Firefox,
+  // some drivers) this stays empty and the governor keeps using CPU time alone.
+  private gl2: WebGL2RenderingContext | null = null
+  private timerExt: { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number } | null = null
+  private readonly pendingQueries: WebGLQuery[] = []
+  private readonly gpuTimes: number[] = []
 
   constructor(origin: SceneOrigin) {
     this.scene.matrixWorldAutoUpdate = true
@@ -111,10 +120,35 @@ export class SceneLayer implements maplibregl.CustomLayerInterface {
       this.renderer.shadowMap.enabled = true
       this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     }
+    if (!this.timerExt && typeof (gl as WebGL2RenderingContext).createQuery === 'function') {
+      const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number } | null
+      if (ext) {
+        this.gl2 = gl as WebGL2RenderingContext
+        this.timerExt = ext
+      }
+    }
   }
 
   onRemove(): void {
     this.map = null
+  }
+
+  /** Harvest finished GPU timer queries, oldest first. A disjoint event (clock change, context loss) voids them. */
+  private collectGpuTimes(): void {
+    const gl = this.gl2
+    const ext = this.timerExt
+    if (!gl || !ext) return
+    const disjoint = gl.getParameter(ext.GPU_DISJOINT_EXT) as boolean
+    while (this.pendingQueries.length > 0) {
+      const query = this.pendingQueries[0]
+      if (!disjoint && !gl.getQueryParameter(query, gl.QUERY_RESULT_AVAILABLE)) break
+      if (!disjoint) {
+        this.gpuTimes.push((gl.getQueryParameter(query, gl.QUERY_RESULT) as number) / 1e6)
+        if (this.gpuTimes.length > RENDER_TIME_BUFFER) this.gpuTimes.shift()
+      }
+      gl.deleteQuery(query)
+      this.pendingQueries.shift()
+    }
   }
 
   render(_gl: WebGLRenderingContext | WebGL2RenderingContext, args: maplibregl.CustomRenderMethodInput): void {
@@ -123,6 +157,10 @@ export class SceneLayer implements maplibregl.CustomLayerInterface {
     const map = this.map
     if (!renderer || !map) return
     const started = performance.now()
+    this.collectGpuTimes()
+    // At most a few frames in flight; if results stop arriving, stop issuing rather than pile up queries.
+    const query = this.gl2 && this.timerExt && this.pendingQueries.length < MAX_PENDING_GPU_QUERIES ? this.gl2.createQuery() : null
+    if (query) this.gl2!.beginQuery(this.timerExt!.TIME_ELAPSED_EXT, query)
 
     // MapLibre never resizes three's idea of the viewport. setSize() would reassign canvas.width
     // and wipe MapLibre's frame, so only the viewport rectangle is tracked.
@@ -150,6 +188,10 @@ export class SceneLayer implements maplibregl.CustomLayerInterface {
       this.onBeforeRender(this.frame, renderer)
     }
     renderer.render(this.scene, this.camera)
+    if (query) {
+      this.gl2!.endQuery(this.timerExt!.TIME_ELAPSED_EXT)
+      this.pendingQueries.push(query)
+    }
 
     this.renderTimes.push(performance.now() - started)
     if (this.renderTimes.length > RENDER_TIME_BUFFER) this.renderTimes.shift()
@@ -178,6 +220,16 @@ export class SceneLayer implements maplibregl.CustomLayerInterface {
     return this.renderTimes.slice()
   }
 
+  /** GPU milliseconds for the same work, last 300 measured frames; empty where timer queries are unavailable. */
+  layerGpuTimes(): number[] {
+    return this.gpuTimes.slice()
+  }
+
+  /** The latest GPU sample, or undefined — cheap enough to read every frame, unlike the copies above. */
+  latestGpuMs(): number | undefined {
+    return this.gpuTimes[this.gpuTimes.length - 1]
+  }
+
   info(): { calls: number; triangles: number; programs: number } | null {
     if (!this.renderer) return null
     const { render, programs } = this.renderer.info
@@ -185,6 +237,8 @@ export class SceneLayer implements maplibregl.CustomLayerInterface {
   }
 
   dispose(): void {
+    for (const query of this.pendingQueries) this.gl2?.deleteQuery(query)
+    this.pendingQueries.length = 0
     this.renderer?.dispose()
     this.renderer = null
   }

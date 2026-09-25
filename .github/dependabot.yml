@@ -1,27 +1,36 @@
 version: 2
+# Every push to a Dependabot branch triggers a preview build on all four Vercel
+# projects, and branch protection requires those four checks, so their builds
+# cannot simply be switched off for these branches. On 2026-09-22 five
+# Dependabot branches were pushed 20 times, mostly auto-rebases after each
+# merge to main: about 80 builds against the Vercel Hobby limit of 100 per day.
+# That exhausted the limit and the day's production promote was rate limited.
+# So the updates arrive as at most three grouped PRs a week, and Dependabot does
+# not rebase them on its own. Comment "@dependabot rebase" on a PR when you are
+# ready to merge it.
+#
+# Majors are grouped rather than ignored. A lone major is often half of a
+# version-locked pair (@types/react + @types/react-dom, vite +
+# @vitejs/plugin-react, vitest + @vitest/coverage-v8). One grouped PR moves both
+# halves together. It may still need a migration commit before it passes (see
+# #106, which replaced #102-#105).
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    rebase-strategy: disabled
+    open-pull-requests-limit: 2
     groups:
       minor-and-patch:
         update-types: [minor, patch]
-    # Majors closed 2026-09-22 (#92, #93, #95). Each is half of a version-locked
-    # pair, so the bump alone cannot install: @types/react-dom@19 needs
-    # @types/react@19 (this project is React 18.3.1), @vitejs/plugin-react@6 needs
-    # Vite 7 (on 6.4.3), and @vitest/coverage-v8@5 needs vitest 5 (on 4.1.11).
-    # Each is a migration that must move its peer at the same time, on its own
-    # branch. Only the majors are ignored -- minor and patch updates, including
-    # security fixes, still come through the minor-and-patch group.
-    ignore:
-      - dependency-name: "@types/react-dom"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@vitejs/plugin-react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@vitest/coverage-v8"
-        update-types: ["version-update:semver-major"]
+      majors:
+        update-types: [major]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    rebase-strategy: disabled
+    groups:
+      actions:
+        patterns: ["*"]

@@ -127,7 +127,10 @@ it again after any style swap (`style.load`), which drops custom layers.
   (full -> smoke-half -> smoke-off -> shadows-1024 -> shadows-off -> lod-tight -> layer-off). `auto` picks the
   tier from the first three seconds at full quality.
 - The governor watches the layer's OWN render cost (budget 8 ms p75), never whole-frame time: it can only give
-  back what the layer took. It does not see GPU time (open finding).
+  back what the layer took. Each frame it samples the larger of the CPU ms inside `render()` and the GPU ms for
+  the same draw, from an `EXT_disjoint_timer_query_webgl2` timer query (2026-09-24; results land a frame or two
+  late, disjoint samples are dropped). Where the extension is missing (Firefox, some drivers) it falls back to
+  CPU time alone. `__scene3d.layerGpuTimes()` shows the GPU samples.
 - `harness/matrix.mjs` writes the 72-cell review bundle to `artifacts/review/` and measures every cell with the
   layer mounted and removed.
 
