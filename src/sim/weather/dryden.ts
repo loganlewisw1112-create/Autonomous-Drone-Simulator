@@ -84,7 +84,7 @@ export function lowAltitudeDryden(windAt20ftMs: number, altitudeFt: number): { l
 /**
  * Wind-limit abort trigger (couples WP-10 to the WP-1 per-airframe gust tolerance): the
  * instantaneous wind the airframe feels is the sustained wind plus the gust, and exceeding the
- * platform's published gust tolerance is a real abort condition.
+ * platform's gust tolerance (published where the manufacturer gives one) is a real abort condition.
  */
 export function exceedsGustLimit(sustainedWindMs: number, gustMs: number, gustToleranceMs: number): boolean {
   return sustainedWindMs + Math.abs(gustMs) > gustToleranceMs

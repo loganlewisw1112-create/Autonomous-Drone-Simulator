@@ -199,7 +199,7 @@ export const fbiHrtCompound: ScenarioConfig = {
 export const uscgCapeCodeSAR: ScenarioConfig = {
   id: 'extreme_uscg_cape_cod_sar',
   name: 'USCG District 1 — Atlantic Mariner SAR',
-  description: 'USCG Sector Southeastern New England deploys five ScanEagle UAS from Air Station Cape Cod for an overdue 28-ft recreational vessel. EPIRB activated at 0214 local. SAROPS drift model projects two probability sectors. Primary detection: thermal — hypothermic survivors at 33–35°C vs 18°C Atlantic water. Two sorties required to cover the full probability area. SIMULATION ONLY.',
+  description: 'USCG Sector Southeastern New England deploys five multirotor UAS from Air Station Cape Cod (four Skydio X10D thermal search aircraft and a Freefly Astro Max mapping aircraft) for an overdue 28-ft recreational vessel. EPIRB activated at 0214 local. SAROPS drift model projects two probability sectors. Primary detection: thermal — hypothermic survivors at 33–35°C vs 18°C Atlantic water. Up to two sorties to cover the full probability area. SIMULATION ONLY.',
   seed: 20004,
   droneCount: 5,
   // Maritime SAR: weatherproof X10D search ships plus an Astro Max mapper.

@@ -1,6 +1,7 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { PLATFORM_CATALOG } from '@/sim/drone/platformCatalog'
+import { batteryAlert } from '@/sim/drone/DroneEntity'
 import { CLEAN_MARGIN_DB } from '@/sim/safety/commsModel'
 import type { DroneState, GnssFixQuality, MissionState, RecoveryTeamState } from '@/types'
 
@@ -48,7 +49,7 @@ function DroneCard({ drone, recoveryTeam }: { drone: DroneState; recoveryTeam?: 
   const flightSec = drone.launchTimeSec !== undefined ? Math.max(0, elapsedSec - drone.launchTimeSec) : null
 
   const warnings = [
-    drone.batteryPct < 25 && 'LOW BAT',
+    batteryAlert(drone) !== 'ok' && 'LOW BAT',
     drone.conflictFlag && 'CONFLICT',
     drone.geofenceBreachFlag && 'GEO-BREACH',
     drone.signalDbm < -90 && 'COMMS LOST',

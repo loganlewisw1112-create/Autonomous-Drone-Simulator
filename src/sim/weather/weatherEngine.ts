@@ -91,12 +91,11 @@ export function buildWeatherState(
   const windFactor = Math.min(1, windKts / 25)
   const visFactor  = Math.min(1, visibilityMi / 3)
 
-  const batteryDrainMultiplier = round2(
-    1
-    + windFactor * 0.4
-    + (activeHazards.includes('cold') ? 0.15 : 0)
-    + variant.batteryPressure * 0.1
-  )
+  // Only the scenario's battery-pressure dial lives here. Wind and gusts reach the pack through the
+  // airframe's load factor (DroneEntity `flightLoadFactor`) and cold through the temperature derate
+  // (the cold hazard already lowers tempF above). Adding wind or cold again here charged the pack
+  // for the same weather twice.
+  const batteryDrainMultiplier = round2(1 + variant.batteryPressure * 0.1)
 
   const speedCapMultiplier = round2(Math.max(0.4, 1 - windFactor * 0.5))
 

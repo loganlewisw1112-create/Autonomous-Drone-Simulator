@@ -1,9 +1,8 @@
 import { platformForDrone } from '@/sim/drone/platformCatalog'
 import { BAY_SPACING_M } from '@/sim/mission/LaunchCoordinator'
-import {
-  batteryReservePctForDrone,
-  effectiveBatteryDrainRateForDrone,
-} from '@/sim/mission/rechargeStations'
+import { batteryReservePctForDrone } from '@/sim/mission/rechargeStations'
+import { plannedLegEnergyPct, plannedSpeedMs, RTB_THROTTLE } from '@/sim/mission/plannedEnergy'
+import { effectiveDwellSec } from '@/sim/mission/MissionManager'
 import { auditScenarioRoutes, droneIdForIndex, firstBreachedGeofence } from '@/sim/mission/routeAudit'
 import { bearingDeg, haversineDistanceM, offsetLatLng } from '@/utils/geometry'
 import type {
@@ -305,21 +304,31 @@ function missionMetrics(
   reserveMarginPct: number
 } {
   const firstTaskDistanceM = route[0] ? haversineDistanceM(launch, route[0].position) : 0
-  let routeDistanceM = 0
+  let taskDistanceM = 0
+  let dwellSec = 0
   let cursor = launch
   for (const waypoint of route) {
-    routeDistanceM += haversineDistanceM(cursor, waypoint.position)
+    taskDistanceM += haversineDistanceM(cursor, waypoint.position)
+    dwellSec += effectiveDwellSec(waypoint.dwellTimeSec) ?? 0
     cursor = waypoint.position
   }
-  if (recovery && haversineDistanceM(cursor, recovery) > 10) {
-    routeDistanceM += haversineDistanceM(cursor, recovery)
-  }
+  const recoveryDistanceM = recovery && haversineDistanceM(cursor, recovery) > 10
+    ? haversineDistanceM(cursor, recovery)
+    : 0
+  const routeDistanceM = taskDistanceM + recoveryDistanceM
   const speedMs = Math.max(0.1, platformForDrone(scenario, droneId).maxSpeedMs * weather.speedCapMultiplier)
   const transitSec = firstTaskDistanceM / speedMs
-  const durationSec = routeDistanceM / speedMs
-  const batteryRequiredPct = durationSec
-    * effectiveBatteryDrainRateForDrone(scenario, droneId)
-    * weather.batteryDrainMultiplier
+  // Priced on the live discharge model at the throttle the mission manager commands (cruise for
+  // the route, including waypoint holds; RTB for the leg home), not the max-speed transit estimate
+  // used for scoring. The margin is to the percentage floor, the launch gate's long-standing
+  // criterion. A modelled pack also turns for home at its voltage reserve (~37.5% SoC), so a margin
+  // under ~12.5 points means the route will likely need a second sortie — which multi-sortie
+  // scenarios are designed for, so it is reported rather than rejected.
+  const taskPct = plannedLegEnergyPct(scenario, droneId, taskDistanceM, weather, { dwellSec })
+  const homePct = plannedLegEnergyPct(scenario, droneId, recoveryDistanceM, weather, {
+    speedMs: plannedSpeedMs(scenario, droneId, weather, RTB_THROTTLE),
+  })
+  const batteryRequiredPct = taskPct + homePct
   const reserveMarginPct = scenario.batteryStartPct
     - batteryReservePctForDrone(scenario, droneId)
     - batteryRequiredPct

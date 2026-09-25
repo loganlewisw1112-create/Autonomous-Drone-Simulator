@@ -5,7 +5,10 @@ import {
   applyWeatherToCommsSignal,
   weatherSummaryLabel,
 } from '@/sim/weather/weatherEngine'
-import type { ScenarioWeatherProfile, ScenarioVariantConfig } from '@/types'
+import { plannedDrainRatePerSec } from '@/sim/mission/plannedEnergy'
+import type { ScenarioConfig, ScenarioWeatherProfile, ScenarioVariantConfig } from '@/types'
+
+const X10_SCENARIO = { dronePlatforms: { 'uav-01': 'skydio_x10' } } as unknown as ScenarioConfig
 
 const COASTAL_PROFILE: ScenarioWeatherProfile = {
   locationTag: 'coastal',
@@ -81,7 +84,12 @@ describe('weatherEngine', () => {
 
   it('severity 3 (severe) degrades all multipliers', () => {
     const ws = buildWeatherState(WILDFIRE_PROFILE, { ...BASE_VARIANT, weatherSeverity: 3, seed: 1 })
-    expect(ws.batteryDrainMultiplier).toBeGreaterThan(1.0)
+    // Wind and cold reach the pack through the airframe load model, not batteryDrainMultiplier
+    // (which carries only the battery-pressure dial since the 2026-09-25 realism pass), so the
+    // "severe weather costs battery" oracle is asserted on the modelled drain an aircraft sees.
+    const clearWs = buildWeatherState(WILDFIRE_PROFILE, { ...BASE_VARIANT, weatherSeverity: 0, seed: 1 })
+    expect(plannedDrainRatePerSec(X10_SCENARIO, 'uav-01', ws))
+      .toBeGreaterThan(plannedDrainRatePerSec(X10_SCENARIO, 'uav-01', clearWs))
     expect(ws.speedCapMultiplier).toBeLessThan(1.0)
     expect(ws.sensorConfidenceFactor).toBeLessThan(1.0)
     expect(ws.commsReliabilityFactor).toBeLessThanOrEqual(1.0)

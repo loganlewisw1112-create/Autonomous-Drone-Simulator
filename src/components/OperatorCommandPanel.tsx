@@ -126,7 +126,7 @@ export function OperatorCommandPanel() {
           <strong>{routeBrief.role}</strong>
           {/* Platform doctrine is fixed per scenario — informational text only, no picker. */}
           <span data-testid="operator-platform">
-            {platform.displayName} | {platform.role} | max {platform.maxSpeedMs} m/s | {platform.enduranceMin} min
+            {platform.displayName} | {platform.role} | {platform.massKg} kg | max {platform.maxSpeedMs} m/s | rated {platform.enduranceMin} min
           </span>
           <span>{routeBrief.launchRationale}</span>
           <span>{routeBrief.routePattern}</span>

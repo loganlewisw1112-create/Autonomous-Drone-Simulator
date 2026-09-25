@@ -26,6 +26,27 @@ ISO 8601.
 
 ### Changed
 
+- Airframe realism pass (2026-09-25): every platform figure re-sourced from
+  manufacturer specs with per-field provenance (`platformSources.ts`); Astro
+  Max weight/climb/endurance and Anafi/Teal/Lemur figures corrected; published
+  descent rates, operating temperatures, IP ratings and packs added.
+- Battery planning (RTB energy-to-home, launch doctrine, site reposition,
+  tactical advisor) now uses the same discharge model the aircraft burns
+  against, at the commanded throttle and forecast weather.
+- Wind and cold are charged to the pack once (airframe load factor and
+  temperature derate); the weather drain multiplier keeps only the
+  battery-pressure dial.
+- Battery warnings follow the autopilot's RTB and emergency gates (voltage
+  reserve, scenario floor and energy-to-home) instead of fixed 25%/10% lines,
+  and battery RTB events now carry the right reason; the ops panel shows
+  airframe weight.
+- Preflight shows an advisory check of the forecast against each assigned
+  airframe's wind, gust and temperature limits, labelled published or
+  modelled; the gust check mirrors the live gust abort.
+- The tactical advisor prices retasks against the reserve at which a tasked
+  aircraft actually turns home, and no longer offers search tasks to airframes
+  the sensor model cannot detect with (no thermal payload, or unpublished
+  optics), nor credits them detection coverage.
 - Standard development and CI runtime moves to Node 24.x and npm 11.12.1.
 - Mobile uses the same terrain fixtures and simulation inputs as Windows and
   Classroom while retaining its lighter 2D presentation.

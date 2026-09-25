@@ -98,6 +98,9 @@ export interface DroneState {
   // Present only once the loop supplies a FlightEnvironment; absent means the legacy linear
   // drain is running and there is no modelled voltage to report.
   cellVoltageV?: number         // per-cell terminal voltage under load
+  /** Set while the aircraft is returning because a battery reserve gate fired (percentage,
+   *  voltage or energy-to-home), so warnings and events name the gate the autopilot acted on. */
+  batteryRtb?: boolean
   packVoltageV?: number
   gustMs?: number               // instantaneous Dryden gust the airframe is fighting
 }

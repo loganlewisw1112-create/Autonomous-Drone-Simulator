@@ -8,8 +8,8 @@ const SPEED_BATTERY_COEFF = 0.008 // additional % per second per m/s
 const ARRIVAL_RADIUS_M = 8
 const RTB_SIGNAL_LOSS_DBM = -95
 
-/** Typical LiPo pack for this airframe class. Used only to report cell voltage. */
-const PACK_CELLS = 4
+/** Series cell count when an airframe's pack configuration is unpublished. Reporting only. */
+const DEFAULT_PACK_CELLS = 4
 /** Per-cell sag under a representative flight load (WP-11). */
 const FLIGHT_SAG_V = 0.15
 
@@ -27,8 +27,11 @@ export interface FlightEnvironment {
   gustMs?: number
   /** Sustained wind, m/s. */
   windMs?: number
-  /** Multiplier the scenario/weather layer already applied; kept so it still bites. */
+  /** Residual scenario/weather multiplier: the battery-pressure dial. Wind and cold are NOT in
+   *  it — they reach the pack through `flightLoadFactor` and the temperature derate. */
   drainMultiplier?: number
+  /** Scales the airframe's rated endurance, e.g. a scenario's extended-endurance battery kit. */
+  enduranceScale?: number
 }
 
 /**
@@ -103,8 +106,11 @@ export function stepDrone(
   // ── Altitude update ─────────────────────────────────────────────────────────
   if (cmd.targetAltitudeFt !== undefined) {
     const diff = cmd.targetAltitudeFt - altitudeFt
+    // Multirotors descend slower than they climb (vortex-ring limit); airframes with no published
+    // descent rate fall back to the climb rate, which keeps the legacy airframe unchanged.
     const climbRateFtS = platform.climbRateFtS
-    const step = clamp(diff, -climbRateFtS * dt, climbRateFtS * dt)
+    const descentRateFtS = platform.descentRateFtS ?? climbRateFtS
+    const step = clamp(diff, -descentRateFtS * dt, climbRateFtS * dt)
     altitudeFt = clamp(altitudeFt + step, 0, 400)
   }
 
@@ -132,7 +138,7 @@ export function stepDrone(
     // Pack voltage under load — the quantity a real autopilot's reserve gate watches, and the
     // reason the WP-11 reserve fires before a linear "percent remaining" gate would.
     next.cellVoltageV = terminalVoltage(batteryPct / 100, FLIGHT_SAG_V)
-    next.packVoltageV = next.cellVoltageV * PACK_CELLS
+    next.packVoltageV = next.cellVoltageV * (platform.battery.cells ?? DEFAULT_PACK_CELLS)
     next.gustMs = env.gustMs
   }
   return next
@@ -151,7 +157,7 @@ export function modelledDrainRatePerSec(
   env: FlightEnvironment,
 ): number {
   const minutes = enduranceMinutes({
-    publishedMin: platform.enduranceMin,
+    publishedMin: platform.enduranceMin * Math.max(0, env.enduranceScale ?? 1),
     tempC: env.tempC,
     loadFactor: flightLoadFactor(speedMs, platform, env),
   })
@@ -204,6 +210,19 @@ export function isAtVoltageReserve(drone: DroneState): boolean {
   if (drone.cellVoltageV === undefined) return isBatteryLow(drone)
   if (!Number.isFinite(drone.cellVoltageV)) return true
   return drone.cellVoltageV <= RESERVE_CELL_V
+}
+
+/**
+ * What the operator should be told about this pack, using the gates the autopilot acts on:
+ * 'critical' is the emergency-land gate; 'reserve' is the loaded-voltage reserve (~37% SoC for
+ * modelled packs, 25% on the legacy path) or any battery RTB the loop has flagged — including the
+ * scenario percentage floor and the energy-to-home gate. UI thresholds read this rather than
+ * hard-coding percentages that disagree with when the aircraft actually turns for home.
+ */
+export function batteryAlert(drone: DroneState): 'ok' | 'reserve' | 'critical' {
+  if (isBatteryCritical(drone)) return 'critical'
+  if (drone.batteryRtb || isAtVoltageReserve(drone)) return 'reserve'
+  return 'ok'
 }
 
 export function isBatteryCritical(drone: DroneState): boolean {

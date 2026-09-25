@@ -58,7 +58,7 @@ formats and byte budgets closed.
 
 | WP | Status | Note |
 |---|---|---|
-| WP-1 platform specs | **DONE** | Physics were already sourced; thermal sensor specs added this pass (`platformCatalog.ts`). |
+| WP-1 platform specs | **DONE** | Re-sourced 2026-09-25 with per-field provenance (`platformSources.ts`); see the WP-1 section. |
 | WP-5 thermal geometry | **DONE + LIVE** | Johnson range, NETD/contrast, weather transmission, 3D slant range and exact terrain/building LOS feed the live loop. |
 | WP-0 fixture pipeline | **BUILT (weather)** | `tools/fixtures/` CLI (`npm run fixtures`) fetches real geodata at authoring time and freezes it with a provenance manifest (source URL, date, licence, SHA-256). Network egress verified in this environment. Weather source (Open-Meteo ERA5) live; terrain/airspace/etc. fetchers extend the same framework. |
 | WP-2 weather | **DONE (catalog-wide)** | Real ERA5 baselines frozen + wired: `buildWeatherState` takes an optional observed baseline the seeded dials perturb around. **21 active incident scenarios** now carry a dedicated per-place/per-date baseline (all 10 `hist_*` documented incidents + 11 representative `demo_sar_coastal`/`train_*` days); the coverage pass added the six training scenarios that were still weather-less. Not applied to the onboarding tutorials, which must stay launchable. |
@@ -210,13 +210,34 @@ this pass: Skydio X10/X10D → FLIR Boson+ 640×512 @ ≤30 mK; Anafi USA → FL
 `null` (modular payload, no single sensor). Pitch 12 µm across the FLIR family (published);
 focal length left `null` everywhere (manufacturers cite FOV, not focal length — never guessed).
 
-One afternoon, outsized credibility. Operators know these figures by heart.
+**2026-09-25 re-sourcing pass.** The "already sourced" claim above did not hold up: the physics
+fields carried no provenance, and several were wrong. Every figure was re-read from the
+manufacturer's own spec page, datasheet or manual and independently re-opened by a second
+checker (Teal 2 via Internet Archive captures of Teal's own pages, as tealdrones.com refused
+connections). `src/sim/drone/platformSources.ts` now records the URL and exact quote for each
+published value, or says `modelled` / `unpublished` where the manufacturer gives nothing — turn
+rate and acceleration for all six, Skydio's sustained wind, Astro Max wind/gust, and the Lemur 2's
+interior speed, climb, wind and gust. Corrections: Astro Max 3.52 → 5.83 kg (3.52 was the bare
+airframe; 5.83 is the published empty weight with both batteries, no payload), climb 6.6 → 13.1
+ft/s (published 4 m/s), endurance 39 → 31 min (Freefly's figure with the LR1 mapping payload — a
+modelling choice among the published configurations, matching the catalog's mapping role and the
+scenarios that call it the mapping aircraft); Anafi USA 0.485 → 0.5 kg; Teal 2 wind 8.05 / gust 11.18 m/s (exact mph
+figures); Lemur 2 top speed 21.46 m/s. New fields: descent rate (the model previously descended
+at the climb rate, 50% fast for the X10), operating temperature, IP rating, flight pack.
 
-| Platform | Flight time | Wind / gust limit | Thermal | Mass | Max speed |
-|---|---|---|---|---|---|
-| DJI Matrice 4T | 49 min (46 low-noise) | 12 m/s takeoff/landing | up to 1280×1024 | 1,219 g | 21 m/s |
-| Skydio X10 | 40 min | 12.8 m/s gust (28.6 mph) | FLIR Boson+ 640×512, ≤30 mK | 2,110 g | ~20 m/s |
-| BRINC Responder | 42 min | not published | 640 px | — | 2 lb payload |
+| Platform | Mass | Max speed | Climb / descent | Wind / gust | Rated flight time | Temp | IP |
+|---|---|---|---|---|---|---|---|
+| Skydio X10 / X10D | 2.11 kg | 20 m/s | 6 / 4 m/s | — / 12.8 m/s | 40 min (hover 35) | −20…45 °C | IP55 |
+| Parrot Anafi USA | 0.5 kg | 14.7 m/s | 4 / 3 m/s | 14.7 m/s (one limit) | 32 min | −36…50 °C | IP53 |
+| Teal 2 | 1.25 kg | 10 m/s | 2.5 / 2.5 m/s | 8.05 / 11.18 m/s | 30+ min | −35.6…43.3 °C | IP53 |
+| Freefly Astro Max | 5.83 kg | 15 m/s | 4 / 3 m/s | not published | 31 min w/ LR1 | −20…50 °C | IP43 |
+| BRINC Lemur 2 | 1.5 kg | 21.46 m/s (sim: 9 interior) | not published | not published | 20 min | −20…45 °C | IP24 |
+
+The same pass put planning on the live discharge model (RTB energy-to-home, launch doctrine,
+site reposition and the tactical advisor used the scenario's flat drain rate, ~3–4× optimistic),
+stopped charging wind and cold to the pack twice, and added advisory preflight checks of the
+forecast against each assigned airframe's limits — the gust check mirrors the live abort (wind plus
+a 3σ Dryden gust), and every limit is labelled published or modelled.
 
 **Files:** `src/sim/drone/platformCatalog.ts`
 
