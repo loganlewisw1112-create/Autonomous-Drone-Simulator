@@ -1,7 +1,7 @@
 {
-  "windKts": 20.8,
-  "gustKts": 42.4,
-  "tempF": 43,
+  "windKts": 6.7,
+  "gustKts": 17.9,
+  "tempF": 39,
   "cloudCoverPct": 100,
-  "aggregation": "daily peak wind/gust, mean temperature; visibility not in ERA5"
+  "aggregation": "peak wind/gust and mean temperature over the 02:00-06:00 local operating window (pre-dawn night operations; the 2024-11-19 bomb cyclone brought 27-42 kt gusts from 17:00); visibility not in ERA5"
 }

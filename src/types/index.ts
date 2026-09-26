@@ -602,6 +602,9 @@ export interface ObservedWeather {
   gustKts: number
   tempF: number
   cloudCoverPct?: number
+  /** How the fixture reduced hourly ERA5 data: the day's peak, or the peak over a stated
+   *  local operating window (with the reason). Written by tools/fixtures/openMeteo.mjs. */
+  aggregation?: string
   provenance?: {
     source: string
     sourceScenarioId: string

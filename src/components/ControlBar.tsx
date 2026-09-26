@@ -33,7 +33,10 @@ export function ControlBar() {
   const scenarioOptions = useScenarioOptions().filter((option) => activeAccount || !option.config.isCustom)
   const [showVariant, setShowVariant] = useState(false)
   const [showDesigner, setShowDesigner] = useState(false)
-  const weatherProvenance = scenario ? observedWeatherFor(scenario.id)?.provenance : undefined
+  const observedWeather = scenario ? observedWeatherFor(scenario.id) : undefined
+  const weatherProvenance = observedWeather?.provenance
+  // A fixture taken over an operating window says so, rather than passing for the whole day.
+  const weatherWindow = observedWeather?.aggregation?.match(/(\d{2}:00-\d{2}:00) local operating window/)?.[1]
 
   return (
     <div className="control-dock" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -139,6 +142,7 @@ export function ControlBar() {
           {weatherProvenance && (
             <span style={{ color: weatherProvenance.isProxy ? 'var(--accent-yellow)' : 'var(--text-dim)' }}>
               {weatherProvenance.isProxy ? 'PROXY WEATHER' : 'OBSERVED WEATHER'} · {weatherProvenance.sourceScenarioId} · {weatherProvenance.observedDate} · {weatherProvenance.sourceLocation.lat.toFixed(4)}, {weatherProvenance.sourceLocation.lng.toFixed(4)}
+              {weatherWindow ? ` · ${weatherWindow} local window` : ''}
               {weatherProvenance.isProxy ? ` · proxy for ${weatherProvenance.proxyForScenarioId}; not an exact reconstruction` : ''}
             </span>
           )}

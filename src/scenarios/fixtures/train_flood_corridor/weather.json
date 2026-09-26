@@ -1,7 +1,7 @@
 {
-  "windKts": 18.2,
-  "gustKts": 30.1,
-  "tempF": 74,
+  "windKts": 9.2,
+  "gustKts": 17.9,
+  "tempF": 71,
   "cloudCoverPct": 100,
-  "aggregation": "daily peak wind/gust, mean temperature; visibility not in ERA5"
+  "aggregation": "peak wind/gust and mean temperature over the 06:00-10:00 local operating window (morning operations before the afternoon storm cells; the day peaked at 30 kt gusts from 12:00); visibility not in ERA5"
 }

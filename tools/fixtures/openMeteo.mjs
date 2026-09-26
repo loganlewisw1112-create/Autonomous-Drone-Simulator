@@ -17,7 +17,16 @@ const max = (a) => (a.length ? Math.max(...a) : null)
 const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null)
 const round1 = (n) => (n == null ? null : Math.round(n * 10) / 10)
 
-export async function fetchObservedWeather({ lat, lng, date }) {
+const hourOf = (iso) => Number(String(iso).slice(11, 13))
+
+/**
+ * `window` (optional) = { fromHour, toHour, reason }: local hours, from inclusive, to exclusive.
+ * Without it the baseline is the whole day's peak. With it, the peak is taken over the operating
+ * window a crew would actually fly — used where the day's peak falls outside that window (an
+ * afternoon storm cell, an evening cyclone) and would otherwise ground a mission the real
+ * response flew. The window and its reason are written into the fixture's aggregation label.
+ */
+export async function fetchObservedWeather({ lat, lng, date, window }) {
   const params = new URLSearchParams({
     latitude: String(lat),
     longitude: String(lng),
@@ -32,7 +41,18 @@ export async function fetchObservedWeather({ lat, lng, date }) {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Open-Meteo archive ${res.status} for ${lat},${lng} ${date}`)
   const json = await res.json()
-  const h = json.hourly ?? {}
+  const all = json.hourly ?? {}
+  const keep = window
+    ? (all.time ?? []).map((t) => hourOf(t) >= window.fromHour && hourOf(t) < window.toHour)
+    : null
+  const pick = (a) => (keep && Array.isArray(a) ? a.filter((_, i) => keep[i]) : a)
+  const h = {
+    wind_speed_10m: pick(all.wind_speed_10m),
+    wind_gusts_10m: pick(all.wind_gusts_10m),
+    temperature_2m: pick(all.temperature_2m),
+    cloud_cover: pick(all.cloud_cover),
+  }
+  const pad = (n) => String(n).padStart(2, '0')
 
   // Baseline = the day's operational peak for wind/gust (what you plan around) and mean temp.
   const observed = {
@@ -40,7 +60,9 @@ export async function fetchObservedWeather({ lat, lng, date }) {
     gustKts: round1(max(nums(h.wind_gusts_10m))),
     tempF: (() => { const m = mean(nums(h.temperature_2m)); return m == null ? null : Math.round(m) })(),
     cloudCoverPct: max(nums(h.cloud_cover)),
-    aggregation: 'daily peak wind/gust, mean temperature; visibility not in ERA5',
+    aggregation: window
+      ? `peak wind/gust and mean temperature over the ${pad(window.fromHour)}:00-${pad(window.toHour)}:00 local operating window (${window.reason}); visibility not in ERA5`
+      : 'daily peak wind/gust, mean temperature; visibility not in ERA5',
   }
   return { url, license: OPEN_METEO_LICENSE, observed }
 }
