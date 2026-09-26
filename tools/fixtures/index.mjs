@@ -34,7 +34,7 @@ async function main() {
 
   for (const scn of targets) {
     process.stdout.write(`• ${scn.id} … `)
-    const weather = await fetchObservedWeather({ lat: scn.lat, lng: scn.lng, date: scn.realDate })
+    const weather = await fetchObservedWeather({ lat: scn.lat, lng: scn.lng, date: scn.realDate, window: scn.weatherWindow })
     const weatherJson = JSON.stringify(weather.observed, null, 2) + '\n'
 
     const dir = new URL(`${scn.id}/`, fixturesRoot)

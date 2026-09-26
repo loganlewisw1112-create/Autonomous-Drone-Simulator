@@ -11,7 +11,7 @@
     ]
   },
   "realDate": "2018-11-12",
-  "generatedAt": "2026-09-17",
+  "generatedAt": "2026-09-26",
   "sources": [
     {
       "fixture": "constellation.json",
@@ -62,7 +62,7 @@
       "source": "Open-Meteo ERA5 archive",
       "url": "https://archive-api.open-meteo.com/v1/archive?latitude=39.759&longitude=-121.622&start_date=2018-11-12&end_date=2018-11-12&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
       "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
-      "sha256": "a9f2f5df7c0a3fd7c648cbab7e21711f36838d0ff767556054f262445919988d"
+      "sha256": "e6059cc9494b18492b4c8e05cf6a785bed22057927bd2e7563b0c3e9a4a145d8"
     }
   ]
 }

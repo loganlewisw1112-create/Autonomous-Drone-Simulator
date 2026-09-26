@@ -30,7 +30,12 @@
       "realDate": "2017-08-28",
       "dateKind": "documented",
       "responseWindowHours": 72,
-      "note": "TFR + manned SAR deconfliction training hook."
+      "note": "TFR + manned SAR deconfliction training hook.",
+      "weatherWindow": {
+        "fromHour": 4,
+        "toHour": 7,
+        "reason": "pre-dawn lull between rain bands, when response aircraft could launch; gusts reached 31-38 kt from 08:00"
+      }
     },
     {
       "id": "hist_camp_fire_paradise_2018",
@@ -40,7 +45,12 @@
       "realDate": "2018-11-12",
       "dateKind": "documented",
       "responseWindowHours": 96,
-      "note": "Post-fire mapping phase; terrain fixture committed in Phase 6."
+      "note": "Post-fire mapping phase; terrain fixture committed in Phase 6.",
+      "weatherWindow": {
+        "fromHour": 11,
+        "toHour": 17,
+        "reason": "midday mapping window; overnight and morning gusts reached 22-30 kt"
+      }
     },
     {
       "id": "hist_surfside_cts_2021",
@@ -163,7 +173,12 @@
       "lng": -95.365,
       "realDate": "2024-05-03",
       "dateKind": "representative",
-      "note": "Representative Houston spring storm-season day; scenario premise is post-storm flood, weather grounds ambient conditions only."
+      "note": "Representative Houston spring storm-season day; scenario premise is post-storm flood, weather grounds ambient conditions only.",
+      "weatherWindow": {
+        "fromHour": 6,
+        "toHour": 10,
+        "reason": "morning operations before the afternoon storm cells; the day peaked at 30 kt gusts from 12:00"
+      }
     },
     {
       "id": "train_urban_usar",
@@ -190,7 +205,12 @@
       "lng": -122.332,
       "realDate": "2024-11-19",
       "dateKind": "representative",
-      "note": "Representative late-autumn Seattle night op (long-night marine air)."
+      "note": "Representative late-autumn Seattle night op (long-night marine air).",
+      "weatherWindow": {
+        "fromHour": 2,
+        "toHour": 6,
+        "reason": "pre-dawn night operations; the 2024-11-19 bomb cyclone brought 27-42 kt gusts from 17:00"
+      }
     },
     {
       "id": "train_infra_inspection",

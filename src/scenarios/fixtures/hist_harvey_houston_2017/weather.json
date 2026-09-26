@@ -1,7 +1,7 @@
 {
-  "windKts": 21.8,
-  "gustKts": 37.9,
-  "tempF": 74,
-  "cloudCoverPct": 100,
-  "aggregation": "daily peak wind/gust, mean temperature; visibility not in ERA5"
+  "windKts": 9.4,
+  "gustKts": 21.6,
+  "tempF": 77,
+  "cloudCoverPct": 99,
+  "aggregation": "peak wind/gust and mean temperature over the 04:00-07:00 local operating window (pre-dawn lull between rain bands, when response aircraft could launch; gusts reached 31-38 kt from 08:00); visibility not in ERA5"
 }
