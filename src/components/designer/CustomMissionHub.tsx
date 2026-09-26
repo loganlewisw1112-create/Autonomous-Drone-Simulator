@@ -12,13 +12,17 @@ import { useDroneStore } from '@/store/droneStore'
 import type { CustomMissionDefinition, CustomMissionRecord } from '@/account/types'
 import type { LaunchRecoverySiteKind, Waypoint } from '@/types'
 import {
+  DEFAULT_CUSTOM_PLATFORM,
   MAX_CUSTOM_DRONES,
   MAX_STANDARD_CUSTOM_DRONES,
   MAX_WAYPOINTS_PER_DRONE,
   compileCustomMission,
   customDroneId,
+  customDronePlatforms,
   validateCustomMission,
 } from './designerValidation'
+import { LEGACY_PLATFORM, PLATFORM_CATALOG, type PlatformId } from '@/sim/drone/platformCatalog'
+import { platformTaskRanges, thermalContrastThresholdC } from '@/sim/sensors/thermalRange'
 import { DesignerMap } from './DesignerMap'
 import {
   buildCustomMissionExport,
@@ -27,6 +31,20 @@ import {
 } from './customMissionImport'
 
 const STEPS = ['Mission', 'Location', 'Sites', 'Routes', 'Review'] as const
+
+const PLATFORM_IDS = Object.keys(PLATFORM_CATALOG) as PlatformId[]
+
+/** One-line spec shown in the airframe picker: the figures that change how the drone flies. */
+function platformSummary(id: PlatformId): string {
+  const spec = PLATFORM_CATALOG[id]
+  // Say what the sensor model will actually do: a payload whose optics are unpublished fails closed.
+  const sensor = !spec.thermal
+    ? 'no thermal'
+    : thermalContrastThresholdC(spec.thermal) != null && platformTaskRanges(spec.thermal, 0.5) != null
+      ? 'thermal'
+      : 'thermal, optics unpublished — no detections'
+  return `${spec.displayName} — ${spec.massKg} kg · ${spec.maxSpeedMs} m/s · rated ${spec.enduranceMin} min · ${sensor}`
+}
 
 const SITE_KINDS: Array<{ value: LaunchRecoverySiteKind; label: string }> = [
   { value: 'building_rooftop', label: 'Building rooftop' },
@@ -52,6 +70,7 @@ function emptyDefinition(): CustomMissionDefinition {
     launchAssignments: {},
     recoveryAssignments: {},
     routes: { [customDroneId(0)]: [] },
+    dronePlatforms: { [customDroneId(0)]: DEFAULT_CUSTOM_PLATFORM },
     geographicMode: 'synthetic_training',
     advancedFleetAcknowledged: false,
     createdAt: now,
@@ -79,7 +98,11 @@ function MissionStep({ value, onChange }: { value: CustomMissionDefinition; onCh
         const droneCount = Number(e.target.value)
         const routes = { ...value.routes }
         for (let i = 0; i < droneCount; i++) routes[customDroneId(i)] ??= []
-        onChange({ ...value, droneCount, routes })
+        // Missions made with the picker give new drones the default airframe; older missions keep
+        // the generic airframe until the operator picks one on the Routes step.
+        const dronePlatforms = value.dronePlatforms ? { ...value.dronePlatforms } : undefined
+        if (dronePlatforms) for (let i = 0; i < droneCount; i++) dronePlatforms[customDroneId(i)] ??= DEFAULT_CUSTOM_PLATFORM
+        onChange({ ...value, droneCount, routes, ...(dronePlatforms ? { dronePlatforms } : {}) })
       }}>{Array.from({ length: MAX_CUSTOM_DRONES }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} drone{index ? 's' : ''}</option>)}</select></label>
       <label>Coordinate use<select value={value.geographicMode ?? 'synthetic_training'} onChange={(e) => onChange({ ...value, geographicMode: e.target.value as CustomMissionDefinition['geographicMode'] })}>
         <option value="synthetic_training">Synthetic training area</option>
@@ -148,6 +171,19 @@ function RoutesStep({ value, onChange }: { value: CustomMissionDefinition; onCha
         {activeDroneIds.map((droneId) => (
           <div key={droneId} className="designer-assignment-row">
             <strong>{droneId.toUpperCase()}</strong>
+            <label>Airframe<select
+              aria-label={`${droneId.toUpperCase()} airframe`}
+              value={value.dronePlatforms?.[droneId] ?? ''}
+              onChange={(e) => {
+                const next = { ...(value.dronePlatforms ?? {}) }
+                if (e.target.value) next[droneId] = e.target.value as PlatformId
+                else delete next[droneId]
+                onChange({ ...value, dronePlatforms: next })
+              }}
+            >
+              {!value.dronePlatforms?.[droneId] && <option value="">{LEGACY_PLATFORM.displayName} (generic — no published specs)</option>}
+              {PLATFORM_IDS.map((id) => <option key={id} value={id}>{platformSummary(id)}</option>)}
+            </select></label>
             <label>Launch<select value={value.launchAssignments[droneId] ?? ''} onChange={(e) => onChange({ ...value, launchAssignments: { ...value.launchAssignments, [droneId]: e.target.value } })}><option value="">Choose site</option>{value.sites.map((site) => <option key={site.id} value={site.id}>{site.label}</option>)}</select></label>
             <label>Recovery<select value={value.recoveryAssignments[droneId] ?? ''} onChange={(e) => onChange({ ...value, recoveryAssignments: { ...value.recoveryAssignments, [droneId]: e.target.value } })}><option value="">Choose site</option>{value.sites.map((site) => <option key={site.id} value={site.id}>{site.label}</option>)}</select></label>
           </div>
@@ -182,6 +218,12 @@ export function ReviewStep({ value }: { value: CustomMissionDefinition }) {
   return (
     <div className="designer-review">
       <div><strong>{value.name || 'Unnamed mission'}</strong><span>{value.locationLabel || 'No location name'}</span><span>{value.droneCount} drones · {value.sites.length} sites · {Object.values(value.routes).reduce((sum, route) => sum + route.length, 0)} waypoints</span></div>
+      <div data-testid="designer-review-airframes"><span className="account-label">AIRFRAMES</span><ul>
+        {Array.from({ length: value.droneCount }, (_, index) => customDroneId(index)).map((droneId) => {
+          const platform = customDronePlatforms(value)[droneId]
+          return <li key={droneId}>{droneId.toUpperCase()}: {platform ? platformSummary(platform) : `${LEGACY_PLATFORM.displayName} (generic airframe — no published specs, no thermal payload)`}</li>
+        })}
+      </ul></div>
       <div><span className="account-label">PURPOSE</span><p>{value.purpose || 'Not provided'}</p></div>
       <div><span className="account-label">END GOAL</span><p>{value.endGoal || 'Not provided'}</p></div>
       <div><span className="account-label">ASSURANCE ENVELOPE</span><p>{value.geographicMode === 'real_coordinate_familiarization'

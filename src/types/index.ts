@@ -858,6 +858,9 @@ export interface CustomMissionDefinition {
   launchAssignments: Record<string, string>     // droneId → siteId
   recoveryAssignments: Record<string, string>   // droneId → siteId
   routes: Record<string, Waypoint[]>            // droneId → authored waypoints (≤24 each)
+  // Per-drone airframe. Optional so missions saved, exported or shared with a class before the
+  // picker existed stay valid; a drone with no entry flies the generic airframe as before.
+  dronePlatforms?: Record<string, PlatformId>
   // Audit F-10: optional authored geofences (e.g. via JSON import). A geofence-free mission
   // stays valid, but the absence is surfaced as an explicit unknown in the designer review
   // instead of silently compiling an empty containment list.

@@ -8,6 +8,7 @@ import {
 import { resolveRtbDestination, type RtbDestinationSource } from '@/sim/mission/rtbDestination'
 import { MAX_OPERATOR_ALTITUDE_FT, MIN_OPERATOR_ALTITUDE_FT, validateAltitude } from '@/sim/mission/operatorRoutes'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/sim/mission/routeLimits'
+import { PLATFORM_CATALOG, type PlatformId } from '@/sim/drone/platformCatalog'
 import type { CustomMissionDefinition, LatLng, LaunchRecoverySite, ScenarioConfig, Waypoint } from '@/types'
 
 export const MAX_CUSTOM_DRONES = 8
@@ -52,6 +53,26 @@ export interface DesignerValidationResult {
   scenario: ScenarioConfig | null
   /** Non-null whenever the definition compiled, even if the route audit then rejected it. */
   review: DesignerMissionReview | null
+}
+
+/** Airframe a new custom mission's drones start with: the primary patrol aircraft. */
+export const DEFAULT_CUSTOM_PLATFORM: PlatformId = 'skydio_x10'
+
+function isPlatformId(value: unknown): value is PlatformId {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(PLATFORM_CATALOG, value)
+}
+
+/** The per-drone airframes that apply to this fleet. Unknown ids and drones outside the fleet
+ *  are dropped, so a hand-edited import or a classroom payload can never select a non-catalog
+ *  aircraft (validation reports them; compilation must not trust that it ran). */
+export function customDronePlatforms(definition: CustomMissionDefinition): Record<string, PlatformId> {
+  const platforms: Record<string, PlatformId> = {}
+  for (let index = 0; index < definition.droneCount; index++) {
+    const droneId = customDroneId(index)
+    const platform = definition.dronePlatforms?.[droneId]
+    if (isPlatformId(platform)) platforms[droneId] = platform
+  }
+  return platforms
 }
 
 export function customDroneId(index: number): string {
@@ -116,6 +137,7 @@ export function compileCustomMission(definition: CustomMissionDefinition): Scena
   }
 
   const firstRoute = definition.routes[customDroneId(0)] ?? []
+  const dronePlatforms = customDronePlatforms(definition)
   return {
     id: `custom-${definition.id}`,
     name: definition.name.trim(),
@@ -136,6 +158,7 @@ export function compileCustomMission(definition: CustomMissionDefinition): Scena
     rechargeTimeSec: 25,
     maxSorties: 2,
     perDroneStartPositions,
+    ...(Object.keys(dronePlatforms).length > 0 ? { dronePlatforms } : {}),
     launchSites,
     recoverySites,
     missionBrief: {
@@ -332,6 +355,14 @@ export function validateCustomMission(definition: CustomMissionDefinition): Desi
   validateAssignments('Launch', definition, definition.launchAssignments, errors)
   validateAssignments('Recovery', definition, definition.recoveryAssignments, errors)
   validateGeofences(definition, errors)
+  if (definition.dronePlatforms !== undefined
+    && (typeof definition.dronePlatforms !== 'object' || definition.dronePlatforms === null || Array.isArray(definition.dronePlatforms))) {
+    errors.push('Drone airframes must map each drone to a catalog airframe.')
+  } else {
+    for (const [droneId, platform] of Object.entries(definition.dronePlatforms ?? {})) {
+      if (!isPlatformId(platform)) errors.push(`${droneId.toUpperCase()} airframe “${String(platform)}” is not in the airframe catalog.`)
+    }
+  }
   for (let index = 0; index < definition.droneCount; index++) {
     const droneId = customDroneId(index)
     validateRoute(droneId, definition.routes[droneId], errors)
