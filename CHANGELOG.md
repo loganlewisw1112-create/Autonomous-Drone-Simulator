@@ -26,6 +26,11 @@ ISO 8601.
 
 ### Changed
 
+- Custom missions: the designer's Routes step now picks a catalog airframe per
+  drone (new missions default to the Skydio X10), shown with its weight, speed,
+  rated endurance and whether its thermal sensor can detect in the model.
+  Missions saved, exported or shared before this keep the generic airframe
+  until edited; unknown airframe ids are rejected on import and never compiled.
 - Airframe realism pass (2026-09-25): every platform figure re-sourced from
   manufacturer specs with per-field provenance (`platformSources.ts`); Astro
   Max weight/climb/endurance and Anafi/Teal/Lemur figures corrected; published

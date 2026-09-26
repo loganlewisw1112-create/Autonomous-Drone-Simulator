@@ -6,6 +6,8 @@ import {
   validateCustomMission,
 } from '@/components/designer/designerValidation'
 import { resolveRtbDestination } from '@/sim/mission/rtbDestination'
+import { parseCustomMissionImport, buildCustomMissionExport } from '@/components/designer/customMissionImport'
+import { LEGACY_PLATFORM, PLATFORM_CATALOG, platformForDrone } from '@/sim/drone/platformCatalog'
 import type { CustomMissionDefinition, Geofence } from '@/types'
 
 function validDefinition(): CustomMissionDefinition {
@@ -163,5 +165,48 @@ describe('custom mission RTB-leg audit and explicit unknowns (F-10)', () => {
     expect(leg.destination).toEqual(resolved.position)
     expect(leg.destination).toEqual({ lat: 34.06, lng: -118.24 })
     expect(leg.destination).not.toEqual(result.scenario!.startPosition)
+  })
+})
+
+describe('custom mission airframe picker', () => {
+  it('flies each drone on the airframe the operator picked', () => {
+    const definition = validDefinition()
+    definition.droneCount = 2
+    definition.sites[0].capacityDrones = 2
+    definition.launchAssignments[customDroneId(1)] = 'site-1'
+    definition.recoveryAssignments[customDroneId(1)] = 'site-1'
+    definition.routes[customDroneId(1)] = [{ id: 'wp-2', position: { lat: 34.054, lng: -118.241 }, altitudeFt: 120 }]
+    definition.dronePlatforms = { [customDroneId(0)]: 'teal_2', [customDroneId(1)]: 'skydio_x10' }
+    expect(validateCustomMission(definition).valid).toBe(true)
+    const scenario = compileCustomMission(definition)
+    expect(platformForDrone(scenario, customDroneId(0))).toBe(PLATFORM_CATALOG.teal_2)
+    expect(platformForDrone(scenario, customDroneId(1))).toBe(PLATFORM_CATALOG.skydio_x10)
+  })
+
+  it('keeps a mission saved before the picker on the generic airframe', () => {
+    const scenario = compileCustomMission(validDefinition())
+    expect(scenario.dronePlatforms).toBeUndefined()
+    expect(platformForDrone(scenario, customDroneId(0))).toBe(LEGACY_PLATFORM)
+  })
+
+  it('rejects an airframe outside the catalog and never compiles it', () => {
+    const definition = validDefinition()
+    definition.dronePlatforms = { [customDroneId(0)]: 'dji_matrice_30t' as never }
+    expect(validateCustomMission(definition).errors.join(' ')).toContain('not in the airframe catalog')
+    // Classroom compiles without validating: the unknown id must still never reach the sim.
+    expect(platformForDrone(compileCustomMission(definition), customDroneId(0))).toBe(LEGACY_PLATFORM)
+  })
+
+  it('ignores airframes for drones outside the fleet', () => {
+    const definition = validDefinition()
+    definition.dronePlatforms = { [customDroneId(0)]: 'parrot_anafi_usa', [customDroneId(5)]: 'teal_2' }
+    expect(compileCustomMission(definition).dronePlatforms).toEqual({ [customDroneId(0)]: 'parrot_anafi_usa' })
+  })
+
+  it('survives export and import', () => {
+    const definition = { ...validDefinition(), dronePlatforms: { [customDroneId(0)]: 'freefly_astro_max' as const } }
+    const imported = parseCustomMissionImport(JSON.stringify(buildCustomMissionExport(definition)), () => 'imported-id', 5)
+    expect(imported.ok).toBe(true)
+    if (imported.ok) expect(imported.definition.dronePlatforms).toEqual({ [customDroneId(0)]: 'freefly_astro_max' })
   })
 })
