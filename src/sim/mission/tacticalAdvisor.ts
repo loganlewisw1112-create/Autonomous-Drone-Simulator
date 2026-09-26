@@ -1,17 +1,17 @@
-import { platformForDrone } from '@/sim/drone/platformCatalog'
+import { platformForDrone, type DronePlatformSpec } from '@/sim/drone/platformCatalog'
 import { getMissionSafetyOverride } from '@/sim/mission/MissionManager'
 import { buildOperatorCommandRoute, validateOperatorRoute } from '@/sim/mission/operatorRoutes'
 import { buildSafeRouteFromWaypoints } from '@/sim/mission/routeAudit'
 import {
   batteryReservePctForDrone,
-  effectiveBatteryDrainRateForDrone,
   rechargeStationsForDrone,
   selectRechargeStationForDrone,
 } from '@/sim/mission/rechargeStations'
 import { isRetaskable } from '@/sim/mission/retaskPolicy'
+import { plannedLegEnergyPct, taskingReservePctForDrone } from '@/sim/mission/plannedEnergy'
 import { objectiveWeightForKind, resolveMissionObjectives } from '@/sim/mission/missionObjectives'
 import { cumulativePod, probabilityOfDetection } from '@/sim/sensors/sweepWidth'
-import { platformTaskRanges } from '@/sim/sensors/thermalRange'
+import { platformTaskRanges, thermalContrastThresholdC } from '@/sim/sensors/thermalRange'
 import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import { haversineDistanceM } from '@/utils/geometry'
 import { recoverySiteForDrone } from '@/sim/mission/siteAssignments'
@@ -30,7 +30,6 @@ import type {
 
 const MAX_CANDIDATES_PER_DRONE = 8
 const MAX_CONTACT_CANDIDATES = 2
-const DEFAULT_DETECTION_RADIUS_M = 60
 const COVERAGE_RADIUS_M = 250
 const CRUISE_SPEED_FACTOR = 0.65
 const REDUNDANCY_PENALTY = 30
@@ -320,16 +319,22 @@ function buildCandidatesForDrone(
   })
   if (rtb) reserved.push(rtb)
 
-  const contacts = situation.objectives
-    .filter((objective) => objective.kind === 'contact')
-    .sort(compareObjectives)
-    .slice(0, MAX_CONTACT_CANDIDATES)
+  // An airframe the sensor model cannot detect with (no thermal payload, or optics too unpublished
+  // to evaluate — the model fails closed) is never offered a detection task, only overwatch/relay.
+  const canSearch = canDetect(platformForDrone(situation.scenario, drone.id))
+  const contacts = canSearch
+    ? situation.objectives
+      .filter((objective) => objective.kind === 'contact')
+      .sort(compareObjectives)
+      .slice(0, MAX_CONTACT_CANDIDATES)
+    : []
   for (const objective of contacts) {
     const candidate = makeCandidate(situation, drone, reservePct, 'deep_scan', objective)
     if (candidate) contactCandidates.push(candidate)
   }
 
   for (const action of ROUTE_PATTERNS) {
+    if (!canSearch && SEARCH_PATTERNS.has(action)) continue
     const rankedObjectives = situation.objectives
       .filter((objective) => objective.kind !== 'recharge')
       .map((objective) => ({ objective, affinity: objectiveAffinity(action, objective) }))
@@ -361,6 +366,18 @@ const ROUTE_PATTERNS: readonly RoutePattern[] = [
   'standoff_observe',
   'route_lkl',
 ]
+/** Detection range the sensor model gives this airframe, or null where it can never detect. */
+function searchRangeM(platform: DronePlatformSpec): number | null {
+  if (thermalContrastThresholdC(platform.thermal) == null) return null
+  return platformTaskRanges(platform.thermal, 0.5)?.detectionM ?? null
+}
+
+function canDetect(platform: DronePlatformSpec): boolean {
+  return searchRangeM(platform) !== null
+}
+
+/** Patterns whose purpose is detecting a heat source. */
+const SEARCH_PATTERNS: ReadonlySet<RoutePattern> = new Set(['deep_scan', 'street_sweep', 'expanding_search', 'route_lkl'])
 
 function makeCandidate(
   situation: MissionSituation,
@@ -387,13 +404,13 @@ function makeCandidate(
       })
   if (!validateOperatorRoute(situation.scenario, drone.id, route, drone.position).accepted) return null
 
-  const requiredBatteryPct = routeBatteryRequirementPct(
-    situation,
-    drone,
-    route,
-    action !== 'route_recharge' && action !== 'rtb_now',
-  )
+  const isTask = action !== 'route_recharge' && action !== 'rtb_now'
+  const requiredBatteryPct = routeBatteryRequirementPct(situation, drone, route, isTask)
   if (drone.batteryPct - requiredBatteryPct < reservePct) return null
+  // A task is flown under the reserve gate, so it must finish before the pack reaches the level
+  // at which the autopilot abandons it; only the trip home after it may dip toward the floor.
+  const taskingReservePct = taskingReservePctForDrone(situation.scenario, drone.id)
+  if (isTask && drone.batteryPct - routeBatteryRequirementPct(situation, drone, route, false) < taskingReservePct) return null
 
   const score = scoreCandidate(situation, drone, objective, route, action)
   return {
@@ -404,7 +421,7 @@ function makeCandidate(
     objectiveLabel: objective.label,
     route,
     requiredBatteryPct,
-    reservePct,
+    reservePct: isTask ? taskingReservePct : reservePct,
     score,
   }
 }
@@ -434,10 +451,11 @@ function routeBatteryRequirementPct(
   route: readonly Waypoint[],
   includeRecovery: boolean,
 ): number {
-  const durationSec = routeDurationSec(situation, drone, route, includeRecovery)
-  const drainMultiplier = situation.weather?.batteryDrainMultiplier ?? 1
-  const drainRate = effectiveBatteryDrainRateForDrone(situation.scenario, drone.id) * drainMultiplier
-  return round(durationSec * drainRate)
+  const { distanceM, dwellSec } = routeLegs(situation, drone, route, includeRecovery)
+  return round(plannedLegEnergyPct(situation.scenario, drone.id, distanceM, situation.weather, {
+    speedMs: advisorCruiseSpeedMs(situation, drone),
+    dwellSec,
+  }))
 }
 
 function routeDurationSec(
@@ -446,6 +464,22 @@ function routeDurationSec(
   route: readonly Waypoint[],
   includeRecovery: boolean,
 ): number {
+  const { distanceM, dwellSec } = routeLegs(situation, drone, route, includeRecovery)
+  return distanceM / advisorCruiseSpeedMs(situation, drone) + dwellSec
+}
+
+function advisorCruiseSpeedMs(situation: MissionSituation, drone: DroneState): number {
+  const platform = platformForDrone(situation.scenario, drone.id)
+  const speedMultiplier = situation.weather?.speedCapMultiplier ?? 1
+  return Math.max(1, platform.maxSpeedMs * speedMultiplier * CRUISE_SPEED_FACTOR)
+}
+
+function routeLegs(
+  situation: MissionSituation,
+  drone: DroneState,
+  route: readonly Waypoint[],
+  includeRecovery: boolean,
+): { distanceM: number; dwellSec: number } {
   const recovery = recoveryPosition(situation.scenario, drone.id)
   let from = drone.position
   let distanceM = 0
@@ -456,11 +490,7 @@ function routeDurationSec(
     from = waypoint.position
   }
   if (includeRecovery) distanceM += haversineDistanceM(from, recovery)
-
-  const platform = platformForDrone(situation.scenario, drone.id)
-  const speedMultiplier = situation.weather?.speedCapMultiplier ?? 1
-  const cruiseSpeedMs = Math.max(1, platform.maxSpeedMs * speedMultiplier * CRUISE_SPEED_FACTOR)
-  return distanceM / cruiseSpeedMs + dwellSec
+  return { distanceM, dwellSec }
 }
 
 function scoreCandidate(
@@ -617,8 +647,8 @@ function estimateCoverage(
         effortM += haversineDistanceM(from, to)
       }
     }
-    const platform = platformForDrone(scenario, drone.id)
-    const detectionRadiusM = platformTaskRanges(platform.thermal, 0.5)?.detectionM ?? DEFAULT_DETECTION_RADIUS_M
+    // A track flown by an airframe that cannot detect adds no probability of detection.
+    const detectionRadiusM = searchRangeM(platformForDrone(scenario, drone.id)) ?? 0
     return probabilityOfDetection({
       detectionRadiusM,
       trackLengthM: effortM,

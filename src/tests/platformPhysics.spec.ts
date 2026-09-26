@@ -29,10 +29,23 @@ describe('per-platform drone physics', () => {
     expect(next.headingDeg).toBeCloseTo(6.0, 1)
   })
 
-  it('Freefly Astro Max climbs at 6.6 ft/s', () => {
+  // Oracle updated 2026-09-25 (owner-requested realism pass): 6.6 ft/s was unsourced; Freefly's
+  // flight-speed table publishes 4 m/s climb / 3 m/s descent (see platformSources.ts).
+  it('Freefly Astro Max climbs at its published 4 m/s (13.1 ft/s) and descends at 3 m/s', () => {
     const drone = createDroneState('uav-01', 'UAV-01', '#00d4ff', BASE_POS, 100)
-    const next = stepDrone(drone, { targetAltitudeFt: 400, throttle: 0 }, 1, PLATFORM_CATALOG.freefly_astro_max)
-    expect(next.altitudeFt - 100).toBeCloseTo(6.6, 1)
+    const up = stepDrone(drone, { targetAltitudeFt: 400, throttle: 0 }, 1, PLATFORM_CATALOG.freefly_astro_max)
+    expect(up.altitudeFt - 100).toBeCloseTo(13.1, 1)
+    const down = stepDrone(drone, { targetAltitudeFt: 0, throttle: 0 }, 1, PLATFORM_CATALOG.freefly_astro_max)
+    expect(100 - down.altitudeFt).toBeCloseTo(9.8, 1)
+  })
+
+  it('descends at the published descent rate, not the climb rate', () => {
+    const drone = createDroneState('uav-01', 'UAV-01', '#00d4ff', BASE_POS, 200)
+    const x10 = stepDrone(drone, { targetAltitudeFt: 0, throttle: 0 }, 1, PLATFORM_CATALOG.skydio_x10)
+    expect(200 - x10.altitudeFt).toBeCloseTo(13.1, 1) // 4 m/s, not the 6 m/s climb
+    // No published descent rate → climb rate, which keeps the legacy airframe unchanged.
+    const legacy = stepDrone(drone, { targetAltitudeFt: 0, throttle: 0 }, 1)
+    expect(200 - legacy.altitudeFt).toBeCloseTo(5, 5)
   })
 
   it('default (no platform arg) is byte-identical to legacy — 4.5° turn', () => {

@@ -9,6 +9,7 @@ import {
 import type { AuthorizationStepId } from '@/types'
 import { assuranceForScenario } from '@/assurance/trainingAssurance'
 import { resolveLostLinkPolicy } from '@/sim/safety/lostLink'
+import { airframeEnvelopeAdvisories } from '@/sim/mission/airframeEnvelope'
 
 const CHECKLIST = PREFLIGHT_CHECKLIST
 
@@ -22,7 +23,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export function PreflightChecklist() {
   const {
-    ui, scenario, scenarioVariant, authorizationCompletedSteps,
+    ui, scenario, scenarioVariant, authorizationCompletedSteps, weatherState,
     setShowPreflight, setShowLaunchBay, emitEvent,
     toggleAuthorizationStep, completeAuthorizationTraining,
   } = useDroneStore(
@@ -31,6 +32,7 @@ export function PreflightChecklist() {
       scenario: s.scenario,
       scenarioVariant: s.scenarioVariant,
       authorizationCompletedSteps: s.authorizationCompletedSteps,
+      weatherState: s.weatherState,
       setShowPreflight: s.setShowPreflight,
       setShowLaunchBay: s.setShowLaunchBay,
       emitEvent: s.emitEvent,
@@ -55,6 +57,7 @@ export function PreflightChecklist() {
   )
   const assurance = useMemo(() => assuranceForScenario(scenario), [scenario])
   const lostLink = useMemo(() => scenario ? resolveLostLinkPolicy(scenario) : null, [scenario])
+  const envelope = useMemo(() => airframeEnvelopeAdvisories(scenario, weatherState), [scenario, weatherState])
 
   if (!ui.showPreflight) return null
 
@@ -165,6 +168,39 @@ export function PreflightChecklist() {
             </label>
           )}
         </div>
+
+        {scenario?.dronePlatforms && (
+          <div
+            data-testid="airframe-envelope"
+            style={{
+              marginBottom: 14,
+              padding: '10px 10px 8px',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--bg-input)',
+            }}
+          >
+            <div style={{
+              fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', marginBottom: 6,
+              color: envelope.length > 0 ? 'var(--accent-yellow)' : 'var(--accent-green)',
+            }}>
+              AIRFRAME LIMITS VS FORECAST · ADVISORY
+            </div>
+            {envelope.length === 0 ? (
+              <div style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                Forecast wind, gusts and temperature are within every assigned airframe&apos;s limits.
+              </div>
+            ) : (
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 10, color: 'var(--accent-yellow)', lineHeight: 1.4 }}>
+                {envelope.map((advisory) => (
+                  <li key={`${advisory.platformId}-${advisory.kind}`}>
+                    {advisory.message} ({advisory.droneIds.map((id) => id.toUpperCase()).join(', ')})
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         <div style={{
           marginBottom: 14,

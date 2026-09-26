@@ -1,7 +1,7 @@
 import { useDroneStore } from '@/store/droneStore'
 import { stepDrone } from '@/sim/drone/DroneEntity'
 import { platformForDrone } from '@/sim/drone/platformCatalog'
-import { getNextCommand, type MissionManagerState } from '@/sim/mission/MissionManager'
+import { getMissionSafetyOverride, getNextCommand, type MissionManagerState } from '@/sim/mission/MissionManager'
 import { detectConflicts, applyConflictFlags, getAssignedAltitude } from '@/sim/safety/DeconflictEngine'
 import { resolveGiveWayAssignments } from '@/sim/safety/avoidanceDoctrine'
 import { applyGeofenceFlags, applyCommsModel, applySurfaceClearanceSafety } from '@/sim/safety/SafetyManager'
@@ -12,11 +12,10 @@ import { replanLaunchSlots, seededLaunchPlanFromScenario } from '@/sim/mission/l
 import type { SiteOverrides } from '@/sim/mission/siteResolver'
 import { resolveRtbDestination } from '@/sim/mission/rtbDestination'
 import {
-  batteryProfileForDrone,
   batteryReservePctForDrone,
   chargeRateMultiplierForDrone,
-  effectiveBatteryDrainRateForDrone,
 } from '@/sim/mission/rechargeStations'
+import { enduranceScaleForDrone, plannedLegEnergyPct } from '@/sim/mission/plannedEnergy'
 import { checkThermalDetections } from '@/sim/sensors/ThermalSim'
 import { evaluateGnss } from '@/sim/nav/gnss'
 import { occlusionEpoch, type TerrainOcclusionService } from '@/sim/terrain/OcclusionService'
@@ -129,13 +128,13 @@ export function tick() {
         altitudeFt: 0,
         label: rtbDestination.label,
       }
-      const batteryProfile = batteryProfileForDrone(scenario, drone.id)
-      // Apply weather battery drain multiplier
-      const batteryDrainRatePerSec = effectiveBatteryDrainRateForDrone(scenario, drone.id) * weatherState.batteryDrainMultiplier
       const platform = platformForDrone(scenario, drone.id)
       const distanceHomeM = haversineDistanceM(drone.position, basePos)
+      // Energy to home on the same model the pack burns against, priced at a deliberately slow
+      // groundspeed (60% of max) so the estimate errs long, plus 8% for descent and landing.
       const conservativeGroundSpeedMs = Math.max(1, platform.maxSpeedMs * 0.6 * weatherState.speedCapMultiplier)
-      const batteryRequiredToHomePct = Math.min(100, (distanceHomeM / conservativeGroundSpeedMs) * batteryDrainRatePerSec + 8)
+      const batteryRequiredToHomePct = Math.min(100,
+        plannedLegEnergyPct(scenario, drone.id, distanceHomeM, weatherState, { speedMs: conservativeGroundSpeedMs }) + 8)
       const mm: MissionManagerState = {
         waypoints: scenario.waypoints,
         basePosition: baseWaypoint,
@@ -157,6 +156,13 @@ export function tick() {
       }
 
       const { cmd: rawCmd, nextState, nextWaypointIndex, hoverStartSec, rechargeStartSec, sortieResumeWpIdx } = getNextCommand(drone, mm)
+      // Which gate sent it home: the same pure check getNextCommand just applied, so the warning
+      // and the event name the reserve the autopilot actually acted on (energy-to-home included).
+      const batteryRtbNow = nextState === 'return_to_base'
+        && getMissionSafetyOverride(drone, mm)?.reason === 'battery_reserve'
+      const batteryRtbPatch: Partial<DroneState> = nextState !== 'return_to_base'
+        ? (drone.batteryRtb ? { batteryRtb: undefined } : {})
+        : batteryRtbNow ? { batteryRtb: true } : {}
 
       // Skip physics for grounded/recovery states — drone is not airborne, battery shouldn't drain
       const isGrounded = ['idle', 'preflight', 'landed', 'remote_landed', 'stranded', 'recovery_requested', 'recovery_enroute', 'recovered', 'unrecoverable_sim'].includes(nextState)
@@ -231,12 +237,12 @@ export function tick() {
           : {}
 
       const updated = isGrounded
-        ? { ...drone, missionState: nextState, currentWaypointIndex: wpIdxForDrone, ...hoverPatch, ...rechargePatch, ...launchPatch, ...emergencyPatch, ...thermalHoldPatch, ...avoidPatch }
+        ? { ...drone, missionState: nextState, currentWaypointIndex: wpIdxForDrone, ...hoverPatch, ...rechargePatch, ...launchPatch, ...emergencyPatch, ...thermalHoldPatch, ...avoidPatch, ...batteryRtbPatch }
         : stepDrone(
-            { ...drone, missionState: nextState, currentWaypointIndex: wpIdxForDrone, ...hoverPatch, ...rechargePatch, ...launchPatch, ...emergencyPatch, ...thermalHoldPatch, ...avoidPatch },
-            { ...cmd, batteryDrainRatePerSec },
+            { ...drone, missionState: nextState, currentWaypointIndex: wpIdxForDrone, ...hoverPatch, ...rechargePatch, ...launchPatch, ...emergencyPatch, ...thermalHoldPatch, ...avoidPatch, ...batteryRtbPatch },
+            cmd,
             FIXED_DT,
-            platformForDrone(scenario, drone.id),
+            platform,
             // WP-10/WP-11: the Dryden gust this aircraft is fighting right now, and the ambient
             // temperature the discharge curve derates against. `gustAtTick` is pure in the tick
             // index, so sub-stepping and replay reproduce it exactly.
@@ -251,6 +257,7 @@ export function tick() {
                 drone.altitudeFt,
               ),
               drainMultiplier: weatherState.batteryDrainMultiplier,
+              enduranceScale: enduranceScaleForDrone(scenario, drone.id),
             },
           )
 
@@ -263,7 +270,7 @@ export function tick() {
           eventType = 'emergency_land'
           payload = { from: prevState, batteryPct: Math.round(drone.batteryPct), altitudeFt: Math.round(drone.altitudeFt) }
         } else if (stateChanged && nextState === 'return_to_base') {
-          const weatherForced = mm.weatherForceRtb && !drone.geofenceBreachFlag && drone.batteryPct >= (batteryProfile?.reservePct ?? 25)
+          const weatherForced = mm.weatherForceRtb && !drone.geofenceBreachFlag && !batteryRtbNow
           if (weatherForced) {
             eventType = 'weather_divert'
             payload = {
@@ -276,7 +283,7 @@ export function tick() {
             eventType = 'rtb_triggered'
             const reason = drone.geofenceBreachFlag
               ? 'geofence_breach'
-              : drone.batteryPct < (batteryProfile?.reservePct ?? 25) ? 'low_battery'
+              : batteryRtbNow ? 'low_battery'
               : 'operator_command'
             payload = {
               from: prevState,
@@ -677,7 +684,8 @@ export function tick() {
     // ── WP-10: gust-limit abort ────────────────────────────────────────────────
     //
     // The airframe feels sustained wind plus the instantaneous Dryden gust. Exceeding the
-    // platform's PUBLISHED gust tolerance (WP-1) is a real abort condition, and this is the
+    // platform's gust tolerance (WP-1; published where the maker gives one, see platformSources.ts)
+    // is a real abort condition, and this is the
     // coupling that makes turbulence matter to an operator who never touches the sticks: the
     // aircraft that has to come home is decided by the airframe's own limit, not by a scripted
     // weather event. Aircraft already heading home or on the ground are left alone.

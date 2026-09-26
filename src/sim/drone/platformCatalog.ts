@@ -5,6 +5,14 @@ import type { ScenarioConfig } from '@/types'
 // scenarios can assign specific vehicles to specific drones. When a drone has no
 // assigned platform the sim falls back to LEGACY_PLATFORM, whose four physics
 // values reproduce the historical single-airframe behavior byte-for-byte.
+//
+// The physics, envelope and pack figures (the SourcedField set) are traced in
+// ./platformSources.ts (retrieved 2026-09-25): the manufacturer page and exact quote for
+// published values, or an explicit "modelled" note where the manufacturer publishes
+// nothing — turn rate and acceleration for all six; sustained wind for Skydio; wind and
+// gust for Astro Max; and the Lemur 2's interior speed, climb, wind and gust. Thermal
+// payload figures are sourced in the comment block below; enduranceMultiplier is derived
+// (enduranceMin / 30) and kept only for the legacy invariant.
 
 export type PlatformId =
   | 'skydio_x10'
@@ -84,6 +92,14 @@ export interface DronePlatformSpec {
   gustToleranceMs: number
   enduranceMin: number
   enduranceMultiplier: number
+  /** Published max descent rate (ft/s). `null` when unpublished: the model then descends at the climb rate. */
+  descentRateFtS: number | null
+  /** Published operating temperature envelope (°C). `null` when unpublished. */
+  operatingTempC: { min: number; max: number } | null
+  /** Published ingress-protection rating, e.g. 'IP55'. `null` when none is published. */
+  ipRating: string | null
+  /** Published flight pack. Each figure `null` when unpublished. */
+  battery: { energyWh: number | null; nominalV: number | null; cells: number | null }
   /** Integrated thermal payload, or `null` when the airframe ships thermal as a modular option. */
   thermal: ThermalSensorSpec | null
 }
@@ -124,6 +140,10 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 12.8,
     enduranceMin: 40,
     enduranceMultiplier: 1.3333,
+    descentRateFtS: 13.1,
+    operatingTempC: { min: -20, max: 45 },
+    ipRating: 'IP55',
+    battery: { energyWh: 154, nominalV: 17.5, cells: null },
     thermal: {
       sensor: 'FLIR Boson+',
       resolutionPx: [640, 512],
@@ -151,6 +171,10 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 12.8,
     enduranceMin: 40,
     enduranceMultiplier: 1.3333,
+    descentRateFtS: 13.1,
+    operatingTempC: { min: -20, max: 45 },
+    ipRating: 'IP55',
+    battery: { energyWh: 156.17, nominalV: 18.55, cells: null },
     thermal: {
       sensor: 'FLIR Boson+',
       resolutionPx: [640, 512],
@@ -168,7 +192,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     shortName: 'ANAFI',
     vendor: 'Parrot',
     role: 'Fast-deploy compact',
-    massKg: 0.485,
+    massKg: 0.5,
     maxSpeedMs: 14.7,
     airframeMaxSpeedMs: 14.7,
     climbRateFtS: 13.1,
@@ -178,6 +202,10 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 14.7,
     enduranceMin: 32,
     enduranceMultiplier: 1.0667,
+    descentRateFtS: 9.8,
+    operatingTempC: { min: -36, max: 50 },
+    ipRating: 'IP53',
+    battery: { energyWh: null, nominalV: 11.55, cells: 3 },
     // Parrot ANAFI USA: FLIR Boson 320×256, <60 mK (9 Hz microbolometer).
     thermal: {
       sensor: 'FLIR Boson',
@@ -202,10 +230,14 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     climbRateFtS: 8.2,
     turnRateDegS: 90,
     accelMs2: 3,
-    windToleranceMs: 8,
-    gustToleranceMs: 11.2,
+    windToleranceMs: 8.05,
+    gustToleranceMs: 11.18,
     enduranceMin: 30,
     enduranceMultiplier: 1.0,
+    descentRateFtS: 8.2,
+    operatingTempC: { min: -35.6, max: 43.3 },
+    ipRating: 'IP53',
+    battery: { energyWh: 66.6, nominalV: 22.2, cells: 6 },
     // Teal 2: FLIR Hadron 640R — radiometric 640×512, NETD <40 mK, ±5 °C accuracy band.
     thermal: {
       sensor: 'FLIR Hadron 640R',
@@ -224,16 +256,20 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     shortName: 'ASTRO',
     vendor: 'Freefly',
     role: 'Mapping / heavy payload',
-    massKg: 3.52,
+    massKg: 5.83,
     maxSpeedMs: 15,
     airframeMaxSpeedMs: 15,
-    climbRateFtS: 6.6,
+    climbRateFtS: 13.1,
     turnRateDegS: 60,
     accelMs2: 2,
     windToleranceMs: 9,
     gustToleranceMs: 10,
-    enduranceMin: 39,
-    enduranceMultiplier: 1.3,
+    enduranceMin: 31,
+    enduranceMultiplier: 1.0333,
+    descentRateFtS: 9.8,
+    operatingTempC: { min: -20, max: 50 },
+    ipRating: 'IP43',
+    battery: { energyWh: 314, nominalV: 21.6, cells: 6 },
     // Modular payload bay — see FREEFLY_MODULAR_THERMAL_BOSON_PLUS for an optional profile.
     thermal: null,
   },
@@ -245,7 +281,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     role: 'Tactical entry / interior',
     massKg: 1.5,
     maxSpeedMs: 9,
-    airframeMaxSpeedMs: 21.5,
+    airframeMaxSpeedMs: 21.46,
     climbRateFtS: 9.8,
     turnRateDegS: 120,
     accelMs2: 4,
@@ -253,6 +289,10 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 8,
     enduranceMin: 20,
     enduranceMultiplier: 0.6667,
+    descentRateFtS: null,
+    operatingTempC: { min: -20, max: 45 },
+    ipRating: 'IP24',
+    battery: { energyWh: 97.2, nominalV: 10.8, cells: null },
     // BRINC Lemur 2: FLIR Lepton micro-thermal, 160×120 (7 Hz). Optics unpublished.
     thermal: {
       sensor: 'FLIR Lepton',
@@ -286,6 +326,10 @@ export const LEGACY_PLATFORM: DronePlatformSpec = {
   gustToleranceMs: 14,
   enduranceMin: 30,
   enduranceMultiplier: 1,
+  descentRateFtS: null,
+  operatingTempC: null,
+  ipRating: null,
+  battery: { energyWh: null, nominalV: null, cells: null },
   thermal: null,
 }
 
