@@ -61,8 +61,8 @@ export interface EnduranceInput {
   /** Published still-air endurance at ~20C (min), e.g. platform.enduranceMin. */
   publishedMin: number
   tempC: number
-  /** Aggregate load factor vs the nominal endurance profile: 1 = as published, >1 = harder
-   *  (hover in wind, heavy maneuvering), <1 = gentle cruise. */
+  /** Aggregate load factor vs the nominal endurance profile: 1 = as published (best-endurance
+   *  cruise in still air), >1 = harder (hover, high speed, wind and gusts). */
   loadFactor?: number
 }
 

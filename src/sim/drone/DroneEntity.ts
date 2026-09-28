@@ -35,23 +35,103 @@ export interface FlightEnvironment {
 }
 
 /**
+ * Hover power over best-endurance power when an airframe publishes no hover time. Modelling
+ * choice, set between the two published pairs: Skydio X10/X10D 40 min max flight vs 35 min hover
+ * (1.143), and Freefly Astro Max with LR1 31 min vs ~27.5 min hover from Freefly's chart (1.127).
+ */
+export const DEFAULT_HOVER_POWER_RATIO = 1.14
+
+/**
+ * Best-endurance airspeed as a share of the airframe's top speed. Modelling choice, taken from
+ * Freefly's measured Astro "Flight Time versus Flight Speed" chart (hover / 7 / 15 m/s at 0 and
+ * 1.5 kg payload): the curve below fitted to those points bottoms out at 0.61-0.71 of 15 m/s.
+ * With 0.65, the Astro Max + LR1 model gives 26.6 min at 15 m/s against ~27.1 min interpolated
+ * from the two measured payload curves.
+ */
+export const BEST_ENDURANCE_SPEED_FRACTION = 0.65
+
+/**
+ * Multirotor power vs level airspeed, relative to hover power, in units of the hover induced
+ * velocity v_h: momentum-theory induced power w(u) plus parasite drag power c·u³.
+ * w solves w⁴ + u²w² = 1, so w(0) = 1 and induced power falls as the rotor meets fresh air.
+ */
+function inducedRatio(u: number): number {
+  return Math.sqrt((-u * u + Math.sqrt(u ** 4 + 4)) / 2)
+}
+
+function inducedRatioSlope(u: number): number {
+  return (-u + u ** 3 / Math.sqrt(u ** 4 + 4)) / (2 * inducedRatio(u))
+}
+
+interface PowerCurve {
+  /** Hover induced velocity, m/s. */
+  inducedVelocityMs: number
+  /** Parasite coefficient, relative to hover power at u = 1. */
+  parasite: number
+  /** Minimum of the curve (power at best-endurance speed), relative to hover power. */
+  minPower: number
+}
+
+const powerCurveCache = new Map<string, PowerCurve>()
+
+/**
+ * The airframe's power curve, pinned by two figures: the hover penalty (published hover time vs
+ * published endurance, or the modelled default) sets how deep the U is; the best-endurance speed
+ * sets where along the speed axis its bottom sits. Pure and cached, so no sim state is added.
+ */
+export function powerCurveFor(platform: DronePlatformSpec): PowerCurve {
+  const hoverRatio = platform.hoverEnduranceMin && platform.hoverEnduranceMin > 0
+    ? Math.max(1, platform.enduranceMin / platform.hoverEnduranceMin)
+    : DEFAULT_HOVER_POWER_RATIO
+  const bestSpeedMs = Math.max(0.1, platform.airframeMaxSpeedMs * BEST_ENDURANCE_SPEED_FRACTION)
+  const key = `${hoverRatio}|${bestSpeedMs}`
+  const cached = powerCurveCache.get(key)
+  if (cached) return cached
+
+  // Where the minimum sits (in units of v_h) fixes the parasite term, and deeper minima sit
+  // further out, so bisect that location until the minimum equals 1 / hoverRatio.
+  const shape = (um: number) => {
+    const parasite = -inducedRatioSlope(um) / (3 * um * um)
+    return { parasite, minPower: inducedRatio(um) + parasite * um ** 3 }
+  }
+  let lo = 0.05
+  let hi = 6
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2
+    if (shape(mid).minPower > 1 / hoverRatio) lo = mid
+    else hi = mid
+  }
+  const um = (lo + hi) / 2
+  const curve = { inducedVelocityMs: bestSpeedMs / um, ...shape(um) }
+  powerCurveCache.set(key, curve)
+  return curve
+}
+
+/** Power at a level airspeed over power at best-endurance speed: 1 at best speed, the hover
+ *  penalty at rest, rising again toward top speed. */
+export function speedPowerFactor(speedMs: number, platform: DronePlatformSpec): number {
+  const { inducedVelocityMs, parasite, minPower } = powerCurveFor(platform)
+  const u = Math.max(0, speedMs) / inducedVelocityMs
+  return (inducedRatio(u) + parasite * u ** 3) / minPower
+}
+
+/**
  * Aggregate load factor vs the published endurance profile (WP-11 `EnduranceInput.loadFactor`).
  *
- * Published endurance figures are quoted for gentle still-air cruise. Real burn rises with
- * airspeed and, per WP-10's stated couplings, with the work of holding station against wind and
- * gusts — which is precisely how turbulence reaches an operator who never touches the sticks.
+ * Published max flight time is the best case: still air at the best-endurance speed. Hovering and
+ * flying fast both cost more (`speedPowerFactor`), and per WP-10's stated couplings so does the
+ * work of holding station against wind and gusts, which is how turbulence reaches an operator who
+ * never touches the sticks.
  */
 export function flightLoadFactor(
   speedMs: number,
   platform: DronePlatformSpec,
   env: FlightEnvironment,
 ): number {
-  const speedShare = platform.maxSpeedMs > 0 ? Math.min(1, Math.max(0, speedMs) / platform.maxSpeedMs) : 0
   const windShare = platform.windToleranceMs > 0
     ? Math.min(1.5, (Math.max(0, env.windMs ?? 0) + Math.abs(env.gustMs ?? 0)) / platform.windToleranceMs)
     : 0
-  // Still air at rest is the published profile (1.0); full speed in a gale roughly doubles burn.
-  return 1 + speedShare * 0.45 + windShare * 0.4
+  return speedPowerFactor(speedMs, platform) + windShare * 0.4
 }
 
 export function createDroneState(
@@ -148,8 +228,8 @@ export function stepDrone(
  * Drain rate (% per second) from the WP-11 discharge model.
  *
  * Endurance is the published figure derated for temperature and divided by the live load factor;
- * burning 100% over that endurance gives the rate. At 20 °C, still air, at rest this reproduces
- * the platform's published endurance exactly, which is WP-11's stated acceptance criterion.
+ * burning 100% over that endurance gives the rate. At 20 °C in still air this reproduces the
+ * published max flight time at the best-endurance speed and the published hover time at rest.
  */
 export function modelledDrainRatePerSec(
   speedMs: number,

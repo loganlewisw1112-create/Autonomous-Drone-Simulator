@@ -90,8 +90,12 @@ export interface DronePlatformSpec {
   accelMs2: number
   windToleranceMs: number
   gustToleranceMs: number
+  /** Published max flight time (min): the best case, flown at the best-endurance speed. */
   enduranceMin: number
   enduranceMultiplier: number
+  /** Published hover time (min). `null` when unpublished: hover then costs the modelled
+   *  DEFAULT_HOVER_POWER_RATIO over best-endurance cruise (DroneEntity). */
+  hoverEnduranceMin: number | null
   /** Published max descent rate (ft/s). `null` when unpublished: the model then descends at the climb rate. */
   descentRateFtS: number | null
   /** Published operating temperature envelope (°C). `null` when unpublished. */
@@ -140,6 +144,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 12.8,
     enduranceMin: 40,
     enduranceMultiplier: 1.3333,
+    hoverEnduranceMin: 35,
     descentRateFtS: 13.1,
     operatingTempC: { min: -20, max: 45 },
     ipRating: 'IP55',
@@ -171,6 +176,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 12.8,
     enduranceMin: 40,
     enduranceMultiplier: 1.3333,
+    hoverEnduranceMin: 35,
     descentRateFtS: 13.1,
     operatingTempC: { min: -20, max: 45 },
     ipRating: 'IP55',
@@ -202,6 +208,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 14.7,
     enduranceMin: 32,
     enduranceMultiplier: 1.0667,
+    hoverEnduranceMin: null,
     descentRateFtS: 9.8,
     operatingTempC: { min: -36, max: 50 },
     ipRating: 'IP53',
@@ -234,6 +241,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 11.18,
     enduranceMin: 30,
     enduranceMultiplier: 1.0,
+    hoverEnduranceMin: null,
     descentRateFtS: 8.2,
     operatingTempC: { min: -35.6, max: 43.3 },
     ipRating: 'IP53',
@@ -266,6 +274,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 10,
     enduranceMin: 31,
     enduranceMultiplier: 1.0333,
+    hoverEnduranceMin: 27.5,
     descentRateFtS: 9.8,
     operatingTempC: { min: -20, max: 50 },
     ipRating: 'IP43',
@@ -289,6 +298,7 @@ export const PLATFORM_CATALOG: Record<PlatformId, DronePlatformSpec> = {
     gustToleranceMs: 8,
     enduranceMin: 20,
     enduranceMultiplier: 0.6667,
+    hoverEnduranceMin: null,
     descentRateFtS: null,
     operatingTempC: { min: -20, max: 45 },
     ipRating: 'IP24',
@@ -326,6 +336,7 @@ export const LEGACY_PLATFORM: DronePlatformSpec = {
   gustToleranceMs: 14,
   enduranceMin: 30,
   enduranceMultiplier: 1,
+  hoverEnduranceMin: null,
   descentRateFtS: null,
   operatingTempC: null,
   ipRating: null,
