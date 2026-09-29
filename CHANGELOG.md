@@ -38,6 +38,17 @@ ISO 8601.
 - Battery planning (RTB energy-to-home, launch doctrine, site reposition,
   tactical advisor) now uses the same discharge model the aircraft burns
   against, at the commanded throttle and forecast weather.
+- Battery burn is now U-shaped in airspeed, as on a real multirotor: hover and
+  top speed both cost more than best-endurance cruise (a momentum-theory
+  induced-power plus parasite-drag curve). Published max flight time is
+  reproduced at the best-endurance speed and published hover time at rest
+  (Skydio X10/X10D 35 min; Astro Max with LR1 ~27.5 min from Freefly's hover
+  chart; others use a modelled 1.14x hover penalty). Best-endurance speed is
+  0.65x airframe top speed, taken from Freefly's measured Astro
+  flight-time-vs-speed chart, whose high-speed penalty the model reproduces to
+  under 1%. Cruise legs now last longer than before (X10 at cruise throttle
+  ~39 min, was ~29) and hover dwells shorter (35 min, was 40). Planners use the
+  same curve.
 - Wind and cold are charged to the pack once (airframe load factor and
   temperature derate); the weather drain multiplier keeps only the
   battery-pressure dial.

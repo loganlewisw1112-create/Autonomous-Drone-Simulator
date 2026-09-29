@@ -17,10 +17,9 @@ hardening, cleanup, and polish, not the release ladder.
 
 ## Next action
 
-Speed-dependent power draw (the one open modelling gap from the #110 airframe pass): today the
-burn curve is monotonic, so hover is cheapest. Real multirotors are U-shaped — minimum power at
-a moderate cruise speed, more at hover and at top speed. Needs a sourced cruise-endurance point
-per airframe alongside the hover figures in `platformSources.ts`.
+Owner decision on WP-12 (below) is the only open roadmap item. Otherwise continue polish. Known
+energy-model limit left from the U-shaped power curve (2026-09-28): wind is charged as extra load,
+not as airspeed, so hovering in a light breeze is not credited the small saving it gets in reality.
 
 ## Open question
 

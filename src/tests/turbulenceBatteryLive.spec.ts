@@ -9,6 +9,7 @@ import {
   normalizedGustSeries,
 } from '@/sim/weather/dryden'
 import {
+  BEST_ENDURANCE_SPEED_FRACTION,
   flightLoadFactor,
   isAtVoltageReserve,
   modelledDrainRatePerSec,
@@ -129,13 +130,18 @@ describe('WP-10 Dryden turbulence, live', () => {
 
 describe('WP-11 battery discharge, live', () => {
   it('reproduces every published endurance within 5% at 20 °C in still air', () => {
-    // The accept criterion, measured against WP-1's sourced specs.
+    // The accept criterion, measured against WP-1's sourced specs. Published max flight time is
+    // the best case, so it is reproduced at the best-endurance speed; a published hover time is
+    // reproduced at rest.
     for (const id of PLATFORM_IDS) {
       const platform = PLATFORM_CATALOG[id]
-      const rate = modelledDrainRatePerSec(0, platform, STILL_20C)
-      const enduranceMin = 100 / rate / 60
-      const error = Math.abs(enduranceMin - platform.enduranceMin) / platform.enduranceMin
-      expect(error).toBeLessThan(0.05)
+      const bestSpeed = platform.airframeMaxSpeedMs * BEST_ENDURANCE_SPEED_FRACTION
+      const enduranceMin = 100 / modelledDrainRatePerSec(bestSpeed, platform, STILL_20C) / 60
+      expect(Math.abs(enduranceMin - platform.enduranceMin) / platform.enduranceMin).toBeLessThan(0.05)
+      if (platform.hoverEnduranceMin !== null) {
+        const hoverMin = 100 / modelledDrainRatePerSec(0, platform, STILL_20C) / 60
+        expect(Math.abs(hoverMin - platform.hoverEnduranceMin) / platform.hoverEnduranceMin).toBeLessThan(0.05)
+      }
     }
   })
 
@@ -144,8 +150,9 @@ describe('WP-11 battery discharge, live', () => {
     expect(at(-10)).toBeLessThan(at(0))
     expect(at(0)).toBeLessThan(at(10))
     expect(at(10)).toBeLessThan(at(20))
-    // Room temperature is the published reference, so it is not derated.
-    expect(at(20)).toBeCloseTo(X10.enduranceMin, 6)
+    // Room temperature is the published reference, so it is not derated: at rest that is the
+    // published hover time.
+    expect(at(20)).toBeCloseTo(X10.hoverEnduranceMin!, 6)
     // A cold-weather scenario is materially shorter, not marginally.
     expect(at(-10) / at(20)).toBeLessThan(0.85)
   })
@@ -157,8 +164,9 @@ describe('WP-11 battery discharge, live', () => {
 
     expect(fast).toBeGreaterThan(still)
     expect(gusty).toBeGreaterThan(still)
-    // Load factor is 1.0 exactly in the published condition, so nothing is silently penalised.
-    expect(flightLoadFactor(0, X10, STILL_20C)).toBe(1)
+    // Load factor is 1.0 in the published condition (best-endurance speed, still air), so
+    // nothing is silently penalised.
+    expect(flightLoadFactor(X10.airframeMaxSpeedMs * BEST_ENDURANCE_SPEED_FRACTION, X10, STILL_20C)).toBeCloseTo(1, 9)
     expect(flightLoadFactor(X10.maxSpeedMs, X10, { tempC: 20, windMs: 20, gustMs: 10 }))
       .toBeGreaterThan(1.5)
   })

@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { PLATFORM_CATALOG, LEGACY_PLATFORM, type PlatformId } from '@/sim/drone/platformCatalog'
 import { PLATFORM_SOURCES, type SourcedField } from '@/sim/drone/platformSources'
 import {
+  BEST_ENDURANCE_SPEED_FRACTION,
   batteryAlert,
   createDroneState,
   modelledDrainRatePerSec,
+  speedPowerFactor,
   stepDrone,
 } from '@/sim/drone/DroneEntity'
 import {
@@ -20,7 +22,7 @@ import type { DroneState, ScenarioConfig, ScenarioVariantConfig, ScenarioWeather
 const POS = { lat: 37.7695, lng: -122.4862 }
 const FIELDS: SourcedField[] = [
   'massKg', 'maxSpeedMs', 'airframeMaxSpeedMs', 'climbRateFtS', 'descentRateFtS', 'turnRateDegS',
-  'accelMs2', 'windToleranceMs', 'gustToleranceMs', 'enduranceMin', 'operatingTempC', 'ipRating', 'battery',
+  'accelMs2', 'windToleranceMs', 'gustToleranceMs', 'enduranceMin', 'hoverEnduranceMin', 'operatingTempC', 'ipRating', 'battery',
 ]
 
 function scenarioWith(platforms: Record<string, PlatformId>, extra: Partial<ScenarioConfig> = {}): ScenarioConfig {
@@ -46,7 +48,7 @@ describe('airframe figures are traceable', () => {
   it('a null figure is marked unpublished, never modelled or published', () => {
     for (const id of Object.keys(PLATFORM_CATALOG) as PlatformId[]) {
       const spec = PLATFORM_CATALOG[id]
-      for (const field of ['descentRateFtS', 'operatingTempC', 'ipRating'] as const) {
+      for (const field of ['descentRateFtS', 'hoverEnduranceMin', 'operatingTempC', 'ipRating'] as const) {
         if (spec[field] === null) expect(PLATFORM_SOURCES[id][field].kind, `${id}.${field}`).toBe('unpublished')
         else expect(PLATFORM_SOURCES[id][field].kind, `${id}.${field}`).not.toBe('unpublished')
       }
@@ -66,7 +68,8 @@ describe('one energy model for flying and planning', () => {
   })
 
   it('a cruise-throttle X10 leg now costs its modelled burn, not the flat scenario rate', () => {
-    // 40 min rated → at cruise throttle in still 20 °C air the model gives ~29 min to empty.
+    // 40 min rated at best-endurance speed → at cruise throttle (16 m/s) in still 20 °C air the
+    // model gives ~39 min to empty.
     const still = scenarioWith({ 'uav-01': 'skydio_x10' })
     const minutesToEmpty = 100 / plannedDrainRatePerSec(still, 'uav-01') / 60
     expect(minutesToEmpty).toBeGreaterThan(25)
@@ -169,5 +172,50 @@ describe('battery warnings follow the autopilot gates', () => {
   it('leaves the legacy airframe free of published envelope data', () => {
     expect(LEGACY_PLATFORM.descentRateFtS).toBeNull()
     expect(LEGACY_PLATFORM.operatingTempC).toBeNull()
+  })
+})
+
+describe('power is U-shaped in airspeed', () => {
+  const STILL = { tempC: 20 }
+  const minutes = (speedMs: number, platform = PLATFORM_CATALOG.skydio_x10) =>
+    100 / modelledDrainRatePerSec(speedMs, platform, STILL) / 60
+
+  it('hover and top speed both cost more than best-endurance cruise, on every airframe', () => {
+    for (const spec of [...Object.values(PLATFORM_CATALOG), LEGACY_PLATFORM]) {
+      const best = spec.airframeMaxSpeedMs * BEST_ENDURANCE_SPEED_FRACTION
+      expect(speedPowerFactor(best, spec), spec.id).toBeCloseTo(1, 6)
+      expect(speedPowerFactor(0, spec), spec.id).toBeGreaterThan(1.05)
+      expect(speedPowerFactor(spec.airframeMaxSpeedMs, spec), spec.id).toBeGreaterThan(1.05)
+      // Best speed is the minimum: nothing on a fine sweep beats it.
+      for (let v = 0; v <= spec.airframeMaxSpeedMs; v += 0.25) {
+        expect(speedPowerFactor(v, spec), `${spec.id} @ ${v}`).toBeGreaterThanOrEqual(1 - 1e-9)
+      }
+    }
+  })
+
+  it('reproduces Skydio X10 published max flight (40 min) and hover (35 min)', () => {
+    const x10 = PLATFORM_CATALOG.skydio_x10
+    expect(minutes(x10.airframeMaxSpeedMs * BEST_ENDURANCE_SPEED_FRACTION)).toBeCloseTo(40, 6)
+    expect(minutes(0)).toBeCloseTo(35, 6)
+  })
+
+  it('matches the high-speed penalty Freefly measured on the Astro', () => {
+    // Freefly's "Astro (F45) Flight Time versus Flight Speed" chart: 7 m/s vs 15 m/s flight time
+    // is 46.5/34.5 min with no payload and 27.2/25.7 min at 1.5 kg. Interpolated to the LR1's
+    // 1.065 kg this is 1.142; the model (pinned only by hover time and best-speed fraction) must
+    // land within 3%.
+    const astro = PLATFORM_CATALOG.freefly_astro_max
+    const measured = 46.5 / 34.5 + (27.2 / 25.7 - 46.5 / 34.5) * (1.065 / 1.5)
+    const modelled = minutes(7, astro) / minutes(15, astro)
+    expect(Math.abs(modelled - measured) / measured).toBeLessThan(0.03)
+  })
+
+  it('planners price a hover dwell above a slow transit of the same duration', () => {
+    const scenario = scenarioWith({ 'uav-01': 'skydio_x10' })
+    const hoverPerSec = plannedDrainRatePerSec(scenario, 'uav-01', undefined, 0)
+    const cruisePerSec = plannedDrainRatePerSec(scenario, 'uav-01', undefined, 13)
+    expect(hoverPerSec).toBeGreaterThan(cruisePerSec)
+    expect(plannedLegEnergyPct(scenario, 'uav-01', 0, undefined, { dwellSec: 600 }))
+      .toBeCloseTo(600 * hoverPerSec, 10)
   })
 })

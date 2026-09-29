@@ -976,8 +976,14 @@ drain for the sourced discharge model. Omitting it preserves the previous behavi
 is why the whole catalog did not need re-tuning.
 
 Drain is now derived from modelled endurance: the published figure, derated for temperature, divided
-by a live load factor that rises with airspeed and with the work of holding station against wind and
-gusts — which is how WP-10 reaches an operator who never touches the sticks. Aircraft report
+by a live load factor that follows a U-shaped power-vs-airspeed curve (hover and top speed cost more
+than best-endurance cruise; 2026-09-28) and rises with the work of holding station against wind and
+gusts — which is how WP-10 reaches an operator who never touches the sticks. The curve is
+momentum-theory induced power plus parasite drag, pinned per airframe by its published hover time
+(or a modelled 1.14× hover penalty) and a best-endurance speed of 0.65× airframe top speed taken
+from Freefly's measured Astro flight-time-vs-speed chart. Wind is still charged as extra load
+rather than as airspeed, so the model does not credit the small power saving of hovering in a
+light breeze. Aircraft report
 `cellVoltageV` / `packVoltageV` / `gustMs`.
 
 **⚠ A constant was wrong and the test caught it.** The reserve was first set at 3.5 V/cell loaded,
@@ -986,8 +992,9 @@ accept criterion. It is now **3.6 V/cell loaded**, crossing at ~37% SoC: below t
 the knee, where remaining energy collapses far faster than the percentage suggests, and the aircraft
 still has to fly home and descend.
 
-**Measured:** every platform's modelled endurance reproduces its published figure to **<5%** at
-20 °C in still air; −10 °C cuts endurance to under 85% of the 20 °C figure.
+**Measured:** every platform's modelled endurance reproduces its published max flight time to
+**<5%** at 20 °C in still air at the best-endurance speed, and its published hover time (where one
+exists) at rest; −10 °C cuts endurance to under 85% of the 20 °C figure.
 
 **Original WP-11 target below (unchanged).**
 
