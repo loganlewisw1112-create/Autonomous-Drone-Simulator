@@ -250,9 +250,12 @@ are within a sane band.
 
 ---
 
-## WP-2 · Real weather fixtures `[Tranche A]` `[needs WP-0]`
+## WP-2 · Real weather fixtures `[Tranche A]` `[needs WP-0]` — **DONE (catalog-wide)**
 
-**Current state.** `src/sim/weather/weatherEngine.ts` builds state from `mulberry32` seeded
+**Status:** done; see the WP-2 row in §0 for current coverage. The "current state" paragraph
+below is the pre-WP-2 baseline, kept for the record.
+
+**Original state.** `src/sim/weather/weatherEngine.ts` builds state from `mulberry32` seeded
 RNG across six location profiles, with severity / time-of-day / comms dials in
 `ScenarioVariantConfig`. **The architecture is right. The numbers are invented.**
 
@@ -321,9 +324,12 @@ attention flag.
 
 ---
 
-## WP-4 · Terrain, buildings, OcclusionService `[Tranche B]` `★ KEYSTONE`
+## WP-4 · Terrain, buildings, OcclusionService `[Tranche B]` `★ KEYSTONE` — **DONE (catalog terrain coverage)**
 
-Current state: **flat earth, no structures.** Altitude is a number with no relationship to
+**Status:** done; see the WP-3/4 row in §0 for current coverage (13 DEM packages, building
+footprints on 6 AOs, exact LOS). The paragraph below is the pre-WP-4 baseline, kept for the record.
+
+Original state: **flat earth, no structures.** Altitude is a number with no relationship to
 ground. This is the largest realism gap and it is load-bearing for WP-5, WP-7, WP-8, WP-9.
 
 ### 4.1 Build it as a service, not a rendering feature

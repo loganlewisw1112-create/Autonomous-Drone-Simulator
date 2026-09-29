@@ -328,7 +328,7 @@ export const usssPresidentialSF: ScenarioConfig = {
 export const femaFortMyers: ScenarioConfig = {
   id: 'extreme_fema_fort_myers',
   name: 'FEMA USAR — Hurricane Ian, Fort Myers Beach',
-  description: 'FEMA USAR Florida Task Force 4 deploys five DJI Matrice 300 RTK drones from a north-end staging area to grid-search the north sector of Estero Island after Hurricane Ian. Storm surge collapsed ~40% of structures. Primary survivor signature: 36–37°C trapped in void vs 88°F ambient debris. Four parallel lanes sweep north→south while a fifth drone holds high as a comms relay. SIMULATION ONLY.',
+  description: 'FEMA USAR Florida Task Force 4 deploys five drones (four Skydio X10D search aircraft and a Freefly Astro Max damage-mapping aircraft) from a north-end staging area to grid-search the north sector of Estero Island after Hurricane Ian. Storm surge collapsed ~40% of structures. Primary survivor signature: 36–37°C trapped in void vs 88°F ambient debris. Four parallel lanes sweep north→south while a fifth drone holds high as a comms relay. SIMULATION ONLY.',
   seed: 20006,
   droneCount: 5,
   // Disaster response: X10D search ships with an Astro Max damage-mapping bird.
