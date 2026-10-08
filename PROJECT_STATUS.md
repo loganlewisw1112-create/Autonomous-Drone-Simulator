@@ -41,7 +41,7 @@ dispatch, camera, weather, or aircraft-telemetry services.
 | Simulation | Seeded fixed-timestep multi-aircraft missions, safety decisions, replay, and hash-chained evidence |
 | Realism | Frozen terrain, building, weather, airspace, thermal, SAR, GNSS, RF, turbulence, and battery fixtures/models for covered scenarios |
 | Operations | Preflight, launch/recovery planning, route editing, suggestions, retasking, hover/divert/resume/RTB, OPS HUB, after-action review |
-| Targets | Separate Mobile, Windows web, and Classroom client builds using one simulation contract |
+| Targets | Separate Mobile, Desktop web (Windows & Mac), and Classroom client builds using one simulation contract |
 | Accounts | Browser-local encrypted profiles, runs, custom missions, backups, and classroom history |
 | Classroom | Instructor/student roles, HTTPS/WSS local relay, persistent school-local CA and renewable leaf, encrypted protocol-v3 messages, fingerprint-pinned join URL/QR, coordinator wall, commands, scoring, and archives |
 | Evidence | Replay, JSONL chain, KML, GeoJSON, reports, and after-action exports |

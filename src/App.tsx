@@ -7,11 +7,11 @@ import { ControlBar } from '@/components/ControlBar'
 import { LoadingScreen } from '@/components/LoadingScreen'
 import { WelcomeOverlay } from '@/components/WelcomeOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { WindowsPlatformGate } from '@/components/PlatformGate'
+import { DesktopPlatformGate } from '@/components/PlatformGate'
 import { AccountChip } from '@/components/account/AccountChip'
 import { BuildInfoFooter } from '@/components/BuildInfoFooter'
 import { useDeviceMode } from '@/hooks/useDeviceMode'
-import { APP_TARGET, isWindowsClient } from '@/platform/appTarget'
+import { APP_TARGET, isDesktopClient } from '@/platform/appTarget'
 import { HARNESS_ENABLED } from '@/scene3d/harness/flag'
 import { useDroneStore } from '@/store/droneStore'
 import '@/styles/tactical.css'
@@ -45,10 +45,11 @@ export default function App() {
   const [loadingDone, setLoadingDone] = useState(HARNESS_ENABLED)
   const deviceMode = useDeviceMode()
 
-  // The public Windows deployment fails closed before any simulator UI loads.
+  // The public desktop deployment (internal target id `windows`) serves Windows and Mac
+  // computers and fails closed before any simulator UI loads on anything else.
   // Its error screen offers the independent mobile deployment as the safe path.
-  if (APP_TARGET === 'windows' && !isWindowsClient()) {
-    return <WindowsPlatformGate />
+  if (APP_TARGET === 'windows' && !isDesktopClient()) {
+    return <DesktopPlatformGate />
   }
 
   // Both phone orientations use one persistent shell so rotation never resets
