@@ -9,7 +9,7 @@ This is a web-based (and optional Windows classroom) tool for practicing supervi
 | Try it | Link |
 |---|---|
 | Mobile web | [Launch Mobile](https://autonomous-drone-simulator-mobile.vercel.app/) |
-| Desktop web | [Launch Windows](https://autonomous-drone-simulator.vercel.app/) |
+| Desktop web (Windows & Mac) | [Launch Desktop](https://autonomous-drone-simulator.vercel.app/) |
 | Classroom demo | [Open Classroom](https://autonomous-drone-simulator-classroom.vercel.app/) |
 
 ## Why it's interesting

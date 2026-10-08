@@ -28,7 +28,7 @@ export function BuildInfoFooter() {
         pointerEvents: 'none',
       }}
     >
-      v{BUILD_INFO.version} · {BUILD_INFO.target} · {BUILD_INFO.distributionChannel.replaceAll('_', ' ')} · commit: {BUILD_INFO.gitSha}{BUILD_INFO.licenseExpiresAt ? ` · expires ${BUILD_INFO.licenseExpiresAt}` : ''} · agency training simulator only
+      v{BUILD_INFO.version} · {BUILD_INFO.target === 'windows' ? 'desktop' : BUILD_INFO.target} · {BUILD_INFO.distributionChannel.replaceAll('_', ' ')} · commit: {BUILD_INFO.gitSha}{BUILD_INFO.licenseExpiresAt ? ` · expires ${BUILD_INFO.licenseExpiresAt}` : ''} · agency training simulator only
     </div>
   )
 }
