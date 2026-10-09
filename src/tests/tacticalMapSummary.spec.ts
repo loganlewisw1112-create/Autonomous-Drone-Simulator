@@ -119,4 +119,20 @@ describe('buildTacticalSummary', () => {
     expect(s.alerts.some((a) => a.startsWith('UAV-02') && a.includes('low battery'))).toBe(true)
     expect(s.alerts.some((a) => a.startsWith('UAV-03') && a.includes('link lost'))).toBe(true)
   })
+
+  it('does not flag link lost for healthy drones (commsLostSec 0 or undefined)', () => {
+    const zero = drone({ id: 'z', label: 'UAV-04', commsLostSec: 0 })
+    const unset = drone({ id: 'u', label: 'UAV-05', commsLostSec: undefined })
+    expect(describeDrone(zero)).not.toContain('link lost')
+    expect(describeDrone(unset)).not.toContain('link lost')
+    const s = buildTacticalSummary({ scenarioName: 'X', drones: [zero, unset] })
+    expect(s.alerts).toEqual([])
+  })
+
+  it('flags link lost once comms have been down for any time', () => {
+    const lost = drone({ id: 'l', label: 'UAV-06', commsLostSec: 5 })
+    expect(describeDrone(lost)).toContain('link lost')
+    const s = buildTacticalSummary({ scenarioName: 'X', drones: [lost] })
+    expect(s.alerts.some((a) => a.startsWith('UAV-06') && a.includes('link lost'))).toBe(true)
+  })
 })

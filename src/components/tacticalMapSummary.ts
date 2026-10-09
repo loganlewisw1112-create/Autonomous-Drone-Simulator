@@ -85,7 +85,7 @@ function droneAlertFlags(d: DroneState): string[] {
   if (d.geofenceBreachFlag) flags.push('geofence breach')
   if (d.conflictFlag) flags.push('traffic conflict')
   if (d.missionState === 'emergency') flags.push('EMERGENCY')
-  if (d.commsLostSec != null) flags.push('link lost')
+  if ((d.commsLostSec ?? 0) > 0) flags.push('link lost')
   if (d.missionState === 'stranded' || d.missionState === 'recovery_requested') flags.push('stranded')
   return flags
 }
