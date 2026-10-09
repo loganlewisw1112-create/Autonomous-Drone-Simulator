@@ -12,11 +12,14 @@
   --z-drawer:      400;  /* surface drawers / sheets / scrims */
   --z-modal:       500;  /* full-screen modals if any live in mobile.css */
   --z-boot:        600;  /* welcome + loading overlays */
+  /* --policy-banner-h is written on <html> by the PUBLIC DEMO banner on phones only (UsagePolicyGate);
+     its 0px default leaves every other target exactly as it was. */
   position: fixed;
   inset: 0;
+  top: var(--policy-banner-h, 0px);
   width: 100vw;
-  height: 100vh;
-  height: 100dvh;
+  height: calc(100vh - var(--policy-banner-h, 0px));
+  height: calc(100dvh - var(--policy-banner-h, 0px));
   display: block;
   overflow: hidden;
   overscroll-behavior: none;

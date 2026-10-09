@@ -7,23 +7,22 @@ export const BUILD_INFO = Object.freeze({
 })
 
 /** Read-only visible provenance carried by every target shell. */
-export function BuildInfoFooter() {
+export function BuildInfoFooter({ inline = false }: { inline?: boolean } = {}) {
   return (
     <div
       data-testid="build-info"
+      data-placement={inline ? 'inline' : undefined}
       aria-label="Build information"
       style={{
-        position: 'fixed',
-        right: 6,
-        bottom: 4,
-        zIndex: 10_000,
-        maxWidth: 'min(96vw, 720px)',
+        // Default: a fixed corner footer (desktop, classroom). `inline` is the phone shell's placement:
+        // it flows inside the MORE surface so it can never cover the dock.
+        ...(inline ? { marginTop: 12 } : { position: 'fixed', right: 6, bottom: 4, zIndex: 10_000, maxWidth: 'min(96vw, 720px)' }),
         padding: '3px 6px',
         border: '1px solid rgba(138, 148, 166, 0.35)',
         borderRadius: 4,
         background: 'rgba(7, 10, 15, 0.9)',
         color: 'var(--text-dim, #8a94a6)',
-        font: '9px/1.25 var(--font-mono, monospace)',
+        font: inline ? '12px/1.35 var(--font-mono, monospace)' : '9px/1.25 var(--font-mono, monospace)',
         overflowWrap: 'anywhere',
         pointerEvents: 'none',
       }}
