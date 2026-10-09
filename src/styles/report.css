@@ -1,0 +1,110 @@
+/* After-action report (demo blocker c5a). Loaded only with the lazy AfterActionReport chunk.
+   Every text size here is >= 12px. */
+
+.aar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(1, 4, 9, 0.78);
+  overflow: auto;
+}
+.aar-overlay .aar-doc { margin: auto; max-height: 100%; overflow: auto; }
+
+.aar-doc {
+  box-sizing: border-box;
+  width: min(920px, 100%);
+  padding: 20px 24px 28px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+}
+.aar-doc--inline { width: 100%; border: 0; padding: 4px 0 24px; background: transparent; }
+.aar-doc *, .aar-doc *::before, .aar-doc *::after { box-sizing: border-box; }
+
+.aar-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.aar-topbar-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.aar-btn {
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: 700 12px var(--font-mono);
+  letter-spacing: 0.6px;
+  cursor: pointer;
+}
+.aar-btn:hover { border-color: var(--accent-blue); }
+.aar-btn--primary { border-color: var(--accent-blue); color: var(--accent-blue); }
+
+.aar-title { margin: 0 0 4px; font-size: 20px; line-height: 1.25; }
+.aar-headline { margin: 0 0 12px; color: var(--text-secondary); font-size: 13px; }
+.aar-section { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border); }
+.aar-section h2 { margin: 0 0 10px; color: var(--accent-blue); font-size: 13px; letter-spacing: 1.6px; text-transform: uppercase; }
+
+.aar-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 0; }
+.aar-facts div { padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-input); }
+.aar-facts dt { color: var(--text-secondary); font-size: 12px; }
+.aar-facts dd { margin: 2px 0 0; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+
+.aar-timeline { margin: 0; padding: 0; list-style: none; }
+.aar-timeline li { display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.aar-time { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.aar-count { color: var(--accent-yellow); }
+.aar-note { margin: 8px 0 0; color: var(--text-secondary); font-size: 12px; }
+
+.aar-map { display: block; width: 100%; height: auto; max-height: 460px; border: 1px solid var(--border); border-radius: 6px; background: #0a1118; }
+.aar-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.aar-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.aar-swatch { display: inline-block; width: 22px; height: 0; border-top: 3px solid currentColor; }
+.aar-swatch--dashed { border-top-style: dashed; }
+.aar-swatch--dotted { border-top-style: dotted; }
+.aar-swatch--fill { height: 10px; border: 1px solid currentColor; background: color-mix(in srgb, currentColor 22%, transparent); }
+.aar-swatch--dot { width: 10px; height: 10px; border: 0; border-radius: 50%; background: currentColor; }
+
+.aar-score-total { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+.aar-objectives { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.aar-objectives li { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
+.aar-bar { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: var(--bg-input); overflow: hidden; }
+.aar-bar > span { display: block; height: 100%; background: var(--accent-blue); }
+.aar-detail { color: var(--text-secondary); font-size: 12px; }
+
+.aar-chain-status { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
+.aar-chain-status--verified { color: var(--accent-green); }
+.aar-chain-status--failed { color: var(--accent-red); }
+.aar-chain-status--no-events { color: var(--accent-yellow); }
+.aar-hash { display: block; margin-top: 2px; overflow-wrap: anywhere; color: var(--text-secondary); font-size: 12px; }
+
+.aar-exports { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border); }
+.aar-exports p { margin: 0 0 8px; color: var(--text-secondary); font-size: 12px; }
+.aar-exports-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.aar-empty { padding: 24px; color: var(--text-secondary); }
+
+@media (max-width: 640px) {
+  .aar-overlay { padding: 0; }
+  .aar-overlay .aar-doc { width: 100%; max-height: none; min-height: 100%; border-radius: 0; padding: 14px 14px 28px; }
+  .aar-timeline li { grid-template-columns: 56px 1fr; }
+  .aar-timeline li .aar-count { grid-column: 2; }
+}
+
+@media print {
+  body:has(.aar-overlay) > *:not(.aar-overlay) { display: none !important; }
+  .aar-overlay { position: static; display: block; padding: 0; background: #fff; overflow: visible; }
+  .aar-overlay .aar-doc, .aar-doc { width: 100%; max-height: none; overflow: visible; border: 0; background: #fff; color: #000; }
+  .aar-no-print { display: none !important; }
+  .aar-doc * { color: #000 !important; border-color: #999 !important; }
+  .aar-map { background: #fff; border-color: #999; max-height: none; }
+  .aar-section { break-inside: avoid; }
+  .aar-bar > span { background: #000; print-color-adjust: exact; }
+  .aar-chain-status--failed { font-weight: 900; }
+}

@@ -32,6 +32,7 @@ const LaunchBayPlanner = lazy(() => import('@/components/LaunchBayPlanner').then
 const ReplayPanel = lazy(() => import('@/components/ReplayPanel').then((m) => ({ default: m.ReplayPanel })))
 const SignInModal = lazy(() => import('@/components/account/SignInModal').then((m) => ({ default: m.SignInModal })))
 const AccountPanels = lazy(() => import('@/components/account/AccountPanels').then((m) => ({ default: m.AccountPanels })))
+const MissionCompleteChip = lazy(() => import('@/components/debrief/MissionCompleteChip').then((m) => ({ default: m.MissionCompleteChip })))
 const CustomMissionHub = lazy(() => import('@/components/designer/CustomMissionHub').then((m) => ({ default: m.CustomMissionHub })))
 
 function MobileClock() {
@@ -283,6 +284,7 @@ export function MobileShell() {
         {activeSurface === 'replay' && <div className="mobile-replay-host"><ReplayPanel /></div>}
         <SignInModal />
         <AccountPanels />
+        {lifecycle === 'completed' && activeSurface !== 'replay' && <MissionCompleteChip />}
         {showDesigner && <CustomMissionHub mobile onClose={() => setShowDesigner(false)} />}
       </Suspense>
 
