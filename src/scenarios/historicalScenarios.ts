@@ -1,5 +1,6 @@
 import { capRouteDwells, offsetM, parallelLanes, relayRoute } from '@/scenarios/scenarioBuilder'
 import { mixedFleet } from '@/scenarios/platformAssignments'
+import { observedWeatherFor } from '@/scenarios/observedWeather'
 import type { BacktestAnchor, HistoricalCase, ScenarioConfig } from '@/types'
 
 function histCase(partial: HistoricalCase): HistoricalCase {
@@ -342,6 +343,9 @@ const joplin = baseHistorical(
   ]),
 )
 
+const MARSHALL_GUST = observedWeatherFor('hist_marshall_fire_2021')?.gustKts
+const MARSHALL_GUST_TEXT = MARSHALL_GUST != null ? `Recorded peak gust ${Math.round(MARSHALL_GUST)} kt` : 'Recorded peak gust'
+
 const marshall = baseHistorical(
   'hist_marshall_fire_2021',
   'HIST — Marshall Fire No-Launch Decision (2021)',
@@ -367,6 +371,29 @@ const marshall = baseHistorical(
     { id: 'wind-gust', label: 'Peak gust threshold', unit: 'kts', documentedValue: 30, description: 'Launch-bay closing gust reference.' },
     { id: 'safe-hold', label: 'Fleet held on ground', unit: 'boolean', documentedValue: 1, description: '1 = correct no-launch when bays closed.' },
   ]),
+  {
+    missionBrief: {
+      agencies: ['CAL FIRE', 'FEMA'],
+      situation: `Wind-driven urban conflagration. ${MARSHALL_GUST_TEXT} on the recorded peak-wind day, well above every launch-bay gust limit, so every bay is closed.`,
+      commandIntent:
+        'Hold the fleet on the ground and brief incident command on why the weather correctly grounds it. SIMULATION ONLY.',
+      coordinationModel:
+        'CAL FIRE holds incident command with FEMA liaison updates through the dispatch feed; the PIC reports the weather hold and does not request a launch.',
+      primaryObjective: 'Keep the fleet on the ground and brief incident command on why launching is unsafe.',
+      successCondition: 'Mission succeeds when no aircraft launch, every closed bay is reported to incident command, and the PIC states the weather limit that holds the fleet.',
+      operationalConstraints: [
+        'Do not launch while any bay is weather-closed.',
+        'Report the weather hold to incident command instead of working around it.',
+        'Log the no-launch decision in the application event-custody record.',
+        'Simulation only: no real personal data, no weapon targeting, no real-world dispatching.',
+      ],
+    },
+    dispatchTimeline: [
+      { id: 'hist_marshall_fire_2021-dispatch-0', timeSec: 0, source: 'INCIDENT COMMAND', priority: 'routine', category: 'dispatch', message: 'Fire reported spreading fast in high wind; air unit asked whether UAS can launch.' },
+      { id: 'hist_marshall_fire_2021-safety-20', timeSec: 20, source: 'SAFETY', priority: 'urgent', category: 'safety', message: `${MARSHALL_GUST_TEXT} recorded against launch-bay gust limits; every bay is weather-closed.` },
+      { id: 'hist_marshall_fire_2021-agency-40', timeSec: 40, source: 'AIR UNIT', priority: 'advisory', category: 'agency_update', message: 'PIC to brief incident command: fleet stays on the ground until the wind falls below bay limits.' },
+    ],
+  },
 )
 
 const eastPalestine = baseHistorical(
