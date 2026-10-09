@@ -115,6 +115,30 @@
 .mobile-priority-chip span { color: var(--accent-yellow); font-size: 9px; letter-spacing: 1px; }
 .mobile-priority-chip strong { margin-top: 2px; font-size: 11px; }
 
+/* End-of-mission report chip (c5a). Bottom-centre, above the dock, clear of the edge tabs and topbar. */
+.mobile-complete-chip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 84px);
+  z-index: var(--z-map-chip);
+  min-height: 44px;
+  max-width: calc(100% - 32px);
+  padding: 8px 16px;
+  transform: translateX(-50%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid var(--accent-green);
+  border-radius: 22px;
+  background: rgba(10, 17, 24, 0.94);
+  color: var(--accent-green);
+  font: 700 12px var(--font-mono);
+  letter-spacing: .6px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-shell--tablet .mobile-complete-chip { bottom: calc(env(safe-area-inset-bottom) + 96px); }
+
 .mobile-edge-tab {
   position: absolute;
   top: 50%;

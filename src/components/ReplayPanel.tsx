@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore, MAX_REPLAY_FRAMES, MAX_REPLAY_DURATION_SEC } from '@/store/droneStore'
 import { weatherSummaryLabel } from '@/sim/weather/weatherEngine'
 import { buildAfterActionPackage, serializeAfterActionPackage } from '@/sim/demo/missionReport'
+import { reportSourceFromLive } from '@/sim/demo/reportAdapters'
+import type { ReportSource } from '@/sim/demo/reportViewModel'
+
+// Lazy: the readable report (map, SVG, print CSS) must stay out of the startup path.
+const AfterActionReport = lazy(() => import('@/components/debrief/AfterActionReport').then((m) => ({ default: m.AfterActionReport })))
 
 export function ReplayPanel() {
   const { replaySession, replayIndex, ui, scenario, scenarioVariant, drones, metrics, thermalContacts, events, elapsedSec, positionHistory, setReplayIndex, setIsReplayMode } = useDroneStore(
@@ -16,6 +21,9 @@ export function ReplayPanel() {
   const [playing, setPlaying] = useState(false)
   const [playSpeed, setPlaySpeed] = useState(1)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Snapshot taken when VIEW REPORT is pressed, so the report stays stable while the user scrubs.
+  const [reportSource, setReportSource] = useState<ReportSource | null>(null)
+  const closeReport = useCallback(() => setReportSource(null), [])
 
   const frames = replaySession?.frames ?? []
   const total = frames.length
@@ -88,6 +96,16 @@ export function ReplayPanel() {
     window.setTimeout(() => { URL.revokeObjectURL(url); a.remove() }, 1000)
   }
 
+  function handleViewReport() {
+    setReportSource(reportSourceFromLive(useDroneStore.getState()))
+  }
+
+  const reportDialog = reportSource && (
+    <Suspense fallback={null}>
+      <AfterActionReport source={reportSource} onClose={closeReport} />
+    </Suspense>
+  )
+
   function handleSeek(e: React.ChangeEvent<HTMLInputElement>) {
     const i = Number(e.target.value)
     setPlaying(false)
@@ -124,9 +142,13 @@ export function ReplayPanel() {
         <button className="btn primary" onClick={handleEnterReplay} style={{ padding: '3px 10px', fontSize: 9 }}>
           ENTER REPLAY
         </button>
+        <button className="btn primary" onClick={handleViewReport} data-testid="view-report" style={{ padding: '3px 10px', fontSize: 12 }}>
+          VIEW REPORT
+        </button>
         <button className="btn" onClick={handleExportAfterAction} style={{ padding: '3px 10px', fontSize: 9 }}>
           EXPORT REPORT
         </button>
+        {reportDialog}
       </div>
     )
   }
@@ -214,6 +236,9 @@ export function ReplayPanel() {
           ))}
         </div>
 
+        <button className="btn primary" onClick={handleViewReport} data-testid="view-report" style={{ padding: '3px 8px', fontSize: 12 }}>
+          VIEW REPORT
+        </button>
         <button className="btn" onClick={handleExportAfterAction} style={{ padding: '3px 8px', fontSize: 9 }}>
           REPORT
         </button>
@@ -222,6 +247,7 @@ export function ReplayPanel() {
         <button className="btn danger" onClick={handleExitReplay} style={{ padding: '3px 8px', fontSize: 9 }}>
           EXIT
         </button>
+        {reportDialog}
       </div>
     </div>
   )
