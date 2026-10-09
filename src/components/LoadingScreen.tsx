@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
-import { getGenesisHash } from '@/utils/chainOfCustody'
 
 const MIN_DISPLAY_MS = 900
 const STAGGER_MS = 160
@@ -48,12 +47,11 @@ export function LoadingScreen({ mapReady, onComplete }: Props) {
   // Stagger through the first 4 instant checks
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = []
-    const genesisSnippet = getGenesisHash().slice(0, 8) + '…'
     const syncChecks: Array<{ index: number; detail: string }> = [
       { index: 0, detail: 'ok' },
       { index: 1, detail: `${ALL_SCENARIOS.length} scenarios verified` },
       { index: 2, detail: 'ok' },
-      { index: 3, detail: genesisSnippet },
+      { index: 3, detail: 'waiting for first event' },
     ]
 
     syncChecks.forEach(({ index, detail }, i) => {
