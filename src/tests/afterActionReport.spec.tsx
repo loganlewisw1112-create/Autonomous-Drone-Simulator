@@ -112,6 +112,26 @@ describe('<AfterActionReport />', () => {
     const tsx = readFileSync('src/components/debrief/AfterActionReport.tsx', 'utf8')
     expect(tsx).not.toContain('dangerouslySetInnerHTML')
   })
+
+  it('releases the app shell height and overflow lock in print so long reports paginate', async () => {
+    const { readFileSync } = await import('node:fs')
+    const css = readFileSync('src/styles/report.css', 'utf8')
+    const printBlock = css.slice(css.indexOf('@media print'))
+    expect(printBlock).toMatch(/html,\s*body,\s*#root\s*\{[^}]*height:\s*auto\s*!important[^}]*overflow:\s*visible\s*!important/)
+    expect(printBlock).toMatch(/\.aar-overlay\s*\{[^}]*position:\s*static/)
+  })
+
+  it('renders no empty placeholder cell in timeline rows (phone grid has two columns)', () => {
+    const source = reportSourceFromLive(makeFixture().live)!
+    const { container } = render(<AfterActionReport source={source} mode="inline" />)
+    const rows = Array.from(container.querySelectorAll('.aar-timeline li'))
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      const cells = Array.from(row.children)
+      expect(cells.length).toBe(row.querySelector('.aar-count') ? 3 : 2)
+      expect(cells.every((cell) => (cell.textContent ?? '').length > 0)).toBe(true)
+    }
+  })
 })
 
 describe('signed-in history Report tab', () => {

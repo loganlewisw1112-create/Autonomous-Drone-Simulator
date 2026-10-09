@@ -22,7 +22,11 @@ import type {
 export const FIXED_ISO = '2026-10-09T12:00:00.000Z'
 const FIXED_MS = Date.parse(FIXED_ISO)
 
-export const scenario: ScenarioConfig = ALL_SCENARIOS[0]
+/** Pinned by id (not catalog position) so reordering or adding scenarios cannot churn the committed snapshot. */
+export const SNAPSHOT_SCENARIO_ID = 'demo_basic'
+const pinned = ALL_SCENARIOS.find((candidate) => candidate.id === SNAPSHOT_SCENARIO_ID)
+if (!pinned) throw new Error(`report fixture scenario ${SNAPSHOT_SCENARIO_ID} is missing from the catalog`)
+export const scenario: ScenarioConfig = pinned
 
 export const variant: ScenarioVariantConfig = {
   seed: 1, timeOfDay: 'day', season: 'spring', weatherSeverity: 0, commsDegradation: 0,
