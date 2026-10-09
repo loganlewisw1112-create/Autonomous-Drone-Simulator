@@ -4,7 +4,8 @@
  * The coach banner is only worth shipping if a cold visitor flying the default demo actually
  * reaches `missionState === 'thermal_hold'`. This drives the REAL production tick() (no mocks of
  * the loop, store or detection model) on the default quick demo until a drone enters the hold,
- * and pins the scenario id other specs (ThermalHoldCoach, vehicle avatars) reuse.
+ * and pins the scenario id (`THERMAL_HOLD_SCENARIO_ID`, exported from `./thermalHoldScenario`)
+ * that other specs reuse.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
@@ -12,9 +13,7 @@ import { prepareScenarioTerrain } from '@/scenarios/terrainFixtures'
 import { useDroneStore } from '@/store/droneStore'
 import { tick, stopSimLoop, initFleet } from '@/sim/SimulationLoop'
 import { getDefaultWeatherState } from '@/sim/weather/weatherEngine'
-
-/** The default quick demo. Documented here so dependent specs import one source of truth. */
-export const THERMAL_HOLD_SCENARIO_ID = 'demo_basic'
+import { THERMAL_HOLD_SCENARIO_ID } from './thermalHoldScenario'
 
 /** Hard ceiling on loop ticks (50 ms of sim time each) so a regression fails instead of hanging. */
 const MAX_TICKS = 40_000

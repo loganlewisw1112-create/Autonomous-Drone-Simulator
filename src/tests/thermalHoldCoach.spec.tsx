@@ -62,7 +62,9 @@ function seed(over: Record<string, unknown> = {}) {
   })
 }
 
-const banner = () => screen.queryByRole('status')
+// The banner is the content of an always-present live region, so `role=status` no longer says
+// whether it is open. The banner root carries the test id.
+const banner = () => screen.queryByTestId('thermal-hold-coach')
 
 beforeEach(() => {
   seed()
@@ -80,6 +82,46 @@ describe('ThermalHoldCoach', () => {
     expect(el).toHaveTextContent('Thermal contact — UAV-1 is holding for you.')
     expect(el).toHaveTextContent('Dispatch a ground unit or mark it a false positive.')
     expect(screen.getByRole('button', { name: 'Show thermal view' })).toBeInTheDocument()
+  })
+
+  it('mounts the polite live region before the banner opens, and the banner appears inside that same node', () => {
+    seed({ drones: [drone({ missionState: 'navigate', thermalHoldStartSec: undefined })] })
+    render(<ThermalHoldCoach />)
+    const region = screen.getByRole('status')
+    expect(region).toHaveAttribute('aria-live', 'polite')
+    expect(region).toHaveAttribute('aria-atomic', 'false')
+    expect(banner()).toBeNull()
+    expect(region).toBeEmptyDOMElement()
+
+    act(() => { useDroneStore.setState({ drones: [drone()] }) })
+    expect(screen.getByRole('status')).toBe(region) // not re-mounted with its content
+    expect(banner()).not.toBeNull()
+    expect(region).toContainElement(banner())
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(banner()).toBeNull()
+    expect(screen.getByRole('status')).toBe(region) // stays mounted, empty again
+    expect(region).toBeEmptyDOMElement()
+  })
+
+  it('keeps the ticking countdown out of the accessibility tree and gives screen readers one static line', () => {
+    render(<ThermalHoldCoach />)
+    const ticking = screen.getByTestId('thermal-hold-coach-hint')
+    expect(ticking).toHaveAttribute('aria-hidden', 'true')
+    expect(ticking).toHaveTextContent('about 25s')
+
+    const fixed = screen.getByTestId('thermal-hold-coach-hint-static')
+    expect(fixed).not.toHaveAttribute('aria-hidden')
+    expect(fixed).toHaveClass('sr-only')
+    expect(fixed).toHaveTextContent('Dispatch a ground unit or mark it a false positive.')
+    expect(fixed).toHaveTextContent('The drone resumes on its own in about 25 seconds.')
+
+    // Sim time advancing updates the visible number but never the static screen-reader text.
+    act(() => { useDroneStore.setState({ elapsedSec: HOLD_START_SEC + 12 }) })
+    expect(ticking).toHaveTextContent('about 18s')
+    expect(screen.getByTestId('thermal-hold-coach-hint-static')).toBe(fixed)
+    expect(fixed).toHaveTextContent('The drone resumes on its own in about 25 seconds.')
+    expect(fixed.textContent).not.toMatch(/\b18\b/)
   })
 
   it('renders nothing while no drone is holding', () => {
@@ -194,7 +236,116 @@ describe('ThermalHoldCoach', () => {
 
   it('uses the phone placement class when mounted in the mobile shell', () => {
     render(<ThermalHoldCoach placement="phone" />)
-    expect(screen.getByRole('status')).toHaveClass('thermal-hold-coach--phone')
+    expect(screen.getByTestId('thermal-hold-coach')).toHaveClass('thermal-hold-coach--phone')
+  })
+})
+
+describe('ThermalHoldCoach desktop placement', () => {
+  let feed: HTMLElement | null = null
+  let rect = { left: 232, bottom: 150, width: 900 }
+
+  function mountFeed() {
+    const el = document.createElement('section')
+    el.setAttribute('data-testid', 'mission-status-feed')
+    el.getBoundingClientRect = () => ({
+      x: rect.left, y: 8, left: rect.left, top: 8, right: rect.left + rect.width,
+      bottom: rect.bottom, width: rect.width, height: rect.bottom - 8,
+      toJSON: () => ({}),
+    }) as DOMRect
+    document.body.appendChild(el)
+    feed = el
+  }
+
+  /** ResizeObserver stand-in that records what is observed and lets a test fire the callback. */
+  function stubResizeObserver() {
+    const instances: Array<{ cb: () => void; observed: Element[]; disconnect: ReturnType<typeof vi.fn> }> = []
+    class FakeRO {
+      cb: () => void
+      observed: Element[] = []
+      disconnect = vi.fn()
+      constructor(cb: () => void) { this.cb = cb; instances.push(this) }
+      observe(el: Element) { this.observed.push(el) }
+      unobserve() {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeRO)
+    return instances
+  }
+
+  beforeEach(() => {
+    rect = { left: 232, bottom: 150, width: 900 }
+  })
+
+  afterEach(() => {
+    feed?.remove()
+    feed = null
+    vi.unstubAllGlobals()
+  })
+
+  it('sits 8px under the mission feed, left-aligned with it, at most 620px wide', () => {
+    mountFeed()
+    render(<ThermalHoldCoach />)
+    expect(screen.getByTestId('thermal-hold-coach')).toHaveStyle({ top: '158px', left: '232px', width: '620px' })
+  })
+
+  it('never grows wider than the feed, so it cannot reach the ops hub on the right', () => {
+    rect = { left: 232, bottom: 150, width: 500 }
+    mountFeed()
+    render(<ThermalHoldCoach />)
+    expect(screen.getByTestId('thermal-hold-coach')).toHaveStyle({ left: '232px', width: '500px' })
+  })
+
+  it('falls back to the 52px top-centre default when there is no feed', () => {
+    render(<ThermalHoldCoach />)
+    const el = screen.getByTestId('thermal-hold-coach')
+    expect(el.style.top).toBe('')
+    expect(el.style.left).toBe('')
+    expect(el.style.width).toBe('')
+  })
+
+  it('re-measures when the window resizes', () => {
+    mountFeed()
+    render(<ThermalHoldCoach />)
+    rect = { left: 100, bottom: 300, width: 400 }
+    act(() => { window.dispatchEvent(new Event('resize')) })
+    expect(screen.getByTestId('thermal-hold-coach')).toHaveStyle({ top: '308px', left: '100px', width: '400px' })
+  })
+
+  it('re-measures when the feed itself resizes, and disconnects/unsubscribes on unmount', () => {
+    const observers = stubResizeObserver()
+    const add = vi.spyOn(window, 'addEventListener')
+    const remove = vi.spyOn(window, 'removeEventListener')
+    const resizeCalls = (spy: typeof add) => spy.mock.calls.filter(([type]) => type === 'resize').length
+    mountFeed()
+    const { unmount } = render(<ThermalHoldCoach />)
+    expect(observers).toHaveLength(1)
+    expect(observers[0].observed).toContain(feed)
+    expect(resizeCalls(add)).toBe(1)
+
+    rect = { left: 232, bottom: 210, width: 900 }
+    act(() => { observers[0].cb() })
+    expect(screen.getByTestId('thermal-hold-coach')).toHaveStyle({ top: '218px' })
+
+    unmount()
+    expect(observers[0].disconnect).toHaveBeenCalledTimes(1)
+    expect(resizeCalls(remove)).toBe(1)
+    add.mockRestore()
+    remove.mockRestore()
+  })
+
+  it('does not measure or observe anything while the banner is closed', () => {
+    const observers = stubResizeObserver()
+    mountFeed()
+    seed({ drones: [drone({ missionState: 'navigate', thermalHoldStartSec: undefined })] })
+    render(<ThermalHoldCoach />)
+    expect(observers).toHaveLength(0)
+  })
+
+  it('leaves the phone placement unanchored even when a feed exists', () => {
+    mountFeed()
+    render(<ThermalHoldCoach placement="phone" />)
+    const el = screen.getByTestId('thermal-hold-coach')
+    expect(el.style.top).toBe('')
+    expect(el.style.left).toBe('')
   })
 })
 

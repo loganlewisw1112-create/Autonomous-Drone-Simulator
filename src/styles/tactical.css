@@ -1875,8 +1875,17 @@ html, body, #root {
 /* ── Thermal-hold coach (demo blocker c4) ─────────────────────────────────────
    One banner, shown the first time a drone enters thermal_hold in a mission, plus an
    outline on the first-unit Dispatch button while the hold is live and its contact is open.
-   All text >= 12px. Desktop: fixed top-centre, just under the 44px header; z 95 sits above
-   the in-map mission feed (90) and below modals. The phone variant lives in mobile.css. */
+   All text >= 12px. Desktop: ThermalHoldCoach.tsx measures the in-map mission feed and sets
+   top/left/width inline so the banner sits directly BELOW the feed, left-aligned and never
+   wider than it (so it cannot reach the right-hand ops hub); the rules below are the
+   fallback (top-centre, just under the 44px header) for when there is no feed. z 95 stays
+   below drawers/modals. The phone variant lives in mobile.css. */
+
+/* The always-mounted live region around the banner. It must exist before the banner does, but
+   it is not a layout box: no grid cell in .app-shell, and no containing block for the
+   absolutely-positioned phone banner. */
+.thermal-hold-coach-live { display: contents; }
+
 .thermal-hold-coach {
   display: flex;
   align-items: center;
