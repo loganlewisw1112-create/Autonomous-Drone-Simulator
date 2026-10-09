@@ -54,4 +54,15 @@ describe('ClassroomServerPrompt', () => {
       expect(screen.getByTestId('classroom-server-probe-result')).toHaveTextContent(/Relay responded/i)
     })
   })
+
+  it('asks to check this PC rather than offering to start a server', () => {
+    render(<ClassroomServerPrompt onResolved={() => {}} />)
+    const prompt = screen.getByTestId('classroom-server-prompt')
+    expect(prompt).toHaveTextContent(/Check this PC for a classroom server\?/)
+    expect(screen.getByTestId('classroom-server-yes').textContent).toBe('Check this PC for a classroom server')
+    expect(prompt).toHaveTextContent(/Checking only probes/)
+    expect(prompt).not.toHaveTextContent(/Choosing Yes/)
+    expect(screen.queryByText(/Start the Classroom Server/)).toBeNull()
+    expect(screen.getByTestId('classroom-server-no')).toBeInTheDocument()
+  })
 })

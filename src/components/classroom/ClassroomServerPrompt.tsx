@@ -50,10 +50,10 @@ export function ClassroomServerPrompt({ onResolved }: { onResolved: () => void }
           <>
             <div style={{ fontSize: 18, fontWeight: 700 }}>Classroom Server</div>
             <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 8, lineHeight: 1.5 }}>
-              Start the Classroom Server on this PC?
+              Check this PC for a classroom server?
               <br />
               <br />
-              Browser demos cannot spawn Node. Choosing Yes only probes this machine
+              Browser demos cannot spawn Node. Checking only probes this machine
               (or the page host) for an already-running LAN relay — it does not start one.
               Use the Windows desktop classroom app to auto-start the relay.
             </div>
@@ -65,7 +65,7 @@ export function ClassroomServerPrompt({ onResolved }: { onResolved: () => void }
                 disabled={busy}
                 onClick={() => void onYes()}
               >
-                {busy ? 'Probing…' : 'Yes — probe for server'}
+                {busy ? 'Probing…' : 'Check this PC for a classroom server'}
               </button>
               <button
                 type="button"
