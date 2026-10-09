@@ -82,10 +82,24 @@ function EvidenceChain({ summary, detail }: { summary: StoredRunSummary; detail:
 
 export function RunDetailView({ summary, detail, onBack, mobile = false }: { summary: StoredRunSummary; detail: StoredRunDetailV2 | null; onBack: () => void; mobile?: boolean }) {
   const [tab, setTab] = useState<RunDetailTab>('Overview')
+  const [htmlDownloadFailed, setHtmlDownloadFailed] = useState(false)
   const slug = `${summary.scenarioId}-${summary.completedAt}`
+  // The HTML export loads on click so none of it sits in this panel's startup chunk.
+  const downloadHtmlReport = async () => {
+    setHtmlDownloadFailed(false)
+    try {
+      const source = reportSourceFromStoredRun(summary, detail)
+      if (!source) throw new Error('no full detail for this run')
+      const { downloadReportHtmlFromSource } = await import('@/components/debrief/reportDownload')
+      downloadReportHtmlFromSource(source)
+    } catch {
+      setHtmlDownloadFailed(true)
+    }
+  }
   return (
     <section className={`rundetail${mobile ? ' rundetail--mobile' : ''}`} data-testid="run-detail-view">
-      <header className="rundetail-header"><button className="btn" onClick={onBack}>← BACK</button><div><span className="modal-title">{detail?.scenario.name ?? summary.scenarioId}</span><small>{new Date(summary.completedAt).toLocaleString()}</small></div><div className="rundetail-exports"><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}-report.json`, JSON.stringify(detail.report, null, 2), 'application/json')}>REPORT</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}-evidence.jsonl`, exportChainAsJsonl(detail.events), 'application/x-ndjson')}>EVIDENCE</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}.kml`, buildFullKML(detail.finalDrones, detail.positionHistory, detail.scenario, []), 'application/vnd.google-earth.kml+xml')}>KML</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}.geojson`, buildGeoJSON(detail.finalDrones, detail.positionHistory, detail.scenario, []), 'application/geo+json')}>GEOJSON</button></div></header>
+      <header className="rundetail-header"><button className="btn" onClick={onBack}>← BACK</button><div><span className="modal-title">{detail?.scenario.name ?? summary.scenarioId}</span><small>{new Date(summary.completedAt).toLocaleString()}</small></div><div className="rundetail-exports"><button className="btn" data-testid="rundetail-download-html" disabled={!detail} onClick={() => void downloadHtmlReport()}>Download report (HTML)</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}-report.json`, JSON.stringify(detail.report, null, 2), 'application/json')}>REPORT</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}-evidence.jsonl`, exportChainAsJsonl(detail.events), 'application/x-ndjson')}>EVIDENCE</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}.kml`, buildFullKML(detail.finalDrones, detail.positionHistory, detail.scenario, []), 'application/vnd.google-earth.kml+xml')}>KML</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}.geojson`, buildGeoJSON(detail.finalDrones, detail.positionHistory, detail.scenario, []), 'application/geo+json')}>GEOJSON</button></div></header>
+      {htmlDownloadFailed && <p className="rundetail-empty" role="alert">Could not prepare the HTML report for download.</p>}
       <nav className="rundetail-tabs" aria-label="Run detail sections">{TABS.map((candidate) => <button key={candidate} className={candidate === tab ? 'active' : ''} onClick={() => setTab(candidate)}>{candidate}</button>)}</nav>
       <div className="rundetail-body">
         {tab === 'Overview' && <Overview summary={summary} detail={detail} />}
