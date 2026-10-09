@@ -8,6 +8,7 @@ import { FleetPanel } from '@/components/FleetPanel'
 import { TelemetryPanel } from '@/components/TelemetryPanel'
 import { MissionStatusFeed } from '@/components/MissionStatusFeed'
 import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
+import { ThermalHoldCoach } from '@/components/ThermalHoldCoach'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/components/designer/designerValidation'
 import { LoadingScreen } from '@/components/LoadingScreen'
 import { WelcomeOverlay } from '@/components/WelcomeOverlay'
@@ -204,6 +205,8 @@ export function MobileShell() {
         {routeEditMode && routeCommandError && (
           <div className="route-edit-toast" role="status">{routeCommandError}</div>
         )}
+
+        <ThermalHoldCoach placement="phone" />
 
         <button className="mobile-edge-tab left" onClick={() => toggleSurface('fleet')} aria-pressed={activeSurface === 'fleet'}>
           FLEET
