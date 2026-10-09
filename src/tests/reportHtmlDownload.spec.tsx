@@ -14,6 +14,7 @@ const BUTTON = 'Download report (HTML)'
 interface Captured {
   blobs: Blob[]
   downloads: string[]
+  anchors: HTMLAnchorElement[]
   revoked: string[]
 }
 
@@ -29,7 +30,7 @@ function readBlob(blob: Blob): Promise<string> {
 }
 
 beforeEach(() => {
-  captured = { blobs: [], downloads: [], revoked: [] }
+  captured = { blobs: [], downloads: [], anchors: [], revoked: [] }
   Object.defineProperty(URL, 'createObjectURL', {
     configurable: true,
     writable: true,
@@ -45,6 +46,7 @@ beforeEach(() => {
   })
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function click(this: HTMLAnchorElement) {
     captured.downloads.push(this.download)
+    captured.anchors.push(this)
   })
 })
 
@@ -66,11 +68,21 @@ describe('downloadReportHtml', () => {
     expect(html).toContain(vm.summary.title)
   })
 
-  it('removes its anchor and revokes the object url shortly afterwards', async () => {
-    const vm = buildReportViewModel(reportSourceFromLive(makeFixture().live)!)
-    downloadReportHtml(vm)
-    await waitFor(() => expect(captured.revoked).toEqual(['blob:test/1']), { timeout: 3000 })
-    expect(document.querySelectorAll('a[download]').length).toBe(0)
+  it('removes its anchor and revokes the object url one second later', () => {
+    // Synchronous on purpose: with fake timers no stale timer from another test can fire mid-assertion.
+    vi.useFakeTimers()
+    try {
+      const vm = buildReportViewModel(reportSourceFromLive(makeFixture().live)!)
+      downloadReportHtml(vm)
+      const [anchor] = captured.anchors
+      expect(anchor.isConnected).toBe(true)
+      expect(captured.revoked).toEqual([])
+      vi.advanceTimersByTime(1000)
+      expect(captured.revoked).toEqual(['blob:test/1'])
+      expect(anchor.isConnected).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
