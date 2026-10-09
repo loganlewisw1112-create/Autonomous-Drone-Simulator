@@ -88,13 +88,19 @@ describe('planVehicles: ground units', () => {
     expect(plans[1].variant).toBe('suv')
   })
 
-  it('uses unit.headingDeg when present and the route bearing otherwise', () => {
-    const [withHeading] = planVehicles(input({ groundUnits: [unit({ id: 'g1', routeDistM: 40, headingDeg: 123.4 })] }))
-    expect(withHeading.headingDeg).toBe(123.4)
+  it('uses the route lookahead heading, and the stored headingDeg only when there is no route', () => {
+    const [stored] = planVehicles(input({ groundUnits: [unit({ id: 'g1', routeDistM: 40, headingDeg: 123.4 })] }))
+    expect(stored.headingDeg).toBeCloseTo(0, 1)   // north up the first leg, whatever the sim stored
     const [fromRoute] = planVehicles(input({ groundUnits: [unit({ id: 'g1', routeDistM: 40 })] }))
-    expect(fromRoute.headingDeg).toBeCloseTo(0, 1)   // heading north up the first leg
+    expect(fromRoute.headingDeg).toBeCloseTo(0, 1)
     const [east] = planVehicles(input({ groundUnits: [unit({ id: 'g1', routeDistM: 150 })] }))
     expect(east.headingDeg).toBeCloseTo(90, 1)
+    // 3 m before the corner the 6 m lookahead already leans into it: no snap at the vertex.
+    const [lean] = planVehicles(input({ groundUnits: [unit({ id: 'g1', routeDistM: 97 })] }))
+    expect(lean.headingDeg).toBeGreaterThan(10)
+    expect(lean.headingDeg).toBeLessThan(80)
+    const [noRoute] = planVehicles(input({ groundUnits: [unit({ id: 'g1', headingDeg: 123.4 })], unitRoute: () => null }))
+    expect(noRoute.headingDeg).toBe(123.4)
   })
 
   it('hides a unit strictly inside a hidden range but not at the portal', () => {

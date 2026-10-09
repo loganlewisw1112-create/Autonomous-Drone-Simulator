@@ -65,6 +65,10 @@ const crewOnFoot = (status: string, accessGapM: number | undefined): number | un
  * Every vehicle to draw this frame, ground units first. Ground units draw while not on standby.
  * A recovery team draws only while it is road-routed, enroute or on scene, and has a route;
  * a team without road access, and an extracted one, draw nothing.
+ *
+ * Heading comes from the route's 6 m lookahead (headingAt), not from the sim's stored headingDeg: that field
+ * is the raw bearing of the segment under the vehicle, so a sub-metre kink in an OSM polyline would swing the
+ * art by tens of degrees for a few frames. The stored value is only the fallback when no route is available.
  */
 export function planVehicles(input: PlanInput): VehiclePlan[] {
   const { groundUnits, recoveryTeams, zoom, centerLat } = input
@@ -87,7 +91,7 @@ export function planVehicles(input: PlanInput): VehiclePlan[] {
       status: unit.status,
       lng: pos.lng,
       lat: pos.lat,
-      headingDeg: unit.headingDeg ?? (route ? headingAt(route, s) : 0),
+      headingDeg: route ? headingAt(route, s) : (unit.headingDeg ?? 0),
       lengthPx: size.lengthPx,
       widthPx: size.widthPx,
       hidden: route ? isHidden(route, s) : false,
@@ -115,7 +119,7 @@ export function planVehicles(input: PlanInput): VehiclePlan[] {
       status: team.status,
       lng: pos.lng,
       lat: pos.lat,
-      headingDeg: team.headingDeg ?? headingAt(route, s),
+      headingDeg: headingAt(route, s),
       lengthPx: size.lengthPx,
       widthPx: size.widthPx,
       hidden: isHidden(route, s),
