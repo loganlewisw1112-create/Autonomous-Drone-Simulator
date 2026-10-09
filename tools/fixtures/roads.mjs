@@ -23,7 +23,7 @@
 
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -60,6 +60,8 @@ export const CLASS_SPEED_CAP_MPS = {
   unclassified: 12, residential: 11, living_street: 6, service: 5, track: 6,
 }
 const DROP_SUBCLASSES = new Set(['driveway', 'parking_aisle', 'sidewalk', 'crosswalk', 'cycle_crossing'])
+// Budget-ladder step 5 keeps these only near the start or a heat source; tertiary and higher stay everywhere.
+export const MINOR_ROAD_CLASSES = new Set(['residential', 'living_street', 'unclassified', 'service', 'track'])
 const DROP_FLAGS = new Set(['is_under_construction', 'is_abandoned', 'is_indoor'])
 const VEHICLE_MODES = new Set(['vehicle', 'motor_vehicle', 'car', 'truck'])
 const SKIP_WATER_CLASSES = new Set(['swimming_pool', 'fountain', 'drain'])
@@ -200,7 +202,8 @@ export function edgeSpeedCode(roadClass, limitMps) {
 
 /**
  * Keep drivable road segments. `ctx` carries ladder choices: dropClasses, serviceNearOnly
- * ({points, radiusM}), residentialNearOnly ({points, radiusM}), box (w,s,e,n) and proj.
+ * ({points, radiusM}), minorNearOnly ({points, radiusM}; applies to MINOR_ROAD_CLASSES), box (w,s,e,n)
+ * and proj.
  */
 export function selectSegments(features, ctx) {
   const stats = { input: 0, kept: 0, ambiguousAccessRules: 0, droppedByAccess: 0 }
@@ -233,8 +236,8 @@ export function selectSegments(features, ctx) {
       const near = ctx.serviceNearOnly.points.some((pt) => minDistToPolylineM(pt, geom, ctx.proj) <= ctx.serviceNearOnly.radiusM)
       if (!near) continue
     }
-    if ((p.class === 'residential' || p.class === 'living_street') && ctx.residentialNearOnly) {
-      const near = ctx.residentialNearOnly.points.some((pt) => minDistToPolylineM(pt, geom, ctx.proj) <= ctx.residentialNearOnly.radiusM)
+    if (MINOR_ROAD_CLASSES.has(p.class) && ctx.minorNearOnly) {
+      const near = ctx.minorNearOnly.points.some((pt) => minDistToPolylineM(pt, geom, ctx.proj) <= ctx.minorNearOnly.radiusM)
       if (!near) continue
     }
 
@@ -834,7 +837,7 @@ export function buildNetwork({ segmentFeatures, waterFeatures, buildingCollectio
     proj,
     dropClasses,
     serviceNearOnly: config.serviceNearHeatOnly ? near(300) : null,
-    residentialNearOnly: config.residentialNearOnly
+    minorNearOnly: config.minorNearOnly
       ? { points: [startPosition, ...heatSources], radiusM: 1000 }
       : null,
   }
@@ -924,7 +927,7 @@ export function ladderConfig(step, { startPosition, heatSources }) {
   if (step >= 2) { config.serviceNearHeatOnly = true; config.applied.push('drop service except within 300 m of a heat source') }
   if (step >= 3) { config.simplifyM = 2.0; config.applied.push('simplify at 2.0 m') }
   if (step >= 4) { config.marginM = 750; config.boxMode = 'margin750'; config.applied.push('reduce margin to 750 m') }
-  if (step >= 5) { config.residentialNearOnly = true; config.applied.push('residential/living_street only within 1000 m of start or a heat source') }
+  if (step >= 5) { config.minorNearOnly = true; config.applied.push('residential/living_street/unclassified/service/track only within 1000 m of start or a heat source') }
   if (step >= 6) { config.simplifyM = 3.0; config.applied.push('simplify at 3.0 m') }
   if (step >= 7) { config.boxMode = 'core750'; config.applied.push('restrict box to start + heat sources ±750 m') }
   void startPosition; void heatSources
@@ -1024,7 +1027,10 @@ function countedBytes(name, bytes) {
 /** Gzip bytes of every OTHER counted fixture in the scenario dir (mirrors assert-realism-fixture-budget). */
 async function otherCountedBytes(dirPath, manifestJson) {
   let total = 0
-  for (const name of ['terrain.png', 'terrain.json', 'terrain-refpoints.json', 'buildings.json']) {
+  // Byte accounting for the 500 KB budget only (terrain.png raw via stat, the rest read just to gzip-count); a bbox never comes from terrain.
+  const pngPath = join(dirPath, 'terrain.png')
+  if (existsSync(pngPath)) total += statSync(pngPath).size
+  for (const name of ['terrain.json', 'terrain-refpoints.json', 'buildings.json']) {
     const bytes = await readFile(join(dirPath, name)).catch(() => null)
     if (bytes) total += countedBytes(name, bytes)
   }
@@ -1033,7 +1039,7 @@ async function otherCountedBytes(dirPath, manifestJson) {
 }
 
 /** @param {any} previous @param {{ scenarioId: string, source?: any, roadsRemoved?: boolean }} options */
-function mergeManifest(previous, { scenarioId, source, roadsRemoved }) {
+export function mergeManifest(previous, { scenarioId, source, roadsRemoved }) {
   const kept = (previous?.sources ?? []).filter((s) => s.fixture !== 'roads.json')
   const sources = roadsRemoved ? kept : [...kept, source]
   return {

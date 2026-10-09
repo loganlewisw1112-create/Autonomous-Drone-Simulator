@@ -21,6 +21,7 @@ export declare const OVERTURE_ROADS_ATTRIBUTION: string
 export declare const MAX_SCENARIO_BYTES: number
 export declare const WATER_TOLERANCE_M: number
 export declare const ROAD_CLASSES: string[]
+export declare const MINOR_ROAD_CLASSES: ReadonlySet<string>
 export declare const CLASS_SPEED_CAP_MPS: Record<string, number>
 export declare const FLAG_BRIDGE: number
 export declare const FLAG_HIDDEN: number
@@ -42,9 +43,17 @@ export declare function buildNetwork(input: Record<string, unknown>): {
   gzipBytes: number
   keptEdgeCount: number
   validation: Record<string, unknown>
-  stats: Record<string, unknown>
+  stats: { select: { input: number; kept: number; ambiguousAccessRules: number; droppedByAccess: number } } & Record<string, unknown>
 }
 export declare function ladderConfig(
   step: number,
   ctx: Record<string, unknown>,
-): { applied: string[]; simplifyM: number; dropClasses: string[] }
+): { applied: string[]; simplifyM: number; dropClasses: string[]; minorNearOnly?: boolean }
+export declare function selectSegments(
+  features: unknown[],
+  ctx: Record<string, unknown>,
+): { segments: Array<{ id: string; roadClass: string }>; stats: { input: number; kept: number; ambiguousAccessRules: number; droppedByAccess: number } }
+export declare function mergeManifest(
+  previous: any,
+  options: { scenarioId: string; source?: any; roadsRemoved?: boolean },
+): any

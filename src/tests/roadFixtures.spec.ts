@@ -29,7 +29,10 @@ import {
   FLAG_HIDDEN,
   ladderConfig,
   MAX_SCENARIO_BYTES,
+  mergeManifest,
+  MINOR_ROAD_CLASSES,
   normalizeRoadFlags,
+  selectSegments,
   serializeRoadNetwork,
   stronglyConnectedComponents,
   WATER_TOLERANCE_M,
@@ -128,7 +131,7 @@ describe('road targets and coverage', () => {
     }
   })
 
-  it('does not move area.aoBbox and stays within the per-scenario shipped budget', () => {
+  it('stays within the per-scenario shipped budget (terrain.png raw, every other counted file gzipped)', () => {
     for (const id of committedIds) {
       let total = 0
       for (const name of ['terrain.png', 'terrain.json', 'terrain-refpoints.json', 'buildings.json', 'roads.json', 'manifest.json']) {
@@ -139,6 +142,25 @@ describe('road targets and coverage', () => {
       }
       expect(total, id).toBeLessThanOrEqual(MAX_SCENARIO_BYTES)
     }
+  })
+
+  it('the roads manifest merge leaves area (and area.aoBbox) exactly as the terrain/buildings tools wrote it', () => {
+    const previous = {
+      scenarioId: 'x',
+      generatedAt: '2026-01-01',
+      area: { lat: 1, lng: 2, aoBbox: [-1, -2, 3, 4] },
+      sources: [{ fixture: 'terrain.json' }, { fixture: 'roads.json', roadBbox: [0, 0, 0, 0] }],
+    }
+    const source = { fixture: 'roads.json', roadBbox: [9, 9, 9, 9] }
+    const merged = mergeManifest(previous, { scenarioId: 'x', source })
+    expect(merged.area).toEqual(previous.area)
+    expect(merged.area.aoBbox).toEqual([-1, -2, 3, 4])
+    expect(merged.sources.map((entry: { fixture: string }) => entry.fixture)).toEqual(['roads.json', 'terrain.json'])
+    expect(merged.sources[0].roadBbox).toEqual([9, 9, 9, 9]) // the road box lives in the source entry only
+    expect(mergeManifest(previous, { scenarioId: 'x', roadsRemoved: true }).area).toEqual(previous.area)
+    // no area before means none invented after
+    expect('area' in mergeManifest({ scenarioId: 'y', generatedAt: '2026-01-01', sources: [] }, { scenarioId: 'y', source })).toBe(false)
+    expect('area' in mergeManifest(null, { scenarioId: 'y', source })).toBe(false)
   })
 })
 
@@ -198,11 +220,30 @@ describe('committed road graphs', () => {
     expect(serializeRoadNetwork(encodeRoadNetwork(decoded))).toBe(raw)
   })
 
-  it.each(committedIds)('%s: stays inside the road bbox plus long-segment overshoot and is shipped compactly', (id) => {
+  it.each(committedIds)('%s: is shipped as format v1 at 1e6 grid scale with 8-column edge rows', (id) => {
     const encoded = JSON.parse(readRoads(id)) as EncodedRoadNetwork
     expect(encoded.v).toBe(1)
     expect(encoded.scale).toBe(1e6)
     expect(encoded.edges.every((row) => row.length === 8)).toBe(true)
+  })
+
+  // Features are NOT clipped to the road bbox: a long segment keeps its far connector, so nodes legitimately
+  // sit outside it (measured on the shipped data: up to 9.47 km, on train_wildfire_flank). What does hold is
+  // that the manifest records the very bbox in roadTargets.json and that most nodes lie inside it (measured
+  // minimum 72.5% on hist_oso_sr530_2014, 34-69 node graphs being the extremes).
+  const MIN_NODE_SHARE_INSIDE_ROAD_BBOX = 0.7
+  it.each(committedIds)('%s: manifest road bbox is the roadTargets bbox and most nodes lie inside it', (id) => {
+    const target = targetsFile.targets.find((t) => t.id === id)!
+    expect(target, `${id} has no roadTargets entry`).toBeDefined()
+    const entry = readManifest(id).sources.find((s: { fixture: string }) => s.fixture === 'roads.json')
+    expect(entry.roadBbox).toEqual(target.bbox)
+    expect(entry.downloadBbox).toEqual(target.bbox)
+    const [west, south, east, north] = target.bbox
+    const inside = (p: { lat: number; lng: number }) => p.lng >= west && p.lng <= east && p.lat >= south && p.lat <= north
+    expect(inside(target.startPosition), `${id}: start position outside its own road bbox`).toBe(true)
+    const net = decodeFixture(JSON.parse(readRoads(id)) as EncodedRoadNetwork)
+    const share = net.nodes.filter(inside).length / net.nodes.length
+    expect(share, `${id}: only ${(share * 100).toFixed(1)}% of nodes inside the road bbox`).toBeGreaterThanOrEqual(MIN_NODE_SHARE_INSIDE_ROAD_BBOX)
   })
 })
 
@@ -246,27 +287,56 @@ describe('loader failure handling', () => {
     vi.restoreAllMocks()
   })
 
-  it('a failed chunk import is non-fatal, logged, not cached, and retried on the next call', async () => {
-    const id = committedIds[0]
+  // Every test here imports ONE fresh roadFixtures instance and keeps using it, so a loader that cached
+  // its failure (a stuck pending promise, a poisoned map entry) would fail the second call below.
+  async function freshLoader(id: string, failures: number) {
     const real = JSON.parse(readRoads(id))
     vi.resetModules()
-    let failing = true
+    let calls = 0
     vi.doMock(`@/scenarios/fixtures/${id}/roads.json`, () => {
-      if (failing) throw new Error('chunk failed to load')
+      calls++
+      if (calls <= failures) throw new Error('chunk failed to load')
       return { default: real }
     })
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const mod = await import('@/scenarios/roadFixtures')
+    return { mod, chunkLoads: () => calls }
+  }
+
+  it('prepareScenarioRoads does not cache a failed import: the next call on the same instance retries and stages', async () => {
+    const id = committedIds[0]
+    const { mod, chunkLoads } = await freshLoader(id, 1)
+    await expect(mod.prepareScenarioRoads(id)).rejects.toThrow() // vitest rewraps a throwing mock factory
+    expect(mod.getRoadNetwork({ id })).toBeNull()
+    expect(chunkLoads()).toBe(1)
+    await mod.prepareScenarioRoads(id) // same instance: must hit the chunk again, not replay the failure
+    expect(chunkLoads()).toBe(2)
+    expect(mod.getRoadNetwork({ id })).not.toBeNull()
+  })
+
+  it('a failed chunk import is non-fatal, logged, not cached, and retried on the next call', async () => {
+    const id = committedIds[0]
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { mod, chunkLoads } = await freshLoader(id, 2) // both attempts of the first gate call fail
     await expect(mod.prepareScenarioRoadsNonFatal(id)).resolves.toBeUndefined()
+    expect(chunkLoads()).toBe(2)
     expect(warn).toHaveBeenCalledTimes(1)
     expect(mod.getRoadNetwork({ id })).toBeNull()
 
-    failing = false
-    vi.resetModules()
-    vi.doMock(`@/scenarios/fixtures/${id}/roads.json`, () => ({ default: real }))
-    const mod2 = await import('@/scenarios/roadFixtures')
-    await mod2.prepareScenarioRoadsNonFatal(id)
-    expect(mod2.getRoadNetwork({ id })).not.toBeNull()
+    // second gate call on the SAME instance: the chunk now loads, so a cached failure would keep it null
+    await expect(mod.prepareScenarioRoadsNonFatal(id)).resolves.toBeUndefined()
+    expect(chunkLoads()).toBe(3)
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(mod.getRoadNetwork({ id })).not.toBeNull()
+  })
+
+  it('prepareScenarioRoadsNonFatal retries once inside a single call, so one failed import stages quietly', async () => {
+    const id = committedIds[0]
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { mod, chunkLoads } = await freshLoader(id, 1)
+    await mod.prepareScenarioRoadsNonFatal(id)
+    expect(chunkLoads()).toBe(2)
+    expect(warn).not.toHaveBeenCalled()
+    expect(mod.getRoadNetwork({ id })).not.toBeNull()
   })
 
   it('prepareScenarioRoadsNonFatal never rejects', async () => {
@@ -419,6 +489,59 @@ describe('authoring pipeline', () => {
     const whole = STEP_LNG * Math.cos(LAT0 * Math.PI / 180) * M_PER_DEG
     expect(len).toBeGreaterThan(whole * 0.45)
     expect(len).toBeLessThan(whole * 0.55)
+  })
+})
+
+describe('budget ladder step 5: minor roads only near the start or a heat source', () => {
+  const eastM = (m: number) => LNG0 + m / (Math.cos(LAT0 * Math.PI / 180) * M_PER_DEG)
+  const proj = { x: (lng: number) => (lng - LNG0) * Math.cos(LAT0 * Math.PI / 180) * M_PER_DEG, y: (lat: number) => (lat - LAT0) * M_PER_DEG }
+  const roadAt = (id: string, roadClass: string, fromM: number, toM: number) => ({
+    id,
+    type: 'Feature',
+    geometry: { type: 'LineString', coordinates: [[eastM(fromM), LAT0], [eastM(toM), LAT0]] },
+    properties: {
+      subtype: 'road', class: roadClass,
+      connectors: [{ connector_id: `${id}a`, at: 0 }, { connector_id: `${id}b`, at: 1 }],
+      road_flags: null, access_restrictions: null, speed_limits: null,
+    },
+  })
+  // One segment per class 100 m from the start, one 4 km away, one 8 km away next to a heat source.
+  const classes = ['residential', 'living_street', 'unclassified', 'service', 'track', 'tertiary', 'primary']
+  const features = classes.flatMap((c) => [roadAt(`near-${c}`, c, 100, 300), roadAt(`far-${c}`, c, 4000, 4200), roadAt(`heat-${c}`, c, 8000, 8200)])
+  const heat = { lat: LAT0, lng: eastM(8100) }
+  const select = (minorNearOnly: { points: Array<{ lat: number; lng: number }>; radiusM: number } | null) =>
+    selectSegments(features, { proj, dropClasses: new Set(), minorNearOnly }).segments.map((seg: { id: string }) => seg.id).sort()
+
+  it('names exactly residential, living_street, unclassified, service and track as the minor classes', () => {
+    expect([...MINOR_ROAD_CLASSES].sort()).toEqual(['living_street', 'residential', 'service', 'track', 'unclassified'])
+  })
+
+  it('without the filter every class survives at every distance', () => {
+    expect(select(null)).toHaveLength(classes.length * 3)
+  })
+
+  it('keeps a minor class only within 1000 m of the start or a heat source, and tertiary and higher everywhere', () => {
+    const kept = new Set(select({ points: [startPosition, heat], radiusM: 1000 }))
+    for (const c of classes) {
+      expect(kept.has(`near-${c}`), `near-${c}`).toBe(true)
+      expect(kept.has(`heat-${c}`), `heat-${c}`).toBe(true)
+      expect(kept.has(`far-${c}`), `far-${c}`).toBe(!MINOR_ROAD_CLASSES.has(c))
+    }
+    expect(kept.has('far-tertiary') && kept.has('far-primary')).toBe(true)
+    expect(kept.size).toBe(classes.length * 2 + 2)
+  })
+
+  it('is applied by ladderConfig step 5 (and not before) through buildNetwork', () => {
+    expect(ladderConfig(4, {}).minorNearOnly).toBeUndefined()
+    const step5 = ladderConfig(5, {})
+    expect(step5.minorNearOnly).toBe(true)
+    expect(step5.applied.join(' ')).toMatch(/residential.*living_street.*unclassified.*service.*track/)
+    // The 5 x 4 residential grid spans ~890 m: its two far corner edges (h3_4 and v4_3) sit over 1000 m from the start corner.
+    const kept = (step: number) => run({
+      segmentFeatures: gridFeatures(), config: ladderConfig(step, { startPosition, heatSources: [] }),
+    }).stats.select.kept
+    expect(kept(4)).toBe(40)
+    expect(kept(5)).toBe(38)
   })
 })
 
