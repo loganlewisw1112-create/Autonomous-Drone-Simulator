@@ -174,7 +174,7 @@ function DroneCard({ drone, recoveryTeam }: { drone: DroneState; recoveryTeam?: 
             </div>
           )}
           {recoveryTeam.accessNote && (
-            <div style={{ color: 'var(--text-dim)', fontSize: recoveryTeam.roadRouted === false ? 12 : 8 }}>{recoveryTeam.accessNote}</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: 12, lineHeight: 1.3, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{recoveryTeam.accessNote}</div>
           )}
         </div>
       )}

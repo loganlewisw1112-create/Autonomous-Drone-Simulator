@@ -566,7 +566,7 @@ export function tick() {
       // Dispatch a recovery team from staging
       const teamId = `recovery-${drone.id}-${currentTick}`
       const team = plan.roadRouted
-        ? { ...createRoutedRecoveryTeam(teamId, drone.id, plan.route, drone.position, weatherState), routeFromNode: plan.node }
+        ? { ...createRoutedRecoveryTeam(teamId, drone.id, plan.route, drone.position, weatherState, plan.accessGapM), routeFromNode: plan.node }
         : createUnroutedRecoveryTeam(teamId, drone.id, plan.stagingPos, drone.position, weatherState, plan.accessGapM)
       if (plan.roadRouted) routeMemo.set(teamId, { net: plan.net, sig: plan.sig, route: plan.route })
       useDroneStore.getState().addRecoveryTeam(team)

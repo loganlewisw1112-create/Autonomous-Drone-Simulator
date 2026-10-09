@@ -140,18 +140,25 @@ function recoveryRiskNotes(weather: WeatherVariantState): string | undefined {
   return risks.length > 0 ? risks.join('; ') : undefined
 }
 
-/** A team that drives `route` (staging node to road access point). The caller sets `routeFromNode`. */
+/**
+ * A team that drives `route` (staging node to road access point). The caller sets `routeFromNode`.
+ * `accessGapM` is this aircraft's own walk-in gap (the dispatch plan's); routes are cached per snap
+ * point and shared between targets, so it defaults to the access point to `targetPos` distance, never
+ * to `route.accessGapM`.
+ */
 export function createRoutedRecoveryTeam(
   id: string,
   droneId: string,
   route: RoadRoute,
   targetPos: LatLng,
   weather: WeatherVariantState,
+  accessGapM?: number,
 ): RecoveryTeamState {
   const start = route.points[0]
   const access = route.points[route.points.length - 1]
-  const walk = route.accessGapM > 15
-    ? `Park at the road access point, ${Math.round(route.accessGapM)} m from the aircraft, and walk in to avoid prop-wash damage.`
+  const gap = accessGapM ?? Math.round(haversineDistanceM(access, targetPos) * 10) / 10
+  const walk = gap > 15
+    ? `Park at the road access point, ${Math.round(gap)} m from the aircraft, and walk in to avoid prop-wash damage.`
     : 'Approach on foot for final 50m to avoid prop-wash damage.'
   return {
     id,
@@ -164,7 +171,7 @@ export function createRoutedRecoveryTeam(
     weatherRiskNote: recoveryRiskNotes(weather),
     accessNote: walk,
     routeDistM: 0,
-    accessGapM: route.accessGapM,
+    accessGapM: gap,
     headingDeg: route.lengthM > 0 ? Math.round(headingAtDistance(route, 0) * 10) / 10 : 0,
     roadRouted: true,
   }

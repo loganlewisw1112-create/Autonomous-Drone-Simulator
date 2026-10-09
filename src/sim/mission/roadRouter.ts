@@ -56,7 +56,11 @@ export interface RoadRoute {
   edgeSpeeds: number[]
   /** [startM, endM] spans over tunnel/covered edges. */
   hiddenRanges: Array<[number, number]>
-  /** Straight distance from the snap point to the contact, rounded to 0.1 m. */
+  /**
+   * Straight distance from the snap point to the query point that built this route, rounded to
+   * 0.1 m. Routes are cached per snap point (see computeRoute), so a cached route carries only its
+   * first caller's gap: consumers must use the per-contact gap from the dispatch plan instead.
+   */
   accessGapM: number
   lengthM: number
   /** Corner speed cap at each vertex (endpoints carry the adjacent segment speed and are unused). */

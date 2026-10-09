@@ -5,7 +5,7 @@
  * The loop-level tests (tier 2, recovery, replay) live in roadRoutingLoop.spec.ts so the two
  * heavy halves run in separate workers.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import type { LatLng } from '@/types'
 import type { RoadNetwork, RoadEdge } from '@/scenarios/roadFixtures'
 import { ROAD_CLASS_NAMES, getRoadNetwork, prepareScenarioRoads, scenariosWithRoads } from '@/scenarios/roadFixtures'
@@ -22,8 +22,31 @@ import {
   snapToRoad,
   speedAt,
 } from '@/sim/mission/roadRouter'
-import { contactRoadAccess, routeMemo } from '@/sim/mission/routeMemo'
-import { bearingDeg } from '@/utils/geometry'
+import { contactRoadAccess, planGroundDispatch, planRecoveryDispatch, routeMemo } from '@/sim/mission/routeMemo'
+import { etaAlongRoute, tickRoutedGroundUnit } from '@/sim/mission/groundUnits'
+import {
+  createRoutedRecoveryTeam,
+  createUnroutedRecoveryTeam,
+  recoveryWalkTicks,
+  tickRoutedRecoveryTeam,
+  tickUnroutedRecoveryTeam,
+} from '@/sim/mission/recoveryManager'
+import { getDefaultWeatherState } from '@/sim/weather/weatherEngine'
+import type { GroundUnitState, RecoveryTeamState, WeatherVariantState } from '@/types'
+import { bearingDeg, haversineDistanceM } from '@/utils/geometry'
+
+// Hand-built networks keyed by a made-up scenario id, so the dispatch planners (which look the
+// network up through getRoadNetwork) can be driven on a graph the test controls. Every real
+// scenario id falls through to the committed fixtures.
+const handNets = vi.hoisted(() => new Map<string, unknown>())
+vi.mock('@/scenarios/roadFixtures', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('@/scenarios/roadFixtures')>()
+  return {
+    ...mod,
+    getRoadNetwork: (sc: { id: string; terrainFixtureId?: string }) =>
+      (handNets.get(sc.id) as RoadNetwork | undefined) ?? mod.getRoadNetwork(sc),
+  }
+})
 
 // ── Hand-built graph helpers ────────────────────────────────────────────────────
 const ORIGIN: LatLng = { lat: 30, lng: -97 }
@@ -580,4 +603,279 @@ describe('on-road invariant, tier 1 (pure router, every covered scenario)', () =
       expect(okRoutes).toBeGreaterThan(0)
     }, 120_000)
   }
+})
+
+// ── Per-contact walk-in gap on a shared snap point ──────────────────────────────
+// computeRoute caches by (from node, edge, alongM). Two contacts at different distances from the
+// road can snap to the same point, so they share one cached route object; the walk-in gap belongs
+// to each contact, never to that shared object.
+describe('per-contact access gap when two targets snap to the same road point', () => {
+  // A dead-end road 0 -> 1 along +x. Both targets lie past its end, so both clamp to node 1 and
+  // share (edge, alongM) exactly.
+  const NEAR = ll(1030, 0)    // about 30 m from the road end
+  const FAR = ll(1116.6, 0)   // about 116.6 m from the road end
+  const weather = getDefaultWeatherState(1)
+
+  function setup(tag: string) {
+    const net = buildNet([[0, 0], [1000, 0]], [{ from: 0, to: 1, speed: 15 }])
+    const scenario = { id: `c12b-shared-snap-${tag}`, startPosition: ll(0, 4) }
+    handNets.set(scenario.id, net)
+    routeMemo.clear()
+    return { net, scenario }
+  }
+
+  function expectGap(actual: number | null, expected: number): void {
+    expect(actual).not.toBeNull()
+    expect(Math.abs(actual! - expected)).toBeLessThan(0.15)
+  }
+
+  it('ground dispatch: each contact keeps its own gap whichever is planned first', () => {
+    const { scenario } = setup('ground')
+    const near = planGroundDispatch(scenario, { sourceId: 'hs-near', position: NEAR }, 0, [])
+    const far = planGroundDispatch(scenario, { sourceId: 'hs-far', position: FAR }, 0, [])
+    expect(near.ok && far.ok).toBe(true)
+    if (!near.ok || !far.ok) return
+    expect(far.route).toBe(near.route)             // the premise: one cached route serves both
+    expectGap(near.accessGapM, 30)
+    expectGap(far.accessGapM, 116.6)
+
+    // and the other way round, on a fresh cache
+    routeMemo.clear()
+    const far2 = planGroundDispatch(scenario, { sourceId: 'hs-far2', position: FAR }, 0, [])
+    const near2 = planGroundDispatch(scenario, { sourceId: 'hs-near2', position: NEAR }, 0, [])
+    expect(far2.ok && near2.ok).toBe(true)
+    if (!far2.ok || !near2.ok) return
+    expectGap(far2.accessGapM, 116.6)
+    expectGap(near2.accessGapM, 30)
+  })
+
+  it('recovery dispatch: each aircraft keeps its own walk-in gap, note and walk time', () => {
+    const { scenario } = setup('recovery')
+    const near = planRecoveryDispatch(scenario, NEAR, 0, [])
+    const far = planRecoveryDispatch(scenario, FAR, 1, [])
+    expect(near.roadRouted && far.roadRouted).toBe(true)
+    if (!near.roadRouted || !far.roadRouted) return
+    expect(far.route).toBe(near.route)
+    expectGap(near.accessGapM, 30)
+    expectGap(far.accessGapM, 116.6)
+
+    const nearTeam = createRoutedRecoveryTeam('r-near', 'uav-n', near.route, NEAR, weather, near.accessGapM)
+    const farTeam = createRoutedRecoveryTeam('r-far', 'uav-f', far.route, FAR, weather, far.accessGapM)
+    expectGap(nearTeam.accessGapM ?? null, 30)
+    expectGap(farTeam.accessGapM ?? null, 116.6)
+    expect(nearTeam.accessNote).toContain('30 m')
+    expect(farTeam.accessNote).toContain('117 m')
+    expect(recoveryWalkTicks(farTeam.accessGapM!, weather)).toBeGreaterThan(recoveryWalkTicks(nearTeam.accessGapM!, weather))
+  })
+
+  it('createRoutedRecoveryTeam derives the gap from its own target when none is passed', () => {
+    const { scenario } = setup('default')
+    const near = planRecoveryDispatch(scenario, NEAR, 0, [])
+    expect(near.roadRouted).toBe(true)
+    if (!near.roadRouted) return
+    // the cached route was built for NEAR; a team for FAR on the same route must not inherit 30 m
+    const farTeam = createRoutedRecoveryTeam('r-far', 'uav-f', near.route, FAR, weather)
+    expectGap(farTeam.accessGapM ?? null, 116.6)
+    expect(farTeam.accessNote).toContain('117 m')
+  })
+})
+
+// ── Routed ground units and recovery teams, tick by tick ────────────────────────
+describe('tickRoutedGroundUnit / etaAlongRoute / routed recovery team', () => {
+  const DT = 0.05
+  // 400 m east at 12 m/s, then 300 m north at 10 m/s: one 90 degree corner at (400, 0).
+  const net = buildNet([[0, 0], [400, 0], [400, 300]], [{ from: 0, to: 1, speed: 12 }, { from: 1, to: 2, speed: 10 }])
+  const targetPos = ll(420, 300)   // past the road end: snaps to node 2, 20 m of walk-in
+  const snap = snapToRoad(net, targetPos, { role: 'target' })!
+  const route = routeOnRoads(net, 0, snap)
+  const weatherFor = (m: number): WeatherVariantState => ({ ...getDefaultWeatherState(1), groundUnitEtaMultiplier: m })
+
+  function unitAtStart(): GroundUnitState {
+    return {
+      id: 'gu-test', role: 'intervention', position: { ...route.points[0] }, status: 'enroute',
+      targetThermalId: 'hs-1', routeFromNode: 0, routeDistM: 0, headingDeg: 0, etaSec: 0,
+    }
+  }
+
+  /** Distance from p to the nearest route segment, metres (same equirectangular frame as the router). */
+  function offRouteM(p: LatLng): number {
+    let best = Infinity
+    for (let i = 1; i < route.points.length; i++) {
+      const a = route.points[i - 1]
+      const b = route.points[i]
+      const cos = Math.cos(p.lat * Math.PI / 180)
+      const ax = (a.lng - p.lng) * cos * M_PER_DEG
+      const ay = (a.lat - p.lat) * M_PER_DEG
+      const bx = (b.lng - p.lng) * cos * M_PER_DEG
+      const by = (b.lat - p.lat) * M_PER_DEG
+      const vx = bx - ax
+      const vy = by - ay
+      const len2 = vx * vx + vy * vy
+      const t = len2 === 0 ? 0 : Math.min(1, Math.max(0, -(ax * vx + ay * vy) / len2))
+      best = Math.min(best, Math.hypot(ax + t * vx, ay + t * vy))
+    }
+    return best
+  }
+
+  it('the fixture route is a real two-leg route with a corner', () => {
+    expect(route.status).toBe('ok')
+    expect(route.lengthM).toBeGreaterThan(690)
+    expect(route.lengthM).toBeLessThan(710)
+  })
+
+  for (const m of [1, 1.5]) {
+    it(`tickRoutedGroundUnit advances by speedAt / ${m} * dt, stays on the polyline and arrives exactly at the end`, () => {
+      const weather = weatherFor(m)
+      let unit = unitAtStart()
+      let steps = 0
+      while (unit.status === 'enroute' && steps < 100_000) {
+        const before = unit.routeDistM ?? 0
+        const expected = Math.min(route.lengthM, before + (speedAt(route, before) / m) * DT)
+        unit = tickRoutedGroundUnit(unit, route, weather, DT)
+        steps++
+        expect(unit.routeDistM).toBeCloseTo(expected, 9)
+        expect(unit.position).toEqual(pointAtDistance(route, unit.routeDistM!))
+        expect(offRouteM(unit.position)).toBeLessThanOrEqual(0.5)
+        if (unit.status === 'enroute') expect(unit.etaSec).toBe(etaAlongRoute(route, unit.routeDistM!, weather))
+      }
+      expect(unit.status).toBe('on_scene')
+      expect(unit.routeDistM).toBe(route.lengthM)
+      expect(unit.position).toEqual(route.points[route.points.length - 1])
+      expect(unit.etaSec).toBe(0)
+      // the divide by the multiplier shows up in the step count (m = 1.5 takes about 1.5x as long)
+      expect(steps * DT).toBeGreaterThan((route.nominalTotalSec * m) * 0.97)
+    })
+  }
+
+  it('tickRoutedGroundUnit leaves a unit that is not enroute, or a route with no access, untouched', () => {
+    const weather = weatherFor(1)
+    const done = { ...unitAtStart(), status: 'on_scene' as const }
+    expect(tickRoutedGroundUnit(done, route, weather, DT)).toBe(done)
+    const u = unitAtStart()
+    expect(tickRoutedGroundUnit(u, { ...route, status: 'no_access' }, weather, DT)).toBe(u)
+  })
+
+  it('etaAlongRoute equals the remaining route time times the multiplier, rounded', () => {
+    for (const m of [1, 1.4, 2]) {
+      const weather = weatherFor(m)
+      expect(etaAlongRoute(route, 0, weather)).toBe(Math.round(route.nominalTotalSec * m))
+      let prev = Infinity
+      for (let s = 0; s <= route.lengthM; s += 25) {
+        const eta = etaAlongRoute(route, s, weather)
+        expect(eta).toBe(Math.round(remainingNominalSec(route, s) * m))
+        expect(eta).toBeLessThanOrEqual(prev)
+        prev = eta
+      }
+      expect(etaAlongRoute(route, route.lengthM, weather)).toBe(0)
+    }
+  })
+
+  it('createRoutedRecoveryTeam starts at the staging node with the route ETA', () => {
+    const weather = weatherFor(1.5)
+    const team = createRoutedRecoveryTeam('rt-1', 'uav-1', route, targetPos, weather, 20)
+    expect(team.status).toBe('enroute')
+    expect(team.roadRouted).toBe(true)
+    expect(team.position).toEqual(route.points[0])
+    expect(team.targetPosition).toEqual(targetPos)
+    expect(team.routeDistM).toBe(0)
+    expect(team.etaSec).toBe(Math.round(route.nominalTotalSec * 1.5))
+    expect(team.routePoints).toEqual([route.points[0], route.points[route.points.length - 1]])
+    expect(team.accessGapM).toBe(20)
+    expect(team.accessNote).toContain('20 m')
+    // a gap of 15 m or less keeps the short-approach wording
+    const close = createRoutedRecoveryTeam('rt-2', 'uav-1', route, targetPos, weather, 10)
+    expect(close.accessNote).toBe('Approach on foot for final 50m to avoid prop-wash damage.')
+  })
+
+  for (const m of [1, 2]) {
+    it(`tickRoutedRecoveryTeam drives the route at speedAt / ${m} * dt and parks exactly at the access point`, () => {
+      const weather = weatherFor(m)
+      let team: RecoveryTeamState = createRoutedRecoveryTeam('rt-1', 'uav-1', route, targetPos, weather, 20)
+      let steps = 0
+      while (team.status === 'enroute' && steps < 100_000) {
+        const before = team.routeDistM ?? 0
+        const expected = Math.min(route.lengthM, before + (speedAt(route, before) / m) * DT)
+        team = tickRoutedRecoveryTeam(team, route, weather, DT)
+        steps++
+        expect(team.routeDistM).toBeCloseTo(expected, 9)
+        expect(team.position).toEqual(pointAtDistance(route, team.routeDistM!))
+        expect(offRouteM(team.position)).toBeLessThanOrEqual(0.5)
+        if (team.status === 'enroute') expect(team.etaSec).toBe(Math.round(remainingNominalSec(route, team.routeDistM!) * m))
+      }
+      expect(team.status).toBe('on_scene')
+      expect(team.routeDistM).toBe(route.lengthM)
+      expect(team.position).toEqual(route.points[route.points.length - 1])
+      expect(team.etaSec).toBe(0)
+    })
+  }
+
+  it('tickRoutedRecoveryTeam leaves a team that is not enroute, or a route with no access, untouched', () => {
+    const weather = weatherFor(1)
+    const team = createRoutedRecoveryTeam('rt-1', 'uav-1', route, targetPos, weather, 20)
+    expect(tickRoutedRecoveryTeam(team, { ...route, status: 'no_access' }, weather, DT)).toBe(team)
+    const parked = { ...team, status: 'on_scene' as const }
+    expect(tickRoutedRecoveryTeam(parked, route, weather, DT)).toBe(parked)
+  })
+})
+
+describe('unrouted recovery teams', () => {
+  const DT = 0.05
+  const STAGING = ll(0, 0)
+  const TARGET = ll(0, 200)
+  const weatherFor = (m: number): WeatherVariantState => ({ ...getDefaultWeatherState(1), groundUnitEtaMultiplier: m })
+
+  it('createUnroutedRecoveryTeam freezes at the staging point and words the note by what is known', () => {
+    const weather = weatherFor(1)
+    const none = createUnroutedRecoveryTeam('ut-1', 'uav-1', STAGING, TARGET, weather, null)
+    expect(none.roadRouted).toBe(false)
+    expect(none.status).toBe('enroute')
+    expect(none.position).toEqual(STAGING)
+    expect(none.routePoints).toEqual([STAGING, STAGING])
+    expect(none.routeDistM).toBe(0)
+    expect('accessGapM' in none).toBe(false)
+    expect(none.accessNote).toBe('Recovery team en route (no road data)')
+    const total = Math.max(0, haversineDistanceM(STAGING, TARGET) - 15)
+    expect(none.etaSec).toBe(Math.round(total / 5))
+
+    const far = createUnroutedRecoveryTeam('ut-2', 'uav-1', STAGING, TARGET, weatherFor(2), 1234.5)
+    expect(far.accessGapM).toBe(1234.5)
+    expect(far.accessNote).toBe('Recovery team en route (nearest road 1235 m)')
+    expect(far.etaSec).toBe(Math.round(total / (5 / 2)))
+  })
+
+  for (const m of [1, 2]) {
+    it(`tickUnroutedRecoveryTeam never moves and reaches on_scene after ceil(max(0, d - 15) / (5 / ${m} * dt)) steps`, () => {
+      const weather = weatherFor(m)
+      const total = Math.max(0, haversineDistanceM(STAGING, TARGET) - 15)
+      const stepM = (5 / m) * DT
+      const n = Math.ceil(total / stepM)
+      expect(n).toBeGreaterThan(100)
+      let team = createUnroutedRecoveryTeam('ut-1', 'uav-1', STAGING, TARGET, weather, null)
+      for (let i = 1; i <= n; i++) {
+        team = tickUnroutedRecoveryTeam(team, weather, DT)
+        expect(team.position).toEqual(STAGING)
+        if (i < n) {
+          expect(team.status).toBe('enroute')
+          expect(team.routeDistM!).toBeLessThan(total)
+        }
+      }
+      // n advancing steps put the virtual progress at the leg length; the next step flips the status
+      expect(team.status).toBe('enroute')
+      expect(team.routeDistM!).toBeGreaterThanOrEqual(total)
+      team = tickUnroutedRecoveryTeam(team, weather, DT)
+      expect(team.status).toBe('on_scene')
+      expect(team.etaSec).toBe(0)
+      expect(team.position).toEqual(STAGING)
+      // an arrived team stays put
+      expect(tickUnroutedRecoveryTeam(team, weather, DT)).toBe(team)
+    })
+  }
+
+  it('a team already within 15 m of the aircraft arrives on its first step', () => {
+    const weather = weatherFor(1)
+    const team = createUnroutedRecoveryTeam('ut-3', 'uav-1', STAGING, ll(0, 10), weather, null)
+    const after = tickUnroutedRecoveryTeam(team, weather, DT)
+    expect(after.status).toBe('on_scene')
+    expect(after.position).toEqual(STAGING)
+  })
 })

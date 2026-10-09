@@ -46,7 +46,12 @@ export function routeSig(fromNode: number, target: LatLng): string {
   return `${fromNode}|${target.lat},${target.lng}`
 }
 
-/** Route from a graph node to a target snap, cached per (from, to) pair for the mission. */
+/**
+ * Route from a graph node to a target snap, cached per (from node, edge, position along edge) for
+ * the mission. Two targets at different distances from the road can snap to the same point and so
+ * share one route object: its `accessGapM` is the FIRST caller's walk-in gap. Never read a
+ * per-contact value off a returned route; the dispatch plans below carry each contact's own gap.
+ */
 export function computeRoute(net: RoadNetwork, fromNode: number, target: SnapResult): RoadRoute {
   let byKey = pairCache.get(net)
   if (!byKey) { byKey = new Map(); pairCache.set(net, byKey) }
@@ -209,7 +214,7 @@ export function planGroundDispatch(
     const nodePos = net.nodes[node]
     return {
       ok: true, net, node, stagingPos: { lat: nodePos.lat, lng: nodePos.lng }, route,
-      accessGapM: route.accessGapM, sig: routeSig(node, contact.position),
+      accessGapM: gap, sig: routeSig(node, contact.position),
     }
   }
   return { ok: false, reason: 'unreachable', accessGapM: gap }
@@ -253,7 +258,7 @@ export function planRecoveryDispatch(
     const nodePos = net.nodes[node]
     return {
       roadRouted: true, net, node, stagingPos: { lat: nodePos.lat, lng: nodePos.lng }, route,
-      accessGapM: route.accessGapM, sig: routeSig(node, dronePos),
+      accessGapM: gap, sig: routeSig(node, dronePos),
     }
   }
   return unrouted(gap)
