@@ -79,7 +79,7 @@ describe('report adapters', () => {
     expect(source.vehicleTracks).toBeUndefined()
   })
 
-  it('buildVehicleTracks is the single hook and is a no-op until c12b wires road routes', () => {
+  it('buildVehicleTracks with no units or teams returns no tracks', () => {
     expect(buildVehicleTracks([], [], scenario)).toBeUndefined()
   })
 })
