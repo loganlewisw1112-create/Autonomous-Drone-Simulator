@@ -10,6 +10,7 @@ import {
 } from '@/sim/demo/reportViewModel'
 import { serializeAfterActionPackage } from '@/sim/demo/missionReport'
 import { exportChainAsJsonl } from '@/utils/chainOfCustody'
+import { downloadReportHtml } from '@/components/debrief/reportDownload'
 import { buildFullKML } from '@/utils/kmlExport'
 import { buildGeoJSON } from '@/utils/geojsonExport'
 import '@/styles/report.css'
@@ -103,6 +104,14 @@ function downloadText(filename: string, text: string, type: string) {
 
 function fileStem(scenarioId: string): string {
   return scenarioId.replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 60) || 'mission'
+}
+
+function HtmlDownloadButton({ vm }: { vm: ReportViewModel }) {
+  return (
+    <button type="button" className="aar-btn aar-btn--primary" data-testid="aar-download-html" onClick={() => downloadReportHtml(vm)}>
+      Download report (HTML)
+    </button>
+  )
 }
 
 function ReportBody({ vm }: { vm: ReportViewModel }) {
@@ -201,6 +210,7 @@ export function AfterActionReport({ source, mode = 'dialog', onClose, showExport
       {dialog && (
         <div className="aar-topbar aar-no-print">
           <div className="aar-topbar-actions">
+            <HtmlDownloadButton vm={vm} />
             <button type="button" className="aar-btn aar-btn--primary" onClick={() => window.print()}>PRINT</button>
           </div>
           <button type="button" className="aar-btn" ref={closeRef} onClick={onClose} data-testid="aar-close">CLOSE</button>
@@ -211,6 +221,7 @@ export function AfterActionReport({ source, mode = 'dialog', onClose, showExport
         <div className="aar-exports aar-no-print" data-testid="aar-exports">
           <p>Raw data exports</p>
           <div className="aar-exports-row">
+            {!dialog && <HtmlDownloadButton vm={vm} />}
             <button type="button" className="aar-btn" onClick={() => downloadText(`${stem}-report.json`, serializeAfterActionPackage(source.package), 'application/json')}>JSON</button>
             <button type="button" className="aar-btn" onClick={() => downloadText(`${stem}-evidence.jsonl`, exportChainAsJsonl(source.events), 'application/x-ndjson')}>EVIDENCE</button>
             <button type="button" className="aar-btn" onClick={() => downloadText(`${stem}.kml`, buildFullKML(source.finalDrones, source.positionHistory, source.scenario, source.thermalContacts), 'application/vnd.google-earth.kml+xml')}>KML</button>
