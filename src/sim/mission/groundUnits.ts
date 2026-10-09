@@ -1,5 +1,7 @@
 import { haversineDistanceM } from '@/utils/geometry'
 import type { GroundUnitState, LatLng, WeatherVariantState } from '@/types'
+import { headingAtDistance, pointAtDistance, remainingNominalSec, speedAt } from '@/sim/mission/roadRouter'
+import type { RoadRoute } from '@/sim/mission/roadRouter'
 
 const VEHICLE_SPEED_MPS = 8.0  // ~30 km/h urban response speed
 
@@ -38,4 +40,34 @@ export function computeGroundUnitEta(
   const dist = haversineDistanceM(from, to)
   const speed = VEHICLE_SPEED_MPS / weather.groundUnitEtaMultiplier
   return Math.round(dist / speed)
+}
+
+// ── Road-routed movement (c12b) ─────────────────────────────────────────────────
+// The functions above stay as the retained straight-line model. A unit drawn on the map is driven
+// by the route functions below: progress along the road polyline, never a straight line.
+
+/** Seconds of driving left from `distM`, with the weather divide applied. */
+export function etaAlongRoute(route: RoadRoute, distM: number, weather: WeatherVariantState): number {
+  return Math.round(remainingNominalSec(route, distM) * weather.groundUnitEtaMultiplier)
+}
+
+/**
+ * Advance a routed unit one step: `routeDistM += speedAt / multiplier * dt`, clamped to the route
+ * length; the position is always the point at `routeDistM` on the polyline. Arrives when the route
+ * end is reached (a route of length 0 arrives on the first step).
+ */
+export function tickRoutedGroundUnit(
+  unit: GroundUnitState,
+  route: RoadRoute,
+  weather: WeatherVariantState,
+  dt: number,
+): GroundUnitState {
+  if (unit.status !== 'enroute' || route.status !== 'ok') return unit
+  const from = unit.routeDistM ?? 0
+  const next = Math.min(route.lengthM, from + (speedAt(route, from) / weather.groundUnitEtaMultiplier) * dt)
+  const p = pointAtDistance(route, next)
+  const heading = route.lengthM > 0 ? Math.round(headingAtDistance(route, next) * 10) / 10 : (unit.headingDeg ?? 0)
+  const moved = { ...unit, position: { lat: p.lat, lng: p.lng }, routeDistM: next, headingDeg: heading }
+  if (next >= route.lengthM) return { ...moved, status: 'on_scene', etaSec: 0 }
+  return { ...moved, etaSec: etaAlongRoute(route, next, weather) }
 }

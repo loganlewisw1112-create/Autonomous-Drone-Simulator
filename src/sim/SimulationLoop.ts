@@ -36,8 +36,12 @@ import {
 import { isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import { resolveLostLinkPolicy } from '@/sim/safety/lostLink'
 import { exceedsGustLimit, gustAtTick } from '@/sim/weather/dryden'
-import { tickGroundUnit, computeGroundUnitEta } from '@/sim/mission/groundUnits'
-import { tickRecoveryTeam, tickRecoveryExtraction, needsRecovery, recoveryTransitionState, createRecoveryTeam } from '@/sim/mission/recoveryManager'
+import { computeGroundUnitEta, tickRoutedGroundUnit } from '@/sim/mission/groundUnits'
+import {
+  tickRecoveryExtraction, needsRecovery, recoveryTransitionState, recoveryWalkTicks,
+  createRoutedRecoveryTeam, createUnroutedRecoveryTeam, tickRoutedRecoveryTeam, tickUnroutedRecoveryTeam,
+} from '@/sim/mission/recoveryManager'
+import { collectApproaches, getTeamRoute, getUnitRoute, planRecoveryDispatch, routeMemo } from '@/sim/mission/routeMemo'
 import { bearingDeg, haversineDistanceM } from '@/utils/geometry'
 import type { DroneState, EventType, FullMissionFrame, LatLng, LaunchBayPlan, MissionCompletionReason, ScenarioConfig, Waypoint } from '@/types'
 
@@ -532,6 +536,18 @@ export function tick() {
       const newState = recoveryTransitionState(drone)
       if (newState === drone.missionState) return drone
 
+      // Staging and route. Road-routed when the scenario has a road network and the aircraft is within
+      // a 750 m walk of a road; otherwise an unrouted team (no vehicle drawn, position frozen at the
+      // staging point, legacy completion timing). Team 1 stages at the incident post; later teams at an
+      // entries[] node chosen for bearing separation from every other vehicle.
+      const live = useDroneStore.getState()
+      const plan = planRecoveryDispatch(
+        scenario,
+        drone.position,
+        live.recoveryTeams.length,
+        collectApproaches(live.groundUnits, live.thermalContacts, live.recoveryTeams),
+      )
+
       // Transition drone to recovery state
       useDroneStore.getState().emitEvent({
         eventType: 'drone_recovery_requested',
@@ -542,13 +558,17 @@ export function tick() {
           batteryPct: Math.round(drone.batteryPct),
           position: drone.position,
           commsLostSec: drone.commsLostSec,
+          roadAccess: plan.roadRouted ? 'ok' : 'none',
+          ...(plan.accessGapM !== null ? { accessGapM: plan.accessGapM } : {}),
         },
       })
 
       // Dispatch a recovery team from staging
-      const stagingPos = scenario.startPosition
       const teamId = `recovery-${drone.id}-${currentTick}`
-      const team = createRecoveryTeam(teamId, drone.id, stagingPos, drone.position, weatherState)
+      const team = plan.roadRouted
+        ? { ...createRoutedRecoveryTeam(teamId, drone.id, plan.route, drone.position, weatherState, plan.accessGapM), routeFromNode: plan.node }
+        : createUnroutedRecoveryTeam(teamId, drone.id, plan.stagingPos, drone.position, weatherState, plan.accessGapM)
+      if (plan.roadRouted) routeMemo.set(teamId, { net: plan.net, sig: plan.sig, route: plan.route })
       useDroneStore.getState().addRecoveryTeam(team)
       const { metrics } = useDroneStore.getState()
       useDroneStore.getState().updateMetrics({ recoveryDispatches: metrics.recoveryDispatches + 1 })
@@ -557,6 +577,8 @@ export function tick() {
     })
 
     // ── Tick recovery teams ────────────────────────────────────────────────────
+    // Every vehicle is advanced by exactly one FIXED_DT per step (this loop already runs once per
+    // sub-step), so trajectories are identical at every simSpeed.
     const { recoveryTeams: currentTeams } = useDroneStore.getState()
     for (const team of currentTeams) {
       if (team.status === 'extracted') continue
@@ -565,7 +587,13 @@ export function tick() {
       if (team.status === 'on_scene') {
         const onScene = (onSceneTicksMap.get(team.id) ?? 0) + 1
         onSceneTicksMap.set(team.id, onScene)
-        const updated = tickRecoveryExtraction(team, onScene)
+        // A routed team parks at the road access point and walks in; extraction waits for the walk.
+        const routed = team.roadRouted === true
+        const walkTicks = routed ? recoveryWalkTicks(team.accessGapM ?? 0, weatherState) : 0
+        const extracted = tickRecoveryExtraction(team, onScene, Math.max(100, walkTicks))
+        const updated = routed && extracted.status === 'on_scene'
+          ? { ...extracted, etaSec: Math.round(Math.max(0, walkTicks - onScene) * FIXED_DT) }
+          : extracted
         useDroneStore.getState().updateRecoveryTeam(team.id, updated)
         if (updated.status === 'extracted') {
           // Mark drone as recovered so it's no longer grounded — finalDrones is what
@@ -576,31 +604,47 @@ export function tick() {
             eventType: 'drone_recovered',
             droneId: team.droneId,
             tick: currentTick,
-            payload: { teamId: team.id },
+            payload: { teamId: team.id, ...(team.accessGapM !== undefined ? { accessGapM: team.accessGapM } : {}) },
           })
         }
       } else if (team.status === 'enroute' && drone) {
-        const updated = tickRecoveryTeam(team, weatherState, FIXED_DT * stepsPerFrame)
+        let updated: typeof team
+        if (team.roadRouted === true) {
+          const route = getTeamRoute(team, scenario)
+          if (!route || route.status !== 'ok') continue
+          updated = tickRoutedRecoveryTeam(team, route, weatherState, FIXED_DT)
+        } else {
+          updated = tickUnroutedRecoveryTeam(team, weatherState, FIXED_DT)
+        }
         useDroneStore.getState().updateRecoveryTeam(team.id, updated)
         if (updated.status === 'on_scene') {
+          const walkSec = team.roadRouted === true
+            ? Math.round(recoveryWalkTicks(team.accessGapM ?? 0, weatherState) * FIXED_DT * 100) / 100
+            : undefined
           useDroneStore.getState().emitEvent({
             eventType: 'ground_unit_on_scene',
             droneId: team.droneId,
             tick: currentTick,
-            payload: { teamId: team.id },
+            payload: walkSec !== undefined
+              ? { teamId: team.id, accessGapM: team.accessGapM ?? 0, walkSec }
+              : { teamId: team.id },
           })
         }
       }
     }
 
     // ── Tick ground units toward thermal contacts ──────────────────────────────
+    // Units are driven along their road route only. There is no straight-line path for a vehicle
+    // that is drawn on the map; the legacy tickGroundUnit stays exported for its own tests.
     const { groundUnits, thermalContacts } = useDroneStore.getState()
     for (const unit of groundUnits) {
       if (unit.status !== 'enroute' || !unit.targetThermalId) continue
       const contact = thermalContacts.find((c) => c.sourceId === unit.targetThermalId)
       if (!contact) continue
+      const route = getUnitRoute(unit, scenario, contact.position)
+      if (!route || route.status !== 'ok') continue
       const etaBefore = unit.etaSec ?? 9999
-      const updated = tickGroundUnit(unit, contact.position, weatherState, FIXED_DT * stepsPerFrame)
+      const updated = tickRoutedGroundUnit(unit, route, weatherState, FIXED_DT)
       useDroneStore.getState().updateGroundUnit(unit.id, updated)
       // Emit on_scene event once
       if (updated.status === 'on_scene') {
@@ -612,15 +656,18 @@ export function tick() {
             unitId: unit.id,
             thermalId: unit.targetThermalId,
             etaWas: etaBefore,
+            ...(unit.accessGapM !== undefined ? { accessGapM: unit.accessGapM } : {}),
           },
         })
       }
     }
 
     // ── Compute ETA on first dispatch tick ─────────────────────────────────────
+    // Routed units get their route ETA at dispatch (etaComputed: true); this only covers a unit
+    // placed by other means, and never overwrites a route ETA with a straight-line value.
     const { groundUnits: gus } = useDroneStore.getState()
     for (const unit of gus) {
-      if (unit.status === 'enroute' && !unit.etaComputed && unit.targetThermalId) {
+      if (unit.status === 'enroute' && !unit.etaComputed && unit.routeFromNode === undefined && unit.targetThermalId) {
         const contact = thermalContacts.find((c) => c.sourceId === unit.targetThermalId)
         if (contact) {
           const eta = computeGroundUnitEta(unit.position, contact.position, weatherState)
@@ -1047,6 +1094,7 @@ export function initFleet() {
   if (!scenario) return
   lastPositions.clear()
   onSceneTicksMap.clear()
+  routeMemo.clear()
 
   // Catalog and custom scenarios seed a launch plan from their authored assignments so
   // drones resolve through the physical site pool without a manual bay-planning pass.

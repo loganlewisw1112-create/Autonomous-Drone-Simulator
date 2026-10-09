@@ -446,6 +446,14 @@ export interface GroundUnitState {
   etaSec?: number
   etaComputed?: boolean   // true once the initial route ETA has been calculated
   weatherRiskNote?: string
+  /** Graph node the unit started from; the route is recomputed from this, never stored. */
+  routeFromNode?: number
+  /** Metres driven along the road route. */
+  routeDistM?: number
+  /** Straight distance from the road access point to the contact, metres. */
+  accessGapM?: number
+  /** Compass heading of the vehicle on the road, degrees. */
+  headingDeg?: number
 }
 
 // ─── Recovery Teams ─────────────────────────────────────────────────────────────
@@ -460,6 +468,15 @@ export interface RecoveryTeamState {
   weatherRiskNote?: string
   accessNote?: string
   outcome?: 'recovered' | 'unrecoverable'
+  /** Graph node the team started from (set for road-routed teams). */
+  routeFromNode?: number
+  /** Metres driven along the route (or virtual progress when there is no road access). */
+  routeDistM?: number
+  /** Straight distance from the road access point to the aircraft, metres. */
+  accessGapM?: number
+  headingDeg?: number
+  /** True when the team drives a road route; false when there is no usable road access. */
+  roadRouted?: boolean
 }
 
 // ─── Launch Bay Planning ────────────────────────────────────────────────────────

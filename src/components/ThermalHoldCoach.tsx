@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useDroneStore } from '@/store/droneStore'
 import { THERMAL_HOLD_TIMEOUT_SEC } from '@/sim/mission/MissionManager'
+import { contactRoadAccess } from '@/sim/mission/routeMemo'
 import { haversineDistanceM } from '@/utils/geometry'
 
 /**
- * Whether a ground unit can reach the contact. c4 ships with `'unknown'` everywhere (the road
- * network that answers this arrives with c12b, which passes the real `'ok' | 'none'`).
+ * Whether a ground unit can reach the contact: `'ok' | 'none'` from the road network
+ * (`contactRoadAccess`), or `'unknown'` while there is no contact or scenario to ask about.
  */
 export type CoachRoadAccess = 'ok' | 'none' | 'unknown'
 
@@ -39,12 +40,6 @@ export function coachHint({ roadAccess, secondsLeft }: CoachHintInput): string {
 export function coachHintStatic({ roadAccess, secondsLeft }: CoachHintInput): string {
   return `${coachAction(roadAccess)} The drone resumes on its own in about ${wholeSeconds(secondsLeft)} seconds.`
 }
-
-/**
- * c4 ships with road access unknown everywhere. c12b replaces this one value with the real
- * `'ok' | 'none'`; the visible hint and the screen-reader hint both read it.
- */
-const ROAD_ACCESS: CoachRoadAccess = 'unknown'
 
 /** Where the desktop banner sits relative to the in-map mission feed (see `useFeedAnchor`). */
 interface FeedAnchor { top: number; left: number; width: number }
@@ -113,6 +108,8 @@ interface HoldSnapshot {
   secondsLeft: number | null
   /** Nearest unresolved, undispatched contact to the holding drone (see deviation note below). */
   contactId: string | null
+  /** Road access for that contact; `'unknown'` when there is no contact or no scenario loaded. */
+  roadAccess: CoachRoadAccess
 }
 
 /**
@@ -124,17 +121,22 @@ interface HoldSnapshot {
  */
 function selectHold(s: ReturnType<typeof useDroneStore.getState>): HoldSnapshot {
   const drone = s.drones.find((d) => d.missionState === 'thermal_hold')
-  if (!drone) return { droneId: null, label: '', secondsLeft: null, contactId: null }
+  if (!drone) return { droneId: null, label: '', secondsLeft: null, contactId: null, roadAccess: 'unknown' }
   const start = drone.thermalHoldStartSec ?? s.elapsedSec
   const secondsLeft = Math.max(0, Math.ceil(THERMAL_HOLD_TIMEOUT_SEC - (s.elapsedSec - start)))
   let contactId: string | null = null
+  let target: (typeof s.thermalContacts)[number] | null = null
   let best = Infinity
   for (const c of s.thermalContacts) {
     if (c.resolvedAt !== undefined || c.groundUnitId) continue
     const d = haversineDistanceM(drone.position, c.position)
-    if (d < best) { best = d; contactId = c.sourceId }
+    if (d < best) { best = d; contactId = c.sourceId; target = c }
   }
-  return { droneId: drone.id, label: drone.label, secondsLeft, contactId }
+  // Same answer the contact panel shows (memoised per contact, so cheap on every store update).
+  const roadAccess: CoachRoadAccess = target && s.scenario
+    ? contactRoadAccess(s.scenario, { sourceId: target.sourceId, position: target.position })
+    : 'unknown'
+  return { droneId: drone.id, label: drone.label, secondsLeft, contactId, roadAccess }
 }
 
 interface ThermalHoldCoachProps {
@@ -158,6 +160,7 @@ export function ThermalHoldCoach({ placement = 'desktop' }: ThermalHoldCoachProp
   const holdLabel = useDroneStore((s) => selectHold(s).label)
   const secondsLeft = useDroneStore((s) => selectHold(s).secondsLeft)
   const contactId = useDroneStore((s) => selectHold(s).contactId)
+  const roadAccess = useDroneStore((s) => selectHold(s).roadAccess)
   const missionKey = useDroneStore((s) => s.events[0]?.hash ?? '')
   // Contacts that have been dispatched to or resolved. Rising past the value captured when the
   // banner opened means the operator acted (Dispatch or mark false positive).
@@ -234,10 +237,10 @@ export function ThermalHoldCoach({ placement = 'desktop' }: ThermalHoldCoachProp
               Thermal contact — {holdLabel || 'A drone'} is holding for you.
             </strong>
             <span className="sr-only" data-testid="thermal-hold-coach-hint-static">
-              {coachHintStatic({ roadAccess: ROAD_ACCESS, secondsLeft: open.announcedSec })}
+              {coachHintStatic({ roadAccess, secondsLeft: open.announcedSec })}
             </span>
             <span className="thermal-hold-coach__hint" aria-hidden="true" data-testid="thermal-hold-coach-hint">
-              {coachHint({ roadAccess: ROAD_ACCESS, secondsLeft: secondsLeft ?? 0 })}
+              {coachHint({ roadAccess, secondsLeft: secondsLeft ?? 0 })}
             </span>
           </div>
           <div className="thermal-hold-coach__actions">

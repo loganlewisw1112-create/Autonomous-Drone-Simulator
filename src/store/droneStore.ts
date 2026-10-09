@@ -21,6 +21,9 @@ import { hashEvent } from '@/utils/chainOfCustody'
 import { getActiveOperator } from '@/store/authStore'
 import { assuranceForScenario } from '@/assurance/trainingAssurance'
 import { getDefaultWeatherState, isWeatherForceRtb } from '@/sim/weather/weatherEngine'
+import { collectApproaches, planGroundDispatch, routeMemo } from '@/sim/mission/routeMemo'
+import { headingAtDistance } from '@/sim/mission/roadRouter'
+import { etaAlongRoute } from '@/sim/mission/groundUnits'
 import type {
   AuthorizationStepId,
   DroneState,
@@ -366,6 +369,9 @@ interface DroneStore {
 // ─── Derived getter: thermalDetections for backward compat ────────────────────
 // Export functions use ThermalDetection[] — ThermalContactState extends ThermalDetection so
 // callers can pass thermalContacts directly without a cast.
+
+/** A contact can be worked by at most this many ground units. */
+const MAX_UNITS_PER_CONTACT = 3
 
 export const useDroneStore = create<DroneStore>()(
   devtools(
@@ -726,36 +732,54 @@ export const useDroneStore = create<DroneStore>()(
 
         selectThermal: (id) => set({ selectedThermalId: id }),
 
-        dispatchGroundUnit: (thermalId, role, stagingPos) =>
-          set((s) => {
-            const contact = s.thermalContacts.find((c) => c.sourceId === thermalId)
-            if (!contact || contact.groundUnitId) return {}
-            // Deterministic id: one dispatch per contact (guarded above), keyed by sim tick.
-            const unitId = `gu-${thermalId}-t${s.tick}`
-            const newUnit: GroundUnitState = {
-              id: unitId,
-              role,
-              position: { ...stagingPos },
-              status: 'enroute',
-              targetThermalId: thermalId,
-              weatherRiskNote: s.weatherState.activeHazards.length > 0
-                ? s.weatherState.activeHazards.join(', ')
-                : undefined,
-            }
-            const updatedContacts = s.thermalContacts.map((c) =>
-              c.sourceId === thermalId
-                ? { ...c, action: 'dispatch_unit' as ThermalAction, groundUnitId: unitId }
-                : c
-            )
-            return {
-              thermalContacts: updatedContacts,
-              groundUnits: [...s.groundUnits, newUnit],
-              metrics: {
-                ...s.metrics,
-                groundUnitDispatch: s.metrics.groundUnitDispatch + 1,
-              },
-            }
-          }),
+        // Road-routed dispatch. The caller's staging position is ignored: the unit starts at a graph
+        // node of the scenario's road network (the incident post for the first unit, an entries[] node
+        // for each additional one) and drives the route. No network, or a contact more than 2 km from
+        // any road, refuses with no state change: there is never a straight-line fallback.
+        dispatchGroundUnit: (thermalId, role, _stagingPos) => {
+          const s = get()
+          const contact = s.thermalContacts.find((c) => c.sourceId === thermalId)
+          if (!contact || !s.scenario) return
+          const siblings = s.groundUnits.filter((u) => u.targetThermalId === thermalId)
+          if (siblings.length >= MAX_UNITS_PER_CONTACT) return
+          const approaches = collectApproaches(s.groundUnits, s.thermalContacts, s.recoveryTeams)
+          const plan = planGroundDispatch(s.scenario, contact, siblings.length, approaches)
+          if (!plan.ok) return
+          // First unit keeps the legacy id; additional units are suffixed with the count so far, so two
+          // dispatches in one tick get distinct ids (each reads the previous result from the store).
+          const unitId = siblings.length === 0 ? `gu-${thermalId}-t${s.tick}` : `gu-${thermalId}-t${s.tick}-n${siblings.length}`
+          const newUnit: GroundUnitState = {
+            id: unitId,
+            role,
+            position: plan.stagingPos,
+            status: 'enroute',
+            targetThermalId: thermalId,
+            weatherRiskNote: s.weatherState.activeHazards.length > 0
+              ? s.weatherState.activeHazards.join(', ')
+              : undefined,
+            routeFromNode: plan.node,
+            routeDistM: 0,
+            accessGapM: plan.accessGapM,
+            headingDeg: plan.route.lengthM > 0 ? Math.round(headingAtDistance(plan.route, 0) * 10) / 10 : 0,
+            etaSec: etaAlongRoute(plan.route, 0, s.weatherState),
+            etaComputed: true,
+          }
+          routeMemo.set(unitId, { net: plan.net, sig: plan.sig, route: plan.route })
+          const firstUnit = !contact.groundUnitId
+          set({
+            thermalContacts: firstUnit
+              ? s.thermalContacts.map((c) =>
+                c.sourceId === thermalId
+                  ? { ...c, action: 'dispatch_unit' as ThermalAction, groundUnitId: unitId }
+                  : c)
+              : s.thermalContacts,
+            groundUnits: [...s.groundUnits, newUnit],
+            metrics: {
+              ...s.metrics,
+              groundUnitDispatch: s.metrics.groundUnitDispatch + 1,
+            },
+          })
+        },
 
         resolveThermal: (sourceId, action) =>
           set((s) => ({
@@ -1142,6 +1166,7 @@ export const useDroneStore = create<DroneStore>()(
         },
 
         abortRecovery: (droneId) => {
+          for (const t of get().recoveryTeams) if (t.droneId === droneId) routeMemo.delete(t.id)
           set((s) => ({
             drones: s.drones.map((d) => (d.id === droneId
               ? { ...d, missionState: 'landed', emergencyStartSec: undefined, commsLostSec: 0 }

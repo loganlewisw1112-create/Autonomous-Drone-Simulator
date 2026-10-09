@@ -29,11 +29,37 @@ import { platformForDrone } from '@/sim/drone/platformCatalog'
 import { thermalPayloadStatus } from '@/sim/sensors/ThermalSim'
 import type { LatLng, LaunchRecoverySite, RouteSuggestion, ScenarioConfig } from '@/types'
 import { haversineDistanceM } from '@/utils/geometry'
+import { getRoadNetwork, type RoadNetwork } from '@/scenarios/roadFixtures'
+import { contactAccess, getTeamRoute } from '@/sim/mission/routeMemo'
+import { remainingPolyline } from '@/sim/mission/roadRouter'
 
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 const MAP_FALLBACK_MS = 4500
 
 export type MapMode = 'remote' | 'fallback'
+
+/** Credit shown on the map for the committed Overture building footprints and road graphs. */
+export const OVERTURE_ATTRIBUTION_TEXT = 'Buildings & roads © Overture Maps Foundation'
+export const OVERTURE_ATTRIBUTION_HTML = `<a href="https://overturemaps.org/">${OVERTURE_ATTRIBUTION_TEXT.replace('&', '&amp;')}</a>`
+
+const EMPTY_FEATURES = { type: 'FeatureCollection' as const, features: [] as never[] }
+const roadsGeoJsonCache = new WeakMap<RoadNetwork, GeoJSON.FeatureCollection>()
+
+/** One LineString per road edge, built once per network (the fallback basemap layer's data). */
+export function roadsFeatureCollection(net: RoadNetwork): GeoJSON.FeatureCollection {
+  const hit = roadsGeoJsonCache.get(net)
+  if (hit) return hit
+  const fc: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: net.edges.map((e) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'LineString' as const, coordinates: e.points.map((pt) => [pt.lng, pt.lat]) },
+      properties: { cls: e.roadClass },
+    })),
+  }
+  roadsGeoJsonCache.set(net, fc)
+  return fc
+}
 
 type SuggestedRouteCoordinate = [number, number]
 
@@ -620,7 +646,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         compact: true,
         customAttribution: [
           '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>',
-          '<a href="https://overturemaps.org/">Buildings © Overture Maps Foundation</a>',
+          OVERTURE_ATTRIBUTION_HTML,
           '© OpenFreeMap',
         ],
       },
@@ -628,6 +654,18 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
 
     // Idempotent: adds all permanent overlay sources/layers; safe to call after style switch
     const registerPermanentLayers = () => {
+      // Fallback basemap roads: on the local demo style there are no street tiles, so draw the
+      // scenario's fixture roads faintly. Registered first so every other layer sits above it, and
+      // kept out of LOCAL_DEMO_MAP_STYLE (mapMode.spec asserts that constant). Hidden until the
+      // effect fills it and mapMode === 'fallback'.
+      if (!map.getSource('roads-fallback')) {
+        map.addSource('roads-fallback', { type: 'geojson', data: EMPTY_FEATURES })
+        map.addLayer({
+          id: 'roads-fallback', type: 'line', source: 'roads-fallback',
+          layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#8aa0b8', 'line-width': 1.5, 'line-opacity': 0.45 },
+        })
+      }
       if (!map.getSource('thermal-detections')) {
         map.addSource('thermal-detections', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addLayer({
@@ -729,7 +767,10 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       }
       if (!map.getSource('recovery-routes')) {
         map.addSource('recovery-routes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-        map.addLayer({ id: 'recovery-route-line', type: 'line', source: 'recovery-routes', paint: { 'line-color': '#ff88ff', 'line-width': 2, 'line-opacity': 0.7, 'line-dasharray': [3, 3] } })
+        map.addLayer({ id: 'recovery-route-line', type: 'line', source: 'recovery-routes', paint: { 'line-color': '#ff88ff', 'line-width': 3, 'line-opacity': 0.8 } })
+        // Dotted walk-in from the road access point to the aircraft.
+        map.addSource('recovery-foot', { type: 'geojson', data: EMPTY_FEATURES })
+        map.addLayer({ id: 'recovery-foot-line', type: 'line', source: 'recovery-foot', paint: { 'line-color': '#ff88ff', 'line-width': 2, 'line-opacity': 0.9, 'line-dasharray': [0.5, 2] } })
       }
       if (!map.getSource('thermal-selected')) {
         map.addSource('thermal-selected', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
@@ -1591,24 +1632,52 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       }
     })
 
-    // Recovery team route lines
+    // Recovery team route lines: the remaining routed polyline (never a straight line), plus a dotted
+    // foot line from the road access point to the aircraft. Teams with no road access draw nothing.
     const routeSrc = map.getSource('recovery-routes') as maplibregl.GeoJSONSource | undefined
-    if (routeSrc) {
-      routeSrc.setData({
-        type: 'FeatureCollection',
-        features: recoveryTeams
-          .filter((t) => t.status === 'enroute' || t.status === 'on_scene')
-          .map((t) => ({
-            type: 'Feature' as const,
-            geometry: {
-              type: 'LineString' as const,
-              coordinates: [[t.position.lng, t.position.lat], [t.targetPosition.lng, t.targetPosition.lat]],
-            },
+    const footSrc = map.getSource('recovery-foot') as maplibregl.GeoJSONSource | undefined
+    if (routeSrc && footSrc) {
+      const lines: GeoJSON.Feature[] = []
+      const foot: GeoJSON.Feature[] = []
+      for (const t of recoveryTeams) {
+        if ((t.status !== 'enroute' && t.status !== 'on_scene') || t.roadRouted !== true || !scenario) continue
+        const route = getTeamRoute(t, scenario)
+        if (!route || route.status !== 'ok') continue
+        const ahead = remainingPolyline(route, t.routeDistM ?? 0)
+        if (ahead.length >= 2) {
+          lines.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: ahead.map((pt) => [pt.lng, pt.lat]) },
             properties: { id: t.id },
-          })),
-      })
+          })
+        }
+        const access = route.points[route.points.length - 1]
+        if ((t.accessGapM ?? 0) > 15) {
+          foot.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: [[access.lng, access.lat], [t.targetPosition.lng, t.targetPosition.lat]] },
+            properties: { id: t.id },
+          })
+        }
+      }
+      routeSrc.setData({ type: 'FeatureCollection', features: lines })
+      footSrc.setData({ type: 'FeatureCollection', features: foot })
     }
-  }, [groundUnits, recoveryTeams])
+  }, [groundUnits, recoveryTeams, scenario])
+
+  // Fallback basemap roads. Keyed on [mapReady, scenario.id, mapMode]; the FeatureCollection is
+  // built once per network (see roadsFeatureCollection) and shown only on the local demo style.
+  const scenarioId = scenario?.id
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady || !mapStyleLoadedRef.current) return
+    const src = map.getSource('roads-fallback') as maplibregl.GeoJSONSource | undefined
+    if (!src || !map.getLayer('roads-fallback')) return
+    const live = useDroneStore.getState().scenario
+    const net = live ? getRoadNetwork(live) : null
+    src.setData(net ? roadsFeatureCollection(net) : EMPTY_FEATURES)
+    map.setLayoutProperty('roads-fallback', 'visibility', mapMode === 'fallback' && net ? 'visible' : 'none')
+  }, [mapReady, scenarioId, mapMode])
 
   // A pending "remove waypoint?" prompt must never outlive the edit session or the
   // selection it refers to.
@@ -1986,6 +2055,18 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         const contact = thermalContacts.find((c) => c.sourceId === selectedThermalId)
         if (!contact) return null
         const confPct = Math.round((contact.weatherAdjustedConfidence ?? contact.confidence) * 100)
+        const access = scenario
+          ? contactAccess(scenario, { sourceId: contact.sourceId, position: contact.position })
+          : { access: 'none' as const, gapM: null, reason: "No road data — ground units can't reach this contact" }
+        const contactUnits = groundUnits.filter((u) => u.targetThermalId === contact.sourceId)
+        const canAddUnit = access.access === 'ok' && contactUnits.length > 0 && contactUnits.length < 3
+          && contactUnits.some((u) => u.status === 'enroute' || u.status === 'on_scene')
+        const dispatchUnit = () => {
+          const stagingPos = useDroneStore.getState().scenario?.startPosition
+            ?? useDroneStore.getState().drones[0]?.position
+            ?? { lat: contact.position.lat, lng: contact.position.lng }
+          useDroneStore.getState().dispatchGroundUnit(contact.sourceId, 'intervention', stagingPos)
+        }
         return (
           <div style={{
             position: 'absolute', top: badgeInset.top, right: 56, zIndex: 120,
@@ -2005,26 +2086,48 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
               SIMULATION ONLY — exact heat-source coords for training (not GNSS error)
             </div>
             {contact.groundUnitId && (
-              <div style={{ color: '#ff88ff', marginTop: 4 }}>⛑ Unit dispatched</div>
+              <div style={{ color: '#ff88ff', marginTop: 4 }}>⛑ Unit dispatched{contactUnits.length > 1 ? ` (${contactUnits.length})` : ''}</div>
+            )}
+            {access.access === 'none' && access.reason && (
+              <div style={{ color: 'var(--accent-yellow)', marginTop: 4, fontSize: 12, maxWidth: 240, lineHeight: 1.35 }} title={access.reason} data-testid="no-road-reason">
+                {access.reason}
+              </div>
             )}
             {contact.resolvedAt !== undefined && (
               <div style={{ color: 'var(--accent-green)', marginTop: 2 }}>✓ Resolved T+{contact.resolvedAt}</div>
             )}
             <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
-              <button
-                className={holdActive && !contact.groundUnitId ? 'btn coach-outline' : 'btn'}
-                data-coach="dispatch"
-                style={{ fontSize: 9, padding: '1px 5px' }}
-                onClick={() => {
-                  const stagingPos = useDroneStore.getState().scenario?.startPosition
-                    ?? useDroneStore.getState().drones[0]?.position
-                    ?? { lat: contact.position.lat, lng: contact.position.lng }
-                  useDroneStore.getState().dispatchGroundUnit(contact.sourceId, 'intervention', stagingPos)
-                }}
-                disabled={!!contact.groundUnitId}
-              >
-                ⬆ Dispatch
-              </button>
+              {access.access === 'none' && contactUnits.length === 0 ? (
+                <button
+                  className="btn"
+                  style={{ fontSize: 12, padding: '2px 6px' }}
+                  disabled
+                  title={access.reason ?? undefined}
+                  data-testid="no-road-access"
+                >
+                  No road access
+                </button>
+              ) : (
+                <button
+                  className={holdActive && !contact.groundUnitId ? 'btn coach-outline' : 'btn'}
+                  data-coach="dispatch"
+                  style={{ fontSize: 9, padding: '1px 5px' }}
+                  onClick={dispatchUnit}
+                  disabled={!!contact.groundUnitId}
+                >
+                  ⬆ Dispatch
+                </button>
+              )}
+              {canAddUnit && (
+                <button
+                  className="btn"
+                  style={{ fontSize: 12, padding: '2px 6px' }}
+                  onClick={dispatchUnit}
+                  data-testid="additional-unit"
+                >
+                  + Additional unit
+                </button>
+              )}
               <button
                 className="btn"
                 style={{ fontSize: 9, padding: '1px 5px' }}
