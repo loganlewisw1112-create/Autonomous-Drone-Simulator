@@ -1,11 +1,6 @@
 {
-  "scenarioId": "train_flood_corridor",
-  "area": {
-    "lat": 29.763,
-    "lng": -95.365
-  },
-  "realDate": "2024-05-03",
-  "generatedAt": "2026-09-26",
+  "scenarioId": "train_hazmat_plume",
+  "generatedAt": "2026-10-09",
   "sources": [
     {
       "fixture": "roads.json",
@@ -14,11 +9,11 @@
       "license": "ODbL 1.0",
       "attribution": "© OpenStreetMap contributors, Overture Maps Foundation",
       "retrievedAt": "2026-10-09",
-      "sha256": "24fd4bc167165d43f03fa5a64802c440991bb59e32012cd2c180e316fbf4d72c",
-      "rawBytes": 150491,
-      "gzipBytes": 49674,
+      "sha256": "bbbaa1b66e033e79182677a6f781a52e1abdfbdce568878ff9d1a9a48fed460e",
+      "rawBytes": 64706,
+      "gzipBytes": 20672,
       "input": "overturemaps==1.0.2",
-      "inputSha256": "f8f240c3d072e1992d5d8b0eac6c2ce15319f89a2807e70d3db662af1e501cfb",
+      "inputSha256": "68c201aa6dcce1b256aaaa1e25bc8e11bd372469ba68dfd03349d358de1affc2",
       "dataRelease": "2026-09-23.1",
       "schemaVersion": "v2.0.0 (per docs 2026-10-09; shapes verified against the downloaded file)",
       "stacCollection": "https://stac.overturemaps.org/2026-09-23.1/transportation/segment/collection.json",
@@ -27,53 +22,46 @@
         "version": "1.0.2"
       },
       "roadBbox": [
-        -95.384144,
-        29.748178,
-        -95.345856,
-        29.777822
+        -118.292703,
+        33.717325,
+        -118.249817,
+        33.749975
       ],
       "downloadBbox": [
-        -95.384144,
-        29.748178,
-        -95.345856,
-        29.777822
+        -118.292703,
+        33.717325,
+        -118.249817,
+        33.749975
       ],
       "filters": "subtype=road; classes motorway..track; drops under-construction/abandoned/indoor, driveway/parking_aisle/sidewalk/crosswalk/cycle_crossing; per-direction vehicle access (last matching rule wins); rail, ferry and water are never shipped",
       "budgetSteps": [],
       "stats": {
         "select": {
-          "input": 7731,
-          "kept": 2950,
-          "ambiguousAccessRules": 370,
-          "droppedByAccess": 27
+          "input": 2436,
+          "kept": 1460,
+          "ambiguousAccessRules": 235,
+          "droppedByAccess": 4
         },
         "split": {
           "droppedSelfLoops": 0,
           "droppedShort": 0
         },
-        "contracted": 60,
-        "nodes": 2735,
-        "edges": 3856,
-        "entries": 8
+        "contracted": 44,
+        "nodes": 1224,
+        "edges": 1775,
+        "entries": 4
       },
       "validation": {
         "waterChecked": true,
         "buildingsChecked": false,
         "waterToleranceM": 8,
-        "droppedWaterCrossings": 0,
+        "droppedWaterCrossings": 2,
         "droppedBuildingCrossings": 0,
-        "droppedDisconnectedEdges": 236,
+        "droppedDisconnectedEdges": 1077,
         "remainingWaterCrossings": 0,
-        "ambiguousAccessRules": 370,
-        "startSnapM": 26.2
+        "ambiguousAccessRules": 235,
+        "startSnapM": 624.2
       }
-    },
-    {
-      "fixture": "weather.json",
-      "source": "Open-Meteo ERA5 archive",
-      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=29.763&longitude=-95.365&start_date=2024-05-03&end_date=2024-05-03&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",
-      "license": "CC BY 4.0 — Open-Meteo (ECMWF ERA5 reanalysis)",
-      "sha256": "49778ce20ff269d3db01f1a2ce15f8e8c06c17a43b584e794a7dae9acf0bd736"
     }
   ]
 }

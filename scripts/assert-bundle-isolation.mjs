@@ -67,6 +67,13 @@ const STARTUP_CHUNK_BUDGET_BYTES = 600 * 1024
 // all named buildings.json, so every emitted chunk shares the `buildings-` prefix.
 const BUILDING_CHUNK_PREFIX = 'buildings-'
 const BUILDING_CHUNK_COUNT = 5
+// c12a: each committed road graph (src/scenarios/fixtures/<id>/roads.json) is likewise a lazy async
+// chunk. Rollup names it after the file, so the prefix is `roads-`, which cannot collide with
+// `buildings-`. The expected count is the number of committed roads.json files, read from disk, so
+// parking or adding a scenario's roads can never silently diverge from what the build emits.
+const ROAD_CHUNK_PREFIX = 'roads-'
+const ROAD_CHUNK_COUNT = readdirSync(join(root, 'src', 'scenarios', 'fixtures'))
+  .filter((id) => existsSync(join(root, 'src', 'scenarios', 'fixtures', id, 'roads.json'))).length
 
 function build(mode, appTarget) {
   rmSync(dist, { recursive: true, force: true })
@@ -178,6 +185,22 @@ function assertStartupBudget(target, files, failures) {
       + preloadedBuildings.map((chunk) => chunk.name).join(', '),
     )
   }
+
+  // c12a: road graphs must stay lazy too, one chunk per committed fixture.
+  const roadChunks = files.filter((f) => f.name.startsWith(ROAD_CHUNK_PREFIX))
+  if (roadChunks.length !== ROAD_CHUNK_COUNT) {
+    failures.push(
+      `${target} build emitted ${roadChunks.length} road fixture chunks, expected `
+      + `${ROAD_CHUNK_COUNT} (one per committed roads.json): ${roadChunks.map((f) => f.name).join(', ') || 'none'}`,
+    )
+  }
+  const preloadedRoads = startup.filter((chunk) => chunk.name.startsWith(ROAD_CHUNK_PREFIX))
+  if (preloadedRoads.length > 0) {
+    failures.push(
+      `${target} startup path statically reaches road fixtures: `
+      + preloadedRoads.map((chunk) => chunk.name).join(', '),
+    )
+  }
   return { totalBytes, chunkCount: startup.length }
 }
 
@@ -252,5 +275,5 @@ console.log(`  terrain parity : ${shippingTerrain.length} canonical packages in 
 console.log(
   '  startup budget : '
   + `default ${shippingStartup.totalBytes}/${STARTUP_BUDGET_BYTES} bytes (${shippingStartup.chunkCount} chunks), `
-  + `mobile ${mobileStartup.totalBytes}, classroom ${classroomStartup.totalBytes}; building fixtures lazy`,
+  + `mobile ${mobileStartup.totalBytes}, classroom ${classroomStartup.totalBytes}; building and road fixtures lazy`,
 )
