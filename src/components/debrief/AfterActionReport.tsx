@@ -131,7 +131,7 @@ function ReportBody({ vm }: { vm: ReportViewModel }) {
               <li key={row.id}>
                 <span className="aar-time">{row.timeLabel}</span>
                 <span>{row.label}</span>
-                {row.count > 1 ? <span className="aar-count">×{row.count}</span> : <span />}
+                {row.count > 1 && <span className="aar-count">×{row.count}</span>}
               </li>
             ))}
           </ol>

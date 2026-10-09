@@ -98,8 +98,11 @@
 }
 
 @media print {
+  /* The app shell pins html, body and #root to 100% height with overflow hidden (tactical.css);
+     release that so a report longer than one page paginates instead of clipping at page 1. */
+  html, body, #root { height: auto !important; min-height: 0 !important; overflow: visible !important; }
   body:has(.aar-overlay) > *:not(.aar-overlay) { display: none !important; }
-  .aar-overlay { position: static; display: block; padding: 0; background: #fff; overflow: visible; }
+  .aar-overlay { position: static !important; inset: auto; display: block; height: auto; padding: 0; background: #fff; overflow: visible !important; }
   .aar-overlay .aar-doc, .aar-doc { width: 100%; max-height: none; overflow: visible; border: 0; background: #fff; color: #000; }
   .aar-no-print { display: none !important; }
   .aar-doc * { color: #000 !important; border-color: #999 !important; }
