@@ -267,6 +267,7 @@ export function MobileShell() {
               <button onClick={() => openAccount('settings')} disabled={!activeAccount}>SETTINGS</button>
             </div>
             <MapToolsSheet onRecenter={requestRecenter} />
+            <BuildInfoFooter inline />
           </SurfacePane>
         </Drawer>
       </div>
@@ -284,7 +285,6 @@ export function MobileShell() {
 
       {loadingDone && <WelcomeOverlay />}
       {!loadingDone && <LoadingScreen mapReady={mapReady} onComplete={() => setLoadingDone(true)} />}
-      <BuildInfoFooter />
     </div>
   )
 }

@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useDeviceMode } from '@/hooks/useDeviceMode'
+import { APP_TARGET } from '@/platform/appTarget'
 import { getClassroomDesktopBridge, type DesktopEntitlementState } from '@/licensing/desktopBridge'
 import { EntitlementActivation } from '@/components/licensing/EntitlementActivation'
 import {
@@ -63,15 +65,47 @@ function entitlementWarningLabel(state: DesktopEntitlementState): string {
   return '24-HOUR WARNING · '
 }
 
-function PolicyBanner({ phase, children }: { phase: UsagePhase; children: React.ReactNode }) {
+/** CSS custom property on <html>: px from the viewport top to the bottom of the policy banner. */
+export const POLICY_BANNER_HEIGHT_VAR = '--policy-banner-h'
+
+/**
+ * Phone chrome only: the mobile shell sits under the banner (`.mobile-shell { top: var(--policy-banner-h, 0px) }`),
+ * so the banner is measured and published instead of covering the topbar. Desktop and classroom never publish it,
+ * and the variable's 0px default keeps their layout unchanged.
+ */
+function usePublishBannerOffset(ref: React.RefObject<HTMLDivElement | null>, enabled: boolean) {
+  useEffect(() => {
+    const el = ref.current
+    if (!enabled || !el) return
+    const root = document.documentElement
+    const publish = () => root.style.setProperty(POLICY_BANNER_HEIGHT_VAR, `${Math.ceil(el.getBoundingClientRect().bottom)}px`)
+    publish()
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(publish) : null
+    observer?.observe(el)
+    window.addEventListener('resize', publish)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', publish)
+      root.style.removeProperty(POLICY_BANNER_HEIGHT_VAR)
+    }
+  }, [ref, enabled])
+}
+
+function PolicyBanner({ phase, interactive = false, children }: { phase: UsagePhase; interactive?: boolean; children: React.ReactNode }) {
+  const deviceMode = useDeviceMode()
+  const phone = APP_TARGET !== 'classroom' && deviceMode !== 'desktop'
+  const ref = useRef<HTMLDivElement>(null)
+  usePublishBannerOffset(ref, phone)
   return (
-    <div role={phase === 'active' ? 'status' : 'alert'} style={{
+    <div ref={ref} role={phase === 'active' ? 'status' : 'alert'} style={{
       position: 'fixed', zIndex: 100000, top: 6, left: '50%', transform: 'translateX(-50%)',
       padding: '5px 10px', borderRadius: 4, font: '11px ui-monospace, monospace',
       background: phase === 'active' ? '#102a34ee' : '#431b1bee', color: '#fff',
       border: `1px solid ${phase === 'active' ? '#2b8296' : '#d65c5c'}`,
       maxWidth: 'min(92vw, 760px)', textAlign: 'center',
-    }} data-testid="usage-policy-banner">
+      // Phone only, and only for a banner with no links or buttons: it must not swallow taps on the topbar.
+      ...(phone && !interactive ? { pointerEvents: 'none' as const } : {}),
+    }} data-testid="usage-policy-banner" data-phone={phone ? 'true' : undefined}>
       {children}
     </div>
   )
@@ -212,7 +246,7 @@ function DesktopEntitlementGate({ children }: { children: React.ReactNode }) {
 
   return (
     <UsagePolicyContext.Provider value={value}>
-      <PolicyBanner phase={phase}>
+      <PolicyBanner phase={phase} interactive>
         <span>
           {entitlement.status === 'active' || entitlement.status === 'warning'
             ? `${entitlementWarningLabel(entitlement)}${entitlement.tier === 'agency_classroom_pilot' ? 'AGENCY CLASSROOM PILOT' : 'SELECTED EVALUATOR DEMO'} · ${formatRemaining(entitlement.remainingMs)} · up to ${entitlement.maxStudentsPerClass} students`
