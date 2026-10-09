@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ThermalHoldCoach, coachHint } from '@/components/ThermalHoldCoach'
+import { ThermalHoldCoach, coachHint, coachHintStatic } from '@/components/ThermalHoldCoach'
+import { ALL_SCENARIOS } from '@/scenarios/catalog'
+import { prepareScenarioRoads } from '@/scenarios/roadFixtures'
 import { useDroneStore } from '@/store/droneStore'
-import type { DroneState, MissionEvent, ThermalContactState } from '@/types'
+import type { DroneState, MissionEvent, ScenarioConfig, ThermalContactState } from '@/types'
 
 const HOLD_START_SEC = 100
+const DEMO_BASIC = ALL_SCENARIOS.find((sc) => sc.id === 'demo_basic')! as ScenarioConfig
 
 function drone(patch: Partial<DroneState> = {}): DroneState {
   return {
@@ -54,6 +57,7 @@ function seed(over: Record<string, unknown> = {}) {
     drones: [drone()],
     thermalContacts: [contact('far', 0.005), contact('near', 0.0005)],
     groundUnits: [],
+    scenario: null,
     selectedThermalId: null,
     elapsedSec: HOLD_START_SEC + 5,
     events: [firstEvent('mission-A')],
@@ -152,10 +156,20 @@ describe('ThermalHoldCoach', () => {
     expect(screen.getByTestId('thermal-hold-coach-hint')).toHaveTextContent('about 18s')
   })
 
-  it('goes away when the operator dispatches a ground unit', () => {
+  it('goes away when the operator dispatches a ground unit', async () => {
+    // Dispatch drives the road network (c12b) and is refused without one, so hold over a scenario
+    // whose roads are staged and put the contacts where a unit can reach them.
+    await prepareScenarioRoads(DEMO_BASIC.id)
+    const hs = DEMO_BASIC.heatSources[0].position
+    seed({
+      scenario: DEMO_BASIC,
+      drones: [drone({ position: hs })],
+      thermalContacts: [contact('far', 0.005), { ...contact('near', 0), position: hs }],
+    })
     render(<ThermalHoldCoach />)
     expect(banner()).not.toBeNull()
     act(() => { useDroneStore.getState().dispatchGroundUnit('near', 'intervention', { lat: 37.7, lng: -122.4 }) })
+    expect(useDroneStore.getState().groundUnits).toHaveLength(1)
     expect(banner()).toBeNull()
   })
 
@@ -363,5 +377,92 @@ describe('coachHint', () => {
   it('rounds partial seconds up and never goes negative', () => {
     expect(coachHint({ roadAccess: 'unknown', secondsLeft: 17.2 })).toContain('about 18s')
     expect(coachHint({ roadAccess: 'unknown', secondsLeft: -4 })).toContain('about 0s')
+  })
+})
+
+describe('coachHint with no road access', () => {
+  it("'none' drops the Dispatch wording and says to mark it or let the drone resume", () => {
+    const text = coachHint({ roadAccess: 'none', secondsLeft: 18 })
+    expect(text).toContain('No road access — mark it or let the drone resume.')
+    expect(text).not.toContain('Dispatch a ground unit')
+    expect(text).toContain('about 18s')
+  })
+
+  it("'none' reads the same way for a screen reader, with the seconds spelled out", () => {
+    const text = coachHintStatic({ roadAccess: 'none', secondsLeft: 25 })
+    expect(text).toContain('No road access — mark it or let the drone resume.')
+    expect(text).not.toContain('Dispatch a ground unit')
+    expect(text).toContain('about 25 seconds')
+  })
+})
+
+describe('ThermalHoldCoach road access', () => {
+  const base = DEMO_BASIC
+  const HINT_NONE = 'No road access — mark it or let the drone resume.'
+  const HINT_DISPATCH = 'Dispatch a ground unit or mark it a false positive.'
+
+  /** A drone holding right on top of one contact, in the given scenario. */
+  function holdOver(scenario: ScenarioConfig | null, position: { lat: number; lng: number }) {
+    seed({
+      scenario,
+      drones: [drone({ position })],
+      thermalContacts: [{ ...contact('only', 0), position }],
+    })
+  }
+
+  it('says there is no road access for a contact in a scenario with no road data (custom scenario)', () => {
+    const custom = { ...base, id: 'custom_no_roads', terrainFixtureId: undefined } as ScenarioConfig
+    holdOver(custom, base.heatSources[0].position)
+    render(<ThermalHoldCoach />)
+    expect(screen.getByTestId('thermal-hold-coach-hint')).toHaveTextContent(HINT_NONE)
+    expect(screen.getByTestId('thermal-hold-coach-hint')).not.toHaveTextContent('Dispatch a ground unit')
+    expect(screen.getByTestId('thermal-hold-coach-hint-static')).toHaveTextContent(HINT_NONE)
+    expect(screen.getByRole('status')).toHaveTextContent('Thermal contact — UAV-1 is holding for you.')
+    // Marking it and "Show thermal view" are still on offer.
+    expect(screen.getByRole('button', { name: 'Show thermal view' })).toBeInTheDocument()
+  })
+
+  it('says there is no road access for a contact more than 2 km from any road on a staged network', async () => {
+    await prepareScenarioRoads('demo_basic')
+    const hs = base.heatSources[0].position
+    holdOver(base, { lat: hs.lat + 0.3, lng: hs.lng }) // roughly 33 km north of the fixture
+    render(<ThermalHoldCoach />)
+    expect(screen.getByTestId('thermal-hold-coach-hint')).toHaveTextContent(HINT_NONE)
+    expect(screen.getByTestId('thermal-hold-coach-hint-static')).toHaveTextContent(HINT_NONE)
+  })
+
+  it('keeps the Dispatch wording for a contact a ground unit can reach by road', async () => {
+    await prepareScenarioRoads('demo_basic')
+    holdOver(base, base.heatSources[0].position)
+    render(<ThermalHoldCoach />)
+    expect(screen.getByTestId('thermal-hold-coach-hint')).toHaveTextContent(HINT_DISPATCH)
+    expect(screen.getByTestId('thermal-hold-coach-hint-static')).toHaveTextContent(HINT_DISPATCH)
+    expect(screen.getByTestId('thermal-hold-coach-hint')).not.toHaveTextContent('No road access')
+  })
+
+  it('keeps the Dispatch wording while no scenario is loaded (nothing to ask)', () => {
+    holdOver(null, base.heatSources[0].position)
+    render(<ThermalHoldCoach />)
+    expect(screen.getByTestId('thermal-hold-coach-hint')).toHaveTextContent(HINT_DISPATCH)
+  })
+
+  it('answers for the contact it targets: the nearest unresolved one, not a farther unreachable one', async () => {
+    await prepareScenarioRoads('demo_basic')
+    const hs = base.heatSources[0].position
+    const nearReachable = hs
+    const farUnreachable = { lat: hs.lat + 0.3, lng: hs.lng }
+    seed({
+      scenario: base,
+      drones: [drone({ position: nearReachable })],
+      thermalContacts: [
+        { ...contact('far', 0), position: farUnreachable },
+        { ...contact('near', 0), position: nearReachable },
+      ],
+    })
+    render(<ThermalHoldCoach />)
+    expect(screen.getByTestId('thermal-hold-coach-hint')).toHaveTextContent(HINT_DISPATCH)
+    // The drone moves to the unreachable one: the banner follows its target.
+    act(() => { useDroneStore.setState({ drones: [drone({ position: farUnreachable })] }) })
+    expect(screen.getByTestId('thermal-hold-coach-hint')).toHaveTextContent(HINT_NONE)
   })
 })

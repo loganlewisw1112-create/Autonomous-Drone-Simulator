@@ -94,4 +94,21 @@ describe('contact panel', () => {
       expect(Number(sizes[sizes.length - 1][1]), id).toBeGreaterThanOrEqual(12)
     }
   })
+
+  it('outlines only the first-unit Dispatch button (c4 coach), never No road access or + Additional unit', () => {
+    const buttonAround = (testId: string) => {
+      const at = source.indexOf(`data-testid="${testId}"`)
+      return source.slice(source.lastIndexOf('<button', at), source.indexOf('</button>', at))
+    }
+    for (const id of ['no-road-access', 'additional-unit']) {
+      const block = buttonAround(id)
+      expect(block, id).not.toContain('coach-outline')
+      expect(block, id).not.toContain('data-coach')
+    }
+    expect(source.match(/data-coach="dispatch"/g)).toHaveLength(1)
+    expect(source.match(/coach-outline/g)).toHaveLength(1)
+    // The single outlined Dispatch button sits in the branch that replaces No road access.
+    expect(source.indexOf('coach-outline')).toBeGreaterThan(source.indexOf('data-testid="no-road-access"'))
+    expect(source).toContain("className={holdActive && !contact.groundUnitId ? 'btn coach-outline' : 'btn'}")
+  })
 })
