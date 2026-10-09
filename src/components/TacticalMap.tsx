@@ -18,6 +18,10 @@ import { buildAirspaceReservationFeatures, buildExternalTrafficFeatures, buildUt
 import { useDeviceMode, type DeviceMode } from '@/hooks/useDeviceMode'
 import { buildAppendedWaypoint, canAppend, routeWithoutWaypoint } from '@/components/mapRouteEditing'
 import { buildTacticalSummary } from '@/components/tacticalMapSummary'
+import {
+  THERMAL_HOLD_PULSE_PERIOD_MS, THERMAL_HOLD_PULSE_SOURCE, paintThermalHoldPulse,
+  registerThermalHoldRingLayers, setThermalHoldRingMode,
+} from '@/components/thermalHoldRing'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/components/designer/designerValidation'
 import { type SiteRepositionResult } from '@/sim/mission/siteReposition'
 import { isMobileLaunchSite, resolveLaunchSite } from '@/sim/mission/siteResolver'
@@ -740,16 +744,10 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         map.on('mouseenter', 'thermal-circle', () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', 'thermal-circle', () => { map.getCanvas().style.cursor = '' })
       }
-      // c4: attention ring on the contact a held drone is waiting on. Radius/opacity are driven by
-      // requestAnimationFrame in the thermal-hold-pulse effect (static outline under reduced motion).
-      if (!map.getSource('thermal-hold-pulse')) {
-        map.addSource('thermal-hold-pulse', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-        map.addLayer({
-          id: 'thermal-hold-pulse-ring', type: 'circle', source: 'thermal-hold-pulse',
-          layout: { visibility: 'none' },
-          paint: { 'circle-radius': 20, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 4, 'circle-stroke-color': '#ffd24a', 'circle-stroke-opacity': 1 },
-        })
-      }
+      // c4: attention ring on the contact a held drone is waiting on (near-white ring over a dark outline, plus a
+      // static inner ring; see thermalHoldRing.ts). Radius/opacity are driven by requestAnimationFrame in the
+      // thermal-hold-pulse effect (one static ring under reduced motion). Idempotent per layer.
+      registerThermalHoldRingLayers(map)
     }
 
     // Called exactly once regardless of whether remote or fallback style becomes ready
@@ -1371,7 +1369,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapStyleLoadedRef.current) return
-    const src = map.getSource('thermal-hold-pulse') as maplibregl.GeoJSONSource | undefined
+    const src = map.getSource(THERMAL_HOLD_PULSE_SOURCE) as maplibregl.GeoJSONSource | undefined
     if (!src || !map.getLayer('thermal-hold-pulse-ring')) return
     const show = coachRingLat !== null && coachRingLng !== null && ui.sensorMode === 'ir' && ui.layerVisibility.thermal
     src.setData(show
@@ -1380,27 +1378,21 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
           features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [coachRingLng, coachRingLat] }, properties: {} }],
         }
       : { type: 'FeatureCollection', features: [] })
-    map.setLayoutProperty('thermal-hold-pulse-ring', 'visibility', show ? 'visible' : 'none')
-    if (!show) return
+    if (!show) { setThermalHoldRingMode(map, 'hidden'); return }
 
     const reducedMotion = typeof window.matchMedia === 'function'
       && window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (reducedMotion) {
-      map.setPaintProperty('thermal-hold-pulse-ring', 'circle-radius', 20)
-      map.setPaintProperty('thermal-hold-pulse-ring', 'circle-stroke-width', 5)
-      map.setPaintProperty('thermal-hold-pulse-ring', 'circle-stroke-opacity', 1)
+      setThermalHoldRingMode(map, 'static')
       return
     }
-    const PERIOD_MS = 1600
+    setThermalHoldRingMode(map, 'pulse')
     const startedAt = performance.now()
     let raf = 0
     const frame = (now: number) => {
       const live = mapRef.current
       if (!live || !live.getLayer('thermal-hold-pulse-ring')) return
-      const phase = ((now - startedAt) % PERIOD_MS) / PERIOD_MS
-      live.setPaintProperty('thermal-hold-pulse-ring', 'circle-radius', 14 + phase * 30)
-      live.setPaintProperty('thermal-hold-pulse-ring', 'circle-stroke-width', 4)
-      live.setPaintProperty('thermal-hold-pulse-ring', 'circle-stroke-opacity', 1 - phase)
+      paintThermalHoldPulse(live, ((now - startedAt) % THERMAL_HOLD_PULSE_PERIOD_MS) / THERMAL_HOLD_PULSE_PERIOD_MS)
       raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
