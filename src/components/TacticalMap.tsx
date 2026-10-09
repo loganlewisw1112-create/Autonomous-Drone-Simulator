@@ -27,11 +27,28 @@ import { type SiteRepositionResult } from '@/sim/mission/siteReposition'
 import { isMobileLaunchSite, resolveLaunchSite } from '@/sim/mission/siteResolver'
 import { platformForDrone } from '@/sim/drone/platformCatalog'
 import { thermalPayloadStatus } from '@/sim/sensors/ThermalSim'
-import type { LatLng, LaunchRecoverySite, RouteSuggestion, ScenarioConfig } from '@/types'
+import type { GroundUnitState, LatLng, LaunchRecoverySite, RecoveryTeamState, RouteSuggestion, ScenarioConfig } from '@/types'
 import { haversineDistanceM } from '@/utils/geometry'
 import { getRoadNetwork, type RoadNetwork } from '@/scenarios/roadFixtures'
-import { contactAccess, getTeamRoute } from '@/sim/mission/routeMemo'
-import { remainingPolyline } from '@/sim/mission/roadRouter'
+import { contactAccess, getTeamRoute, getUnitRoute } from '@/sim/mission/routeMemo'
+import {
+  createRecoveryChipElement,
+  createVehicleMarkerElement,
+  createVehiclePopupContent,
+  popupStatusLine,
+  updateVehicleMarkerElement,
+  type VehiclePopupContent,
+  type VehiclePopupModel,
+} from '@/components/vehicleMarkers'
+import {
+  groundWalkFeatures,
+  planVehicles,
+  recoveryWalkFeatures,
+  remainingRouteFeatures,
+  unitContactPosition,
+  type LineFeature,
+  type VehiclePlan,
+} from '@/components/vehicleMarkerPlan'
 
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 const MAP_FALLBACK_MS = 4500
@@ -59,6 +76,146 @@ export function roadsFeatureCollection(net: RoadNetwork): GeoJSON.FeatureCollect
   }
   roadsGeoJsonCache.set(net, fc)
   return fc
+}
+
+// ── Vehicle avatars (ground units and drone-recovery teams) ───────────────────────
+// DOM markers above the canvas: MapLibre owns each wrapper's position and transform, so all we
+// ever call is setLngLat / setRotation / setOffset. The plan (vehicleMarkerPlan) says what to
+// draw; these two functions only diff it against the marker refs and write the line sources.
+
+export interface VehicleEntry {
+  marker: maplibregl.Marker
+  popup: maplibregl.Popup
+  content: VehiclePopupContent
+  model: VehiclePopupModel
+  popupOffsetPx: number
+}
+
+const popupOffsetFor = (lengthPx: number) => Math.round(Math.max(16, lengthPx / 2 + 6))
+
+function addVehicleMarker(map: maplibregl.Map, plan: VehiclePlan): VehicleEntry {
+  const element = createVehicleMarkerElement({
+    id: plan.id, kind: plan.kind, variant: plan.variant, role: plan.role, status: plan.status,
+    headingDeg: plan.headingDeg, lng: plan.lng, lat: plan.lat,
+    lengthPx: plan.lengthPx, widthPx: plan.widthPx, hidden: plan.hidden,
+  })
+  const content = createVehiclePopupContent(plan.popup)
+  const popupOffsetPx = popupOffsetFor(plan.lengthPx)
+  const popup = new maplibregl.Popup({ offset: popupOffsetPx }).setDOMContent(content.node)
+  const entry: VehicleEntry = {
+    marker: new maplibregl.Marker({ element, rotationAlignment: 'map', pitchAlignment: 'map', rotation: plan.headingDeg })
+      .setLngLat([plan.lng, plan.lat])
+      .setPopup(popup)
+      .addTo(map),
+    popup, content, model: plan.popup, popupOffsetPx,
+  }
+  // The popup text is refreshed on every store update while open, and once on open.
+  popup.on('open', () => entry.content.update(entry.model))
+  return entry
+}
+
+function updateVehicleMarker(entry: VehicleEntry, plan: VehiclePlan): void {
+  const { marker } = entry
+  marker.setLngLat([plan.lng, plan.lat])
+  if (marker.getRotation() !== plan.headingDeg) marker.setRotation(plan.headingDeg)
+  updateVehicleMarkerElement(marker.getElement(), {
+    status: plan.status, headingDeg: plan.headingDeg, lng: plan.lng, lat: plan.lat,
+    lengthPx: plan.lengthPx, widthPx: plan.widthPx, hidden: plan.hidden,
+  })
+  entry.model = plan.popup
+  const offset = popupOffsetFor(plan.lengthPx)
+  if (offset !== entry.popupOffsetPx) { entry.popupOffsetPx = offset; entry.popup.setOffset(offset) }
+  if (entry.popup.isOpen()) entry.content.update(plan.popup)
+}
+
+/** Diff one kind of vehicle against its marker map by id: add, update in place, remove. */
+export function syncVehicleMarkers(
+  map: maplibregl.Map,
+  plans: readonly VehiclePlan[],
+  entries: Map<string, VehicleEntry>,
+  chips?: Map<string, maplibregl.Marker>,
+): void {
+  const live = new Set(plans.map((p) => p.id))
+  entries.forEach((entry, id) => {
+    if (!live.has(id)) { entry.marker.remove(); entries.delete(id) }
+  })
+  chips?.forEach((chip, id) => {
+    if (!live.has(id)) { chip.remove(); chips.delete(id) }
+  })
+  for (const plan of plans) {
+    const entry = entries.get(plan.id)
+    if (entry) updateVehicleMarker(entry, plan)
+    else entries.set(plan.id, addVehicleMarker(map, plan))
+
+    if (!chips || !plan.chipOffset) continue
+    // The chip never rotates with the vehicle or the map: a separate viewport-aligned marker.
+    let chip = chips.get(plan.id)
+    if (!chip) {
+      chip = new maplibregl.Marker({
+        element: createRecoveryChipElement({ id: plan.id }),
+        rotationAlignment: 'viewport', pitchAlignment: 'viewport', offset: plan.chipOffset,
+      }).setLngLat([plan.lng, plan.lat]).addTo(map)
+      chips.set(plan.id, chip)
+    } else {
+      chip.setLngLat([plan.lng, plan.lat])
+      const o = chip.getOffset()
+      if (o.x !== plan.chipOffset[0] || o.y !== plan.chipOffset[1]) chip.setOffset(plan.chipOffset)
+    }
+    chip.getElement().style.opacity = plan.hidden ? '0' : ''
+  }
+}
+
+interface VehicleLineData {
+  groundUnits: readonly GroundUnitState[]
+  recoveryTeams: readonly RecoveryTeamState[]
+  scenario: ScenarioConfig | null
+  groundUnitEtaMultiplier: number
+}
+
+/**
+ * Route and walk lines for every vehicle, written from the 10 fps interval (and once from the
+ * vehicle effect, which also covers a source that was lost to a style switch). Routes are the
+ * remaining road polyline, never a straight line; teams with no road access draw nothing.
+ */
+function writeVehicleLines(map: maplibregl.Map, data: VehicleLineData): void {
+  const { groundUnits, recoveryTeams, scenario } = data
+  const set = (sourceId: string, features: readonly unknown[]) => {
+    const src = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
+    src?.setData({ type: 'FeatureCollection', features } as GeoJSON.FeatureCollection)
+  }
+
+  const unitRoutes: LineFeature[] = []
+  for (const u of groundUnits) {
+    if (u.status !== 'enroute' || !scenario) continue
+    const route = getUnitRoute(u, scenario)
+    if (route && route.status === 'ok') unitRoutes.push(...remainingRouteFeatures(route, u.routeDistM ?? 0, u.id))
+  }
+  set('unit-routes', unitRoutes)
+  set('unit-walk', groundWalkFeatures(groundUnits, (u) => unitContactPosition(u, scenario?.heatSources)))
+
+  // Recovery team route lines: the remaining routed polyline (never a straight line), plus a dotted
+  // foot line from the road access point to the aircraft. Teams with no road access draw nothing.
+  const lines: LineFeature[] = []
+  const foot: GeoJSON.Feature[] = []
+  const accessOf = new Map<string, LatLng>()
+  for (const t of recoveryTeams) {
+    if ((t.status !== 'enroute' && t.status !== 'on_scene') || t.roadRouted !== true || !scenario) continue
+    const route = getTeamRoute(t, scenario)
+    if (!route || route.status !== 'ok') continue
+    lines.push(...remainingRouteFeatures(route, t.routeDistM ?? 0, t.id))
+    const access = route.points[route.points.length - 1]
+    accessOf.set(t.id, access)
+    if ((t.accessGapM ?? 0) > 15) {
+      foot.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: [[access.lng, access.lat], [t.targetPosition.lng, t.targetPosition.lat]] },
+        properties: { id: t.id },
+      })
+    }
+  }
+  set('recovery-routes', lines)
+  set('recovery-foot', foot)
+  set('recovery-walk', recoveryWalkFeatures(recoveryTeams, (t) => accessOf.get(t.id) ?? null, data.groundUnitEtaMultiplier))
 }
 
 type SuggestedRouteCoordinate = [number, number]
@@ -445,7 +602,9 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   const hudDivsRef        = useRef<Map<string, HTMLDivElement>>(new Map())
   const routeEditMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map())
   const siteMarkersRef     = useRef<Map<string, maplibregl.Marker>>(new Map())
-  const groundUnitMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map())
+  const vehicleMarkersRef  = useRef<Map<string, VehicleEntry>>(new Map())          // ground units, by unit id
+  const recoveryMarkersRef = useRef<Map<string, VehicleEntry>>(new Map())          // recovery pickups, by team id
+  const recoveryChipRef    = useRef<Map<string, maplibregl.Marker>>(new Map())     // DRONE RECOVERY chips, by team id
   // Live drone data written by Effect 7, consumed by rAF loop for DOM updates
   const droneDataRef      = useRef<Map<string, { headingDeg: number; missionState: string; color: string; hasAlert: boolean; label: string; altitudeFt: number; speedMs: number; isFlying: boolean }>>(new Map())
 
@@ -515,6 +674,8 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   const latestDroneWaypointsRef = useRef(droneWaypoints)
   const latestScenarioRef      = useRef(scenario)
   const latestSuggestionsRef   = useRef(routeSuggestions)
+  const latestGroundUnitsRef   = useRef(groundUnits)
+  const latestRecoveryTeamsRef = useRef(recoveryTeams)
   const latestDeviceModeRef    = useRef(deviceMode)
   const scene3dOnRef           = useRef(false)   // this map mounted the 3D layer; scenario fits tilt
   // UTM state used to recompute on every render via a useMemo keyed on elapsedSec — which
@@ -529,6 +690,8 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
   useEffect(() => { latestDroneWaypointsRef.current = droneWaypoints }, [droneWaypoints])
   useEffect(() => { latestScenarioRef.current = scenario },          [scenario])
   useEffect(() => { latestSuggestionsRef.current = routeSuggestions }, [routeSuggestions])
+  useEffect(() => { latestGroundUnitsRef.current = groundUnits },     [groundUnits])
+  useEffect(() => { latestRecoveryTeamsRef.current = recoveryTeams }, [recoveryTeams])
   useEffect(() => { latestDeviceModeRef.current = deviceMode },          [deviceMode])
   useEffect(() => { siteMoveActiveRef.current = siteMove !== null }, [siteMove])
 
@@ -613,6 +776,14 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
           features: buildSuggestedRouteFeatures(latestSuggestionsRef.current),
         })
       }
+
+      // Vehicle route and walk lines: per-step setData is wasteful, so they ride this interval.
+      writeVehicleLines(map, {
+        groundUnits: latestGroundUnitsRef.current,
+        recoveryTeams: latestRecoveryTeamsRef.current,
+        scenario: sc,
+        groundUnitEtaMultiplier: useDroneStore.getState().weatherState.groundUnitEtaMultiplier,
+      })
     }, 100)   // 10fps map updates — smooth enough for overlays, far cheaper than 20fps
     return () => clearInterval(id)
   }, [])
@@ -628,7 +799,9 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     const hudDivsAtSetup = hudDivsRef.current
     const routeEditMarkersAtSetup = routeEditMarkersRef.current
     const siteMarkersAtSetup = siteMarkersRef.current
-    const groundUnitMarkersAtSetup = groundUnitMarkersRef.current
+    const vehicleMarkersAtSetup = vehicleMarkersRef.current
+    const recoveryMarkersAtSetup = recoveryMarkersRef.current
+    const recoveryChipsAtSetup = recoveryChipRef.current
 
     mapStyleLoadedRef.current = false
     const initialMapMode = parseMapMode(window.location.search)
@@ -767,10 +940,27 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       }
       if (!map.getSource('recovery-routes')) {
         map.addSource('recovery-routes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-        map.addLayer({ id: 'recovery-route-line', type: 'line', source: 'recovery-routes', paint: { 'line-color': '#ff88ff', 'line-width': 3, 'line-opacity': 0.8 } })
+        // Remaining route, dashed; tunnel and covered spans (covered: true) are finer and fainter.
+        map.addLayer({ id: 'recovery-route-line', type: 'line', source: 'recovery-routes', filter: ['!=', ['get', 'covered'], true], paint: { 'line-color': '#ff88ff', 'line-width': 3, 'line-opacity': 0.8, 'line-dasharray': [2, 1.5] } })
+        map.addLayer({ id: 'recovery-route-covered-line', type: 'line', source: 'recovery-routes', filter: ['==', ['get', 'covered'], true], paint: { 'line-color': '#ff88ff', 'line-width': 2, 'line-opacity': 0.45, 'line-dasharray': [0.5, 2.5] } })
         // Dotted walk-in from the road access point to the aircraft.
         map.addSource('recovery-foot', { type: 'geojson', data: EMPTY_FEATURES })
         map.addLayer({ id: 'recovery-foot-line', type: 'line', source: 'recovery-foot', paint: { 'line-color': '#ff88ff', 'line-width': 2, 'line-opacity': 0.9, 'line-dasharray': [0.5, 2] } })
+      }
+      // The crew's remaining walk-in, brighter than the foot path under it; it shrinks to the drone.
+      if (!map.getSource('recovery-walk')) {
+        map.addSource('recovery-walk', { type: 'geojson', data: EMPTY_FEATURES })
+        map.addLayer({ id: 'recovery-walk-line', type: 'line', source: 'recovery-walk', layout: { 'line-cap': 'round' }, paint: { 'line-color': '#ffd0ff', 'line-width': 3, 'line-opacity': 1, 'line-dasharray': [0.1, 2] } })
+      }
+      // Ground units sent to thermal contacts: remaining route (dashed), tunnel spans, crew on foot.
+      if (!map.getSource('unit-routes')) {
+        map.addSource('unit-routes', { type: 'geojson', data: EMPTY_FEATURES })
+        map.addLayer({ id: 'unit-route-line', type: 'line', source: 'unit-routes', filter: ['!=', ['get', 'covered'], true], paint: { 'line-color': '#ffd166', 'line-width': 3, 'line-opacity': 0.85, 'line-dasharray': [2, 1.5] } })
+        map.addLayer({ id: 'unit-route-covered-line', type: 'line', source: 'unit-routes', filter: ['==', ['get', 'covered'], true], paint: { 'line-color': '#ffd166', 'line-width': 2, 'line-opacity': 0.45, 'line-dasharray': [0.5, 2.5] } })
+      }
+      if (!map.getSource('unit-walk')) {
+        map.addSource('unit-walk', { type: 'geojson', data: EMPTY_FEATURES })
+        map.addLayer({ id: 'unit-walk-line', type: 'line', source: 'unit-walk', layout: { 'line-cap': 'round' }, paint: { 'line-color': '#ffd166', 'line-width': 3, 'line-opacity': 0.95, 'line-dasharray': [0.1, 2] } })
       }
       if (!map.getSource('thermal-selected')) {
         map.addSource('thermal-selected', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
@@ -953,8 +1143,12 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       routeEditMarkersAtSetup.clear()
       siteMarkersAtSetup.forEach((m) => m.remove())
       siteMarkersAtSetup.clear()
-      groundUnitMarkersAtSetup.forEach((m) => m.remove())
-      groundUnitMarkersAtSetup.clear()
+      vehicleMarkersAtSetup.forEach((e) => e.marker.remove())
+      vehicleMarkersAtSetup.clear()
+      recoveryMarkersAtSetup.forEach((e) => e.marker.remove())
+      recoveryMarkersAtSetup.clear()
+      recoveryChipsAtSetup.forEach((m) => m.remove())
+      recoveryChipsAtSetup.clear()
       if (fallbackTimer) window.clearTimeout(fallbackTimer)
       mapRemoved = true
       disposeScene3D?.()
@@ -1604,66 +1798,52 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     // next-wp-lines and conflict-zones setData() moved to GeoJSON interval (10fps)
   }, [drones, mapReady])
 
-  // ── Effect 9: Ground unit markers + recovery team route lines ─────────────
+  // ── Effect 9: Vehicle avatars (ground units + drone-recovery pickups) and their lines ──
+  // Every store update sets each marker at pointAtDistance(route, routeDistM): no rAF, no lerp, so
+  // the marker is on the road by construction at any sim speed and during replay scrub. Sizes follow
+  // the zoom (true scale, clamped), so the same sync also runs on 'zoom'. Teams render from
+  // recoveryTeams only; they are never added to groundUnits.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapStyleLoadedRef.current) return
+    if (!map || !mapReady || !mapStyleLoadedRef.current) return
 
-    const activeIds = new Set(groundUnits.filter((u) => u.status !== 'standby').map((u) => u.id))
-    groundUnitMarkersRef.current.forEach((marker, id) => {
-      if (!activeIds.has(id)) { marker.remove(); groundUnitMarkersRef.current.delete(id) }
-    })
-
-    groundUnits.filter((u) => u.status !== 'standby').forEach((unit) => {
-      const lngLat: [number, number] = [unit.position.lng, unit.position.lat]
-      if (groundUnitMarkersRef.current.has(unit.id)) {
-        groundUnitMarkersRef.current.get(unit.id)!.setLngLat(lngLat)
-      } else {
-        const el = document.createElement('div')
-        const icon = unit.role === 'recovery' ? '⛑' : unit.role === 'medical' ? '✚' : unit.role === 'fire' ? '🔥' : '🚔'
-        el.style.cssText = 'width:18px;height:18px;background:#ff88ff;border:2px solid #fff;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;'
-        el.title = `${unit.role.toUpperCase()} — ${unit.status}`
-        el.textContent = icon
-        const popup = new maplibregl.Popup({ offset: 16 }).setHTML(
-          `<div style="font-family:monospace;font-size:10px;color:#000"><b>${unit.role.toUpperCase()}</b><br/>Status: ${unit.status}${unit.etaSec ? `<br/>ETA: ${Math.round(unit.etaSec)}s` : ''}${unit.weatherRiskNote ? `<br/>⚠ ${unit.weatherRiskNote}` : ''}</div>`
-        )
-        const marker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).setPopup(popup).addTo(map)
-        groundUnitMarkersRef.current.set(unit.id, marker)
-      }
-    })
-
-    // Recovery team route lines: the remaining routed polyline (never a straight line), plus a dotted
-    // foot line from the road access point to the aircraft. Teams with no road access draw nothing.
-    const routeSrc = map.getSource('recovery-routes') as maplibregl.GeoJSONSource | undefined
-    const footSrc = map.getSource('recovery-foot') as maplibregl.GeoJSONSource | undefined
-    if (routeSrc && footSrc) {
-      const lines: GeoJSON.Feature[] = []
-      const foot: GeoJSON.Feature[] = []
-      for (const t of recoveryTeams) {
-        if ((t.status !== 'enroute' && t.status !== 'on_scene') || t.roadRouted !== true || !scenario) continue
-        const route = getTeamRoute(t, scenario)
-        if (!route || route.status !== 'ok') continue
-        const ahead = remainingPolyline(route, t.routeDistM ?? 0)
-        if (ahead.length >= 2) {
-          lines.push({
-            type: 'Feature',
-            geometry: { type: 'LineString', coordinates: ahead.map((pt) => [pt.lng, pt.lat]) },
-            properties: { id: t.id },
-          })
-        }
-        const access = route.points[route.points.length - 1]
-        if ((t.accessGapM ?? 0) > 15) {
-          foot.push({
-            type: 'Feature',
-            geometry: { type: 'LineString', coordinates: [[access.lng, access.lat], [t.targetPosition.lng, t.targetPosition.lat]] },
-            properties: { id: t.id },
-          })
-        }
-      }
-      routeSrc.setData({ type: 'FeatureCollection', features: lines })
-      footSrc.setData({ type: 'FeatureCollection', features: foot })
+    const sync = () => {
+      const sc = latestScenarioRef.current
+      const plans = planVehicles({
+        groundUnits: latestGroundUnitsRef.current,
+        recoveryTeams: latestRecoveryTeamsRef.current,
+        zoom: map.getZoom(),
+        centerLat: map.getCenter().lat,
+        unitRoute: (u) => {
+          const route = sc ? getUnitRoute(u, sc) : null
+          return route && route.status === 'ok' ? route : null
+        },
+        teamRoute: (t) => {
+          const route = sc ? getTeamRoute(t, sc) : null
+          return route && route.status === 'ok' ? route : null
+        },
+      })
+      syncVehicleMarkers(map, plans.filter((p) => p.kind === 'ground'), vehicleMarkersRef.current)
+      syncVehicleMarkers(map, plans.filter((p) => p.kind === 'recovery'), recoveryMarkersRef.current, recoveryChipRef.current)
     }
-  }, [groundUnits, recoveryTeams, scenario])
+    sync()
+    map.on('zoom', sync)
+    return () => { map.off('zoom', sync) }
+  }, [groundUnits, recoveryTeams, scenario, mapReady])
+
+  // The lines ride the 10 fps interval; this one write puts them right as soon as the map is ready,
+  // after a scenario switch, and after a style switch (DOM markers survive setStyle, GeoJSON sources
+  // do not), without waiting up to 100 ms.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady || !mapStyleLoadedRef.current) return
+    writeVehicleLines(map, {
+      groundUnits: latestGroundUnitsRef.current,
+      recoveryTeams: latestRecoveryTeamsRef.current,
+      scenario: latestScenarioRef.current,
+      groundUnitEtaMultiplier: useDroneStore.getState().weatherState.groundUnitEtaMultiplier,
+    })
+  }, [mapReady, scenario])
 
   // Fallback basemap roads. Keyed on [mapReady, scenario.id, mapMode]; the FeatureCollection is
   // built once per network (see roadsFeatureCollection) and shown only on the local demo style.
@@ -2059,6 +2239,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
           ? contactAccess(scenario, { sourceId: contact.sourceId, position: contact.position })
           : { access: 'none' as const, gapM: null, reason: "No road data — ground units can't reach this contact" }
         const contactUnits = groundUnits.filter((u) => u.targetThermalId === contact.sourceId)
+        const parkedUnit = contactUnits.find((u) => u.status === 'on_scene')
         const canAddUnit = access.access === 'ok' && contactUnits.length > 0 && contactUnits.length < 3
           && contactUnits.some((u) => u.status === 'enroute' || u.status === 'on_scene')
         const dispatchUnit = () => {
@@ -2087,6 +2268,15 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
             </div>
             {contact.groundUnitId && (
               <div style={{ color: '#ff88ff', marginTop: 4 }}>⛑ Unit dispatched{contactUnits.length > 1 ? ` (${contactUnits.length})` : ''}</div>
+            )}
+            {parkedUnit && (
+              <div style={{ color: '#ffd166', marginTop: 2, fontSize: 12 }} data-testid="unit-on-scene">
+                {popupStatusLine({
+                  title: '',
+                  status: 'on_scene',
+                  crewOnFootM: (parkedUnit.accessGapM ?? 0) > 15 ? parkedUnit.accessGapM : undefined,
+                })}
+              </div>
             )}
             {access.access === 'none' && access.reason && (
               <div style={{ color: 'var(--accent-yellow)', marginTop: 4, fontSize: 12, maxWidth: 240, lineHeight: 1.35 }} title={access.reason} data-testid="no-road-reason">
