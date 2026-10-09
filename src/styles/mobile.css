@@ -766,3 +766,27 @@
 .mobile-shell--tablet .mobile-more-grid,
 .mobile-shell--tablet .mobile-layer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .mobile-shell--tablet .mobile-data-tabs button { min-height: 46px; font-size: 12px; }
+
+/* Thermal-hold coach on the phone shell (demo blocker c4). Sits above the dock (58px + safe
+   area) and the bottom-left map badges, below the surface drawers (z-map-chip < z-drawer).
+   The 56px side margins in landscape keep it clear of the 44px edge tabs. */
+.mobile-shell .thermal-hold-coach--phone {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(env(safe-area-inset-bottom) + 100px);
+  z-index: var(--z-map-chip);
+  flex-direction: column;
+  align-items: stretch;
+  max-height: calc(100dvh - var(--policy-banner-h, 0px) - 220px);
+  overflow: auto;
+}
+.mobile-shell .thermal-hold-coach--phone .thermal-hold-coach__actions { justify-content: space-between; }
+.mobile-shell .thermal-hold-coach--phone .thermal-hold-coach__primary { flex: 1 1 auto; min-height: 44px; }
+.mobile-shell .thermal-hold-coach--phone .thermal-hold-coach__close { min-width: 44px; min-height: 44px; }
+.mobile-shell--landscape .thermal-hold-coach--phone {
+  left: max(56px, env(safe-area-inset-left));
+  right: max(56px, env(safe-area-inset-right));
+  flex-direction: row;
+  align-items: center;
+}

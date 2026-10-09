@@ -10,6 +10,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { DesktopPlatformGate } from '@/components/PlatformGate'
 import { AccountChip } from '@/components/account/AccountChip'
 import { BuildInfoFooter } from '@/components/BuildInfoFooter'
+import { ThermalHoldCoach } from '@/components/ThermalHoldCoach'
 import { useDeviceMode } from '@/hooks/useDeviceMode'
 import { APP_TARGET, isDesktopClient } from '@/platform/appTarget'
 import { HARNESS_ENABLED } from '@/scene3d/harness/flag'
@@ -91,6 +92,9 @@ export default function App() {
 
         {/* Bottom: Control bar */}
         <ControlBar />
+
+        {/* First-thermal-hold guidance (once per mission); renders null otherwise */}
+        <ThermalHoldCoach />
 
         {/* Preflight modal, launch bay planning modal, and after-action replay panel — each
             renders null most of the time (gated on ui state), so they're lazy chunks with no

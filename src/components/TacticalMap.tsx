@@ -459,6 +459,16 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     })),
   )
 
+  // c4: a drone is waiting on the operator at a thermal contact. Drives the Dispatch outline and the
+  // map pulse ring; the banner itself lives in ThermalHoldCoach. Primitives only, so the ring effect
+  // below does not re-run every tick.
+  const holdActive = drones.some((d) => d.missionState === 'thermal_hold')
+  const coachContact = holdActive && selectedThermalId
+    ? thermalContacts.find((c) => c.sourceId === selectedThermalId && c.resolvedAt === undefined && !c.groundUnitId)
+    : undefined
+  const coachRingLat = coachContact?.position.lat ?? null
+  const coachRingLng = coachContact?.position.lng ?? null
+
   // WP-3: provenance line for the published FAA ceiling grid. `undefined` for the 11 scenarios
   // the FAA publishes no facility map over — those render and behave exactly as before.
   const ceilingCaption = airspaceCeilingCaption(airspaceForScenario(scenario?.id))
@@ -729,6 +739,16 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
         })
         map.on('mouseenter', 'thermal-circle', () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', 'thermal-circle', () => { map.getCanvas().style.cursor = '' })
+      }
+      // c4: attention ring on the contact a held drone is waiting on. Radius/opacity are driven by
+      // requestAnimationFrame in the thermal-hold-pulse effect (static outline under reduced motion).
+      if (!map.getSource('thermal-hold-pulse')) {
+        map.addSource('thermal-hold-pulse', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+        map.addLayer({
+          id: 'thermal-hold-pulse-ring', type: 'circle', source: 'thermal-hold-pulse',
+          layout: { visibility: 'none' },
+          paint: { 'circle-radius': 20, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 4, 'circle-stroke-color': '#ffd24a', 'circle-stroke-opacity': 1 },
+        })
       }
     }
 
@@ -1344,6 +1364,49 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
     }
   }, [thermalContacts, mapReady])
 
+  // ── Effect 2c: thermal-hold pulse ring (c4) ───────────────────────────────
+  // Visible only in IR (contacts only render there) while a hold is live and its contact is
+  // selected. requestAnimationFrame animates radius/opacity; under prefers-reduced-motion we
+  // draw one static thick outline instead and schedule no frames.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapStyleLoadedRef.current) return
+    const src = map.getSource('thermal-hold-pulse') as maplibregl.GeoJSONSource | undefined
+    if (!src || !map.getLayer('thermal-hold-pulse-ring')) return
+    const show = coachRingLat !== null && coachRingLng !== null && ui.sensorMode === 'ir' && ui.layerVisibility.thermal
+    src.setData(show
+      ? {
+          type: 'FeatureCollection',
+          features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [coachRingLng, coachRingLat] }, properties: {} }],
+        }
+      : { type: 'FeatureCollection', features: [] })
+    map.setLayoutProperty('thermal-hold-pulse-ring', 'visibility', show ? 'visible' : 'none')
+    if (!show) return
+
+    const reducedMotion = typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reducedMotion) {
+      map.setPaintProperty('thermal-hold-pulse-ring', 'circle-radius', 20)
+      map.setPaintProperty('thermal-hold-pulse-ring', 'circle-stroke-width', 5)
+      map.setPaintProperty('thermal-hold-pulse-ring', 'circle-stroke-opacity', 1)
+      return
+    }
+    const PERIOD_MS = 1600
+    const startedAt = performance.now()
+    let raf = 0
+    const frame = (now: number) => {
+      const live = mapRef.current
+      if (!live || !live.getLayer('thermal-hold-pulse-ring')) return
+      const phase = ((now - startedAt) % PERIOD_MS) / PERIOD_MS
+      live.setPaintProperty('thermal-hold-pulse-ring', 'circle-radius', 14 + phase * 30)
+      live.setPaintProperty('thermal-hold-pulse-ring', 'circle-stroke-width', 4)
+      live.setPaintProperty('thermal-hold-pulse-ring', 'circle-stroke-opacity', 1 - phase)
+      raf = requestAnimationFrame(frame)
+    }
+    raf = requestAnimationFrame(frame)
+    return () => cancelAnimationFrame(raf)
+  }, [coachRingLat, coachRingLng, ui.sensorMode, ui.layerVisibility.thermal, mapReady])
+
   // ── Effect 5b: Update UTM reservation and external-traffic layers ─────────
   useEffect(() => {
     const map = mapRef.current
@@ -1957,7 +2020,8 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
             )}
             <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
               <button
-                className="btn"
+                className={holdActive && !contact.groundUnitId ? 'btn coach-outline' : 'btn'}
+                data-coach="dispatch"
                 style={{ fontSize: 9, padding: '1px 5px' }}
                 onClick={() => {
                   const stagingPos = useDroneStore.getState().scenario?.startPosition
