@@ -75,14 +75,14 @@ beforeEach(() => {
 
 describe('admin pass on a profile', () => {
   it('a valid pass makes the profile ADMIN; a forged one is refused; removal reverts it', async () => {
-    await useAuthStore.getState().signUp('owner', '', 'owner-pass-1')
+    await useAuthStore.getState().signUp('Owner@Example.com', '', 'owner-pass-1')
     useAuthStore.getState().acknowledgeRecoveryCode()
 
-    expect(await useAuthStore.getState().applyAdminPass(issuePass('x@y.com', stranger.secretKey))).toBe(false)
+    expect(await useAuthStore.getState().applyAdminPass(issuePass('owner@example.com', stranger.secretKey))).toBe(false)
     expect(useAuthStore.getState().authError).toBe('That admin pass is not valid')
     expect(useAuthStore.getState().activeAccount?.isAdmin).toBeFalsy()
 
-    expect(await useAuthStore.getState().applyAdminPass(issuePass('Owner@Example.com'))).toBe(true)
+    expect(await useAuthStore.getState().applyAdminPass(issuePass('owner@example.com'))).toBe(true)
     expect(useAuthStore.getState().activeAccount).toMatchObject({ isAdmin: true, adminEmail: 'owner@example.com' })
 
     expect(await useAuthStore.getState().removeAdminPass()).toBe(true)
@@ -90,19 +90,43 @@ describe('admin pass on a profile', () => {
   }, 20000)
 
   it('a pass edited in device storage grants nothing at the next sign-in', async () => {
-    await useAuthStore.getState().signUp('tamper', '', 'tamper-pass-1')
+    await useAuthStore.getState().signUp('owner@example.com', '', 'tamper-pass-1')
     useAuthStore.getState().acknowledgeRecoveryCode()
-    await useAuthStore.getState().applyAdminPass(issuePass('owner@example.com'))
+    expect(await useAuthStore.getState().applyAdminPass(issuePass('owner@example.com'))).toBe(true)
     useAuthStore.getState().signOut()
 
-    const record = await getAccountByUsername('tamper')
+    const record = await getAccountByUsername('owner@example.com')
     const [prefix, , sig] = record!.adminPass!.split('.')
     const forgedPayload = bytesToBase64Url(new TextEncoder().encode(JSON.stringify({
       v: 1, email: 'attacker@example.com', name: 'X', passId: 'adm-x', issuedAt: Date.now(),
     })))
     await putAccount({ ...record!, adminPass: `${prefix}.${forgedPayload}.${sig}` })
 
-    expect(await useAuthStore.getState().signIn('tamper', 'tamper-pass-1')).toBe(true)
+    expect(await useAuthStore.getState().signIn('owner@example.com', 'tamper-pass-1')).toBe(true)
+    expect(useAuthStore.getState().activeAccount?.isAdmin).toBeFalsy()
+  }, 20000)
+
+  it("someone else's genuine pass is refused and names the profile it belongs to", async () => {
+    await useAuthStore.getState().signUp('andrew', '', 'andrew-pass-1')
+    useAuthStore.getState().acknowledgeRecoveryCode()
+
+    expect(await useAuthStore.getState().applyAdminPass(issuePass('owner@example.com'))).toBe(false)
+    expect(useAuthStore.getState().authError).toBe(
+      'This admin pass belongs to the profile "owner@example.com". Sign in to that profile to use it.',
+    )
+    expect(useAuthStore.getState().activeAccount?.isAdmin).toBeFalsy()
+    expect((await getAccountByUsername('andrew'))?.adminPass).toBeUndefined()
+  }, 20000)
+
+  it('a genuine pass copied into another profile in device storage grants nothing at sign-in', async () => {
+    await useAuthStore.getState().signUp('copycat', '', 'copycat-pass-1')
+    useAuthStore.getState().acknowledgeRecoveryCode()
+    useAuthStore.getState().signOut()
+
+    const record = await getAccountByUsername('copycat')
+    await putAccount({ ...record!, adminPass: issuePass('owner@example.com') })
+
+    expect(await useAuthStore.getState().signIn('copycat', 'copycat-pass-1')).toBe(true)
     expect(useAuthStore.getState().activeAccount?.isAdmin).toBeFalsy()
   }, 20000)
 })

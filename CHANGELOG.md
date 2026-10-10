@@ -13,7 +13,8 @@ ISO 8601.
   the code.
 - Owner ADMIN profiles unlocked by an Ed25519-signed admin pass
   (`tools/admin/README.md`), with visible, logged overrides of access gates and
-  relay support in place of the instructor access code.
+  relay support in place of the instructor access code. Each pass works only
+  on the profile whose username is the email it was issued to.
 - Admin debug console (Ctrl+`, pop-out window, DBG button on phones): inspect,
   export a redacted debug bundle, sim control, fault injection, overlays, HUD,
   hash-chain verification, classroom relay diagnostics and bindable hotkeys.

@@ -1,6 +1,6 @@
 // Settings section for entering / removing a signed ADMIN pass. The pass is
 // verified (Ed25519) by authStore.applyAdminPass; the profile stores it and
-// re-verifies on every sign-in, so pasting a forged pass unlocks nothing.
+// re-verifies on every sign-in, so pasting a forged pass, or someone else's, unlocks nothing.
 import { useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAuthStore } from '@/store/authStore'
@@ -73,6 +73,9 @@ export function AdminPassSection() {
         </>
       ) : (
         <>
+          <p className="account-fineprint">
+            A pass only works on the profile whose username is the email it was issued to.
+          </p>
           <label>Admin pass
             <textarea
               className="account-input"

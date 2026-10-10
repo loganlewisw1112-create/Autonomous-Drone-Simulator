@@ -66,6 +66,14 @@ Primary boundaries:
   expired, revoked or foreign-signed pass is ignored, and a stored pass is
   re-verified at every sign-in. The private key stays offline in the
   gitignored `local-secrets/`.
+- A pass is tied to one profile: it grants admin only on the profile whose
+  username equals the email it was issued to. Profiles are local and emails are
+  not verified, so this stops a pass being reused on someone else's profile; it
+  does not stop the holder of a leaked pass file from creating a matching
+  profile on their own device. The pass file stays a bearer credential. The
+  relay never sees profiles, so it checks only the signature, expiry and
+  revocation; the browser sends a stored pass to it only for a profile the pass
+  fits.
 - Admin overrides cover access gates only (authorization training, the
   preflight checklist, the usage-policy window, the instructor access code).
   Each override is labelled in the UI and, where it feeds the mission log,
