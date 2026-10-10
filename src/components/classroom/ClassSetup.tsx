@@ -5,13 +5,15 @@ import { startClass } from '@/classroom/classroomClient'
 import { useClassroomStore } from '@/classroom/classroomStore'
 import { useAuthStore } from '@/store/authStore'
 import { createClassroom, touchClassroomOpened } from '@/account/classroomArchive'
-import { fetchInstructorAccessStatus } from '@/account/instructorAccessRemote'
+import { fetchInstructorAccessStatus, unlockWithAdminPass } from '@/account/instructorAccessRemote'
 import { getClassroomDesktopBridge } from '@/licensing/desktopBridge'
 import type { ClassConfig } from '@/classroom/protocol'
 import type { ScenarioVariantConfig } from '@/types'
 import { useUsagePolicy } from '@/licensing/UsagePolicyGate'
 import { USAGE_POLICY } from '@/licensing/usagePolicy'
 import { assuranceForScenario } from '@/assurance/trainingAssurance'
+import { ADMIN_OVERRIDE_LABEL, useIsAdmin } from '@/account/adminOverride'
+import { getAccountByUsername } from '@/account/accountDb'
 
 function defaultVariant(seed: number): ScenarioVariantConfig {
   return {
@@ -61,7 +63,9 @@ export function ClassSetup({
     signOut: s.signOut,
   })))
 
-  const unlocked = activeAccount?.instructorUnlocked === true
+  const isAdmin = useIsAdmin()
+  // ADMIN override: a verified admin pass stands in for the supervised access code.
+  const unlocked = activeAccount?.instructorUnlocked === true || isAdmin
   const sessionReady = unlocked && relayAuthenticated === true
   const desktopBridge = getClassroomDesktopBridge()
   let desktopOwnsRelay = false
@@ -83,6 +87,26 @@ export function ClassSetup({
   useEffect(() => {
     if (error === 'instructor-session-required') setRelayAuthenticated(false)
   }, [error])
+
+  // ADMIN override: authenticate the relay session with the stored signed pass, no code needed.
+  const adminUsername = isAdmin ? activeAccount?.username : undefined
+  useEffect(() => {
+    if (!adminUsername || relayAuthenticated !== false) return
+    let cancelled = false
+    void (async () => {
+      const record = await getAccountByUsername(adminUsername)
+      if (cancelled || !record?.adminPass) return
+      const result = await unlockWithAdminPass(record.adminPass)
+      if (cancelled) return
+      if (result.ok) {
+        setRelayAccessConfigured(true)
+        setRelayAuthenticated(true)
+      } else {
+        setLocalError(result.error)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [adminUsername, relayAuthenticated])
 
   function pick(id: string) {
     setScenarioId(id)
@@ -215,6 +239,12 @@ export function ClassSetup({
                 {localError || authError}
               </div>
             )}
+          </div>
+        )}
+
+        {sessionReady && isAdmin && (
+          <div data-testid="admin-override-class" style={{ fontSize: 'var(--fs-min)', fontFamily: 'var(--font-mono)', color: 'var(--accent-yellow, #ffd166)' }}>
+            {ADMIN_OVERRIDE_LABEL}: instructor access code not required for this admin profile
           </div>
         )}
 

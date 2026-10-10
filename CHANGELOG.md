@@ -7,6 +7,18 @@ ISO 8601.
 
 ### Added
 
+- Forgotten-password reset for operator, student and instructor profiles: a
+  one-time recovery code (shown at signup, or set up later in Settings) plus an
+  optional authenticator app. Reset keeps all encrypted run history and rotates
+  the code.
+- Owner ADMIN profiles unlocked by an Ed25519-signed admin pass
+  (`tools/admin/README.md`), with visible, logged overrides of access gates and
+  relay support in place of the instructor access code.
+- Admin debug console (Ctrl+`, pop-out window, DBG button on phones): inspect,
+  export a redacted debug bundle, sim control, fault injection, overlays, HUD,
+  hash-chain verification, classroom relay diagnostics and bindable hotkeys.
+  Sim-changing commands mark the run DEBUG in its evidence chain and keep it out
+  of analytics.
 - Canonical asynchronous terrain preparation and cross-target deterministic
   parity qualification.
 - Relay-owned instructor sessions, credential migration, classroom protocol

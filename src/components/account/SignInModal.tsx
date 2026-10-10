@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAuthStore, listAccounts } from '@/store/authStore'
+import { PostSignupRecovery } from '@/components/account/PostSignupRecovery'
+import { PasswordResetFlow } from '@/components/account/PasswordResetFlow'
 import type { AccountRecord } from '@/account/types'
 
 // Local-profile sign-in / sign-up. Rendered by both shells (lazy). Everything
@@ -16,7 +18,7 @@ export function SignInModal() {
     })),
   )
 
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin')
   const [profiles, setProfiles] = useState<AccountRecord[]>([])
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -31,7 +33,8 @@ export function SignInModal() {
     })
   }, [showSignIn])
 
-  if (!showSignIn) return null
+  // The recovery-code overlay outlives the form: signup closes the modal first.
+  if (!showSignIn) return <PostSignupRecovery />
 
   async function handleSubmit() {
     setBusy(true)
@@ -44,15 +47,19 @@ export function SignInModal() {
     }
   }
 
-  const switchMode = (next: 'signin' | 'signup') => {
+  const switchMode = (next: 'signin' | 'signup' | 'reset') => {
     setMode(next)
     clearAuthError()
   }
 
   return (
+    <>
+    <PostSignupRecovery />
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowSignIn(false)}>
       <div className="modal" data-testid="signin-modal">
-        <div className="modal-title">{mode === 'signup' ? 'CREATE OPERATOR PROFILE' : 'OPERATOR SIGN IN'}</div>
+        <div className="modal-title">
+          {mode === 'signup' ? 'CREATE OPERATOR PROFILE' : mode === 'reset' ? 'RESET FORGOTTEN PASSWORD' : 'OPERATOR SIGN IN'}
+        </div>
 
         {!storageAvailable && (
           <p style={{ color: 'var(--accent-yellow)', fontSize: 12, marginBottom: 12 }}>
@@ -61,6 +68,9 @@ export function SignInModal() {
           </p>
         )}
 
+        {mode === 'reset' ? (
+          <PasswordResetFlow initialUsername={username} onCancel={() => switchMode('signin')} />
+        ) : (<>
         {mode === 'signin' && profiles.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
             {profiles.map((p) => (
@@ -103,7 +113,7 @@ export function SignInModal() {
           )}
 
           <label style={{ fontSize: 'var(--fs-min)', color: 'var(--text-secondary)' }}>
-            PASSWORD {mode === 'signup' && '(min 8 chars — cannot be recovered if lost)'}
+            PASSWORD {mode === 'signup' && '(min 8 chars; you will get a recovery code next)'}
             <input
               className="account-input"
               style={{ marginTop: 4 }}
@@ -126,6 +136,9 @@ export function SignInModal() {
             </button>
             <button className="btn" onClick={() => setShowSignIn(false)}>CANCEL</button>
             <div style={{ flex: 1 }} />
+            {mode === 'signin' && (
+              <button className="btn" onClick={() => switchMode('reset')}>FORGOT PASSWORD?</button>
+            )}
             {mode === 'signin' ? (
               <button className="btn" onClick={() => switchMode('signup')}>NEW PROFILE</button>
             ) : (
@@ -135,12 +148,16 @@ export function SignInModal() {
 
           <p style={{ fontSize: 'var(--fs-min)', color: 'var(--text-dim)', marginTop: 4 }}>
             Profiles are stored only on this device. Passwords are never transmitted; mission
-            history is AES-256-GCM encrypted with a key derived from your password
-            (PBKDF2-SHA-256). The key stays in memory, so reloading signs you out.
-            A forgotten password cannot be recovered — export backups from Settings.
+            history is AES-256-GCM encrypted with a key that only your password or your
+            recovery code can unlock (PBKDF2-SHA-256). The key stays in memory, so reloading
+            signs you out. The recovery code you get at signup (and an
+            authenticator app, if you pair one) can reset a forgotten password. Without
+            the code, a forgotten password cannot be reset. Export backups from Settings.
           </p>
         </div>
+        </>)}
       </div>
     </div>
+    </>
   )
 }

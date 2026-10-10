@@ -245,12 +245,12 @@ const TIMELINE_TYPES: ReadonlySet<EventType> = new Set<EventType>([
   'mission_start', 'preflight_complete', 'authorization_complete', 'sortie_launch', 'thermal_detection',
   'operator_command', 'ground_unit_dispatched', 'ground_unit_on_scene', 'drone_recovery_requested',
   'geofence_breach', 'comms_lost', 'comms_restored', 'low_battery', 'rtb_triggered', 'emergency_land',
-  'weather_divert', 'conflict_detected', 'drone_recovered', 'mission_abort', 'mission_complete',
+  'weather_divert', 'conflict_detected', 'drone_recovered', 'mission_abort', 'mission_complete', 'debug_override',
 ])
 
 // Lower number = kept first when the row cap bites.
 const TIMELINE_PRIORITY: Partial<Record<EventType, number>> = {
-  mission_start: 0, mission_complete: 0, mission_abort: 0,
+  mission_start: 0, mission_complete: 0, mission_abort: 0, debug_override: 0,
   emergency_land: 1, geofence_breach: 1, comms_lost: 1, low_battery: 1, rtb_triggered: 1, weather_divert: 1,
   drone_recovery_requested: 1, drone_recovered: 1, thermal_detection: 1,
   ground_unit_dispatched: 2, ground_unit_on_scene: 2, comms_restored: 2, conflict_detected: 2,

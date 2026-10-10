@@ -19,6 +19,9 @@ import { isSeededLaunchPlan, replanLaunchSlots, seededLaunchPlanFromScenario } f
 import { clearAllSavedWaypointPlans, clearSavedDroneWaypointRoute, saveDroneWaypointRoute, saveFleetWaypointRoutes } from '@/sim/mission/waypointPersistence'
 import { hashEvent } from '@/utils/chainOfCustody'
 import { getActiveOperator } from '@/store/authStore'
+import { adminOverridePayload, isAdminActive } from '@/account/adminOverride'
+import { clearRunDebugTaint, setTaintEventSink } from '@/debug/taint'
+import { clearInjectedFaults } from '@/sim/faults/injectedFaults'
 import { assuranceForScenario } from '@/assurance/trainingAssurance'
 import { getDefaultWeatherState, isWeatherForceRtb } from '@/sim/weather/weatherEngine'
 import { collectApproaches, planGroundDispatch, routeMemo } from '@/sim/mission/routeMemo'
@@ -149,6 +152,7 @@ export type FleetRetaskReason =
   | 'battery_reserve'
   | 'geofence_breach'
   | 'weather'
+  | 'motor_failure'
   | 'no_viable_assignment'
   | 'advisor_hold'
   | 'cooldown_active'
@@ -841,7 +845,9 @@ export const useDroneStore = create<DroneStore>()(
         applyParkedLaunchPlan: (plan, placements) => {
           let applied = false
           set((state) => {
-            const authReady = evaluateAuthorizationTraining(
+            // ADMIN override: the owner may apply the plan without the training steps.
+            // The override is recorded at beginLaunchSequence (evidence chain), never faked here.
+            const authReady = isAdminActive() || evaluateAuthorizationTraining(
               state.scenario,
               state.scenarioVariant,
               state.authorizationCompletedSteps,
@@ -1628,12 +1634,23 @@ export const useDroneStore = create<DroneStore>()(
         // (evaluated in MissionManager), producing the staggered takeoff.
         beginLaunchSequence: () => {
           const state = get()
-          if (!evaluateAuthorizationTraining(
+          const trainingReady = evaluateAuthorizationTraining(
             state.scenario,
             state.scenarioVariant,
             state.authorizationCompletedSteps,
-          ).ready) {
-            return
+          ).ready
+          if (!trainingReady) {
+            // ADMIN override: launch anyway, but record it as an override on the
+            // evidence chain. Training steps stay incomplete in the record.
+            if (!isAdminActive()) return
+            get().emitEvent({
+              eventType: 'operator_command',
+              droneId: 'system',
+              payload: adminOverridePayload('authorization_training', {
+                scenarioId: state.scenario?.id,
+                authorizationStepsCompleted: state.authorizationCompletedSteps,
+              }),
+            })
           }
           // Independent re-check of the training assurance disposition at the launch
           // boundary (audit F-06). The preflight UI also refuses a blocked disposition, but
@@ -1752,6 +1769,8 @@ export const useDroneStore = create<DroneStore>()(
 
         isAuthorizationTrainingReady: () => {
           const state = get()
+          // ADMIN override: gate passes for admins. UI shows the "ADMIN override" label.
+          if (isAdminActive()) return true
           return evaluateAuthorizationTraining(
             state.scenario,
             state.scenarioVariant,
@@ -1764,7 +1783,10 @@ export const useDroneStore = create<DroneStore>()(
 
         setMapReady: (ready) => set({ mapReady: ready }),
 
-        resetMission: () =>
+        resetMission: () => {
+          // A new run starts clean: no DEBUG taint, no injected faults carried over.
+          clearRunDebugTaint()
+          clearInjectedFaults()
           set((s) => ({
             // Route editing is a live-map mode; a reset must not leave it latched.
             ui: { ...s.ui, routeEditMode: false },
@@ -1785,12 +1807,23 @@ export const useDroneStore = create<DroneStore>()(
               thermalContacts: 0, geofenceBreaches: 0, rtbTriggers: 0,
               recoveryDispatches: 0, groundUnitDispatch: 0,
             },
-          })),
+          }))
+        },
       })
     }),
     { name: 'DroneOpsStore' },
   ),
 )
+
+// Admin debug console: every DEBUG taint is recorded IN the hash chain (a debug_override event),
+// so a modified run stays verifiable and its modification is part of the evidence.
+setTaintEventSink((reason, info) => {
+  useDroneStore.getState().emitEvent({
+    eventType: 'debug_override',
+    droneId: 'system',
+    payload: { reason, overrideIndex: info.index, taintedSinceMs: info.firstAt, simulationOnly: true },
+  })
+})
 
 function cloneWaypointRoute(route: Waypoint[]): Waypoint[] {
   return route.map((waypoint) => ({

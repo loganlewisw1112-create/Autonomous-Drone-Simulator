@@ -7,6 +7,7 @@ import {
   evaluateAuthorizationTraining,
 } from '@/sim/mission/authorizationTraining'
 import type { AuthorizationStepId } from '@/types'
+import { ADMIN_OVERRIDE_LABEL, adminOverridePayload, useIsAdmin } from '@/account/adminOverride'
 import { assuranceForScenario } from '@/assurance/trainingAssurance'
 import { resolveLostLinkPolicy } from '@/sim/safety/lostLink'
 import { airframeEnvelopeAdvisories } from '@/sim/mission/airframeEnvelope'
@@ -58,6 +59,7 @@ export function PreflightChecklist() {
   const assurance = useMemo(() => assuranceForScenario(scenario), [scenario])
   const lostLink = useMemo(() => scenario ? resolveLostLinkPolicy(scenario) : null, [scenario])
   const envelope = useMemo(() => airframeEnvelopeAdvisories(scenario, weatherState), [scenario, weatherState])
+  const isAdmin = useIsAdmin()
 
   if (!ui.showPreflight) return null
 
@@ -69,7 +71,11 @@ export function PreflightChecklist() {
   // re-checks this independently in beginLaunchSequence; neither layer is load-bearing alone.
   const launchBlocked = assurance.launchDisposition === 'training_blocked'
   const requiresDegradedAcknowledgement = assurance.launchDisposition === 'training_degraded'
-  const canContinue = !launchBlocked && allChecked && authProgress.ready
+  // ADMIN override covers the training-procedure gates (checklist + authorization steps).
+  // It never covers launchBlocked (assurance) or the degraded-training acknowledgement.
+  const trainingComplete = allChecked && authProgress.ready
+  const adminSkipsTraining = isAdmin && !trainingComplete
+  const canContinue = !launchBlocked && (trainingComplete || isAdmin)
     && (!requiresDegradedAcknowledgement || degradedAcknowledged)
 
   function toggleItem(id: number) {
@@ -88,6 +94,19 @@ export function PreflightChecklist() {
 
   function handleContinue() {
     if (!canContinue) return
+    if (adminSkipsTraining) {
+      emitEvent({
+        eventType: 'operator_command',
+        droneId: 'system',
+        payload: adminOverridePayload('preflight_checklist', {
+          scenarioId: scenario?.id,
+          itemsConfirmed: checkedIds.size,
+          itemsRequired: CHECKLIST.length,
+          authorizationStepsCompleted: authProgress.completedStepIds,
+          authorizationStepsRequired: authProgress.requiredStepIds,
+        }),
+      })
+    }
     emitEvent({
       eventType: 'preflight_complete',
       droneId: 'system',
@@ -96,7 +115,8 @@ export function PreflightChecklist() {
         itemsConfirmed: CHECKLIST.length,
         categories: Array.from(new Set(CHECKLIST.map((item) => item.category))),
         authorizationStepsCompleted: authProgress.completedStepIds,
-        authorizationReady: true,
+        authorizationReady: authProgress.ready,
+        ...(adminSkipsTraining ? { adminOverride: true } : {}),
         simulationOnly: true,
       },
     })
@@ -343,9 +363,17 @@ export function PreflightChecklist() {
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-          <button className="btn" onClick={handleCheckAll} style={{ marginRight: 'auto' }} disabled={canContinue}>
+          <button className="btn" onClick={handleCheckAll} style={{ marginRight: 'auto' }} disabled={canContinue && !adminSkipsTraining}>
             ✓ Check All
           </button>
+          {adminSkipsTraining && (
+            <span
+              data-testid="admin-override-preflight"
+              style={{ alignSelf: 'center', fontSize: 'var(--fs-min)', fontFamily: 'var(--font-mono)', color: 'var(--accent-yellow)' }}
+            >
+              {ADMIN_OVERRIDE_LABEL}: training steps skipped, recorded in the mission log
+            </span>
+          )}
           <button className="btn" onClick={() => setShowPreflight(false)}>Cancel</button>
           <button
             className="btn primary"

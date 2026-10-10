@@ -45,6 +45,38 @@ Primary boundaries:
   read-only/exportable with an explicit warning.
 - Decrypted account keys remain in memory. Legacy persisted session-key
   material is removed at startup; closing/reloading requires sign-in.
+- New profiles encrypt records under a random 32-byte data key. That key is
+  wrapped twice: once under the password key, once under a key derived (same
+  PBKDF2 policy) from a 120-bit recovery code that is shown once and never
+  stored. Older profiles keep their password-derived key as the data key and
+  gain the same two wraps when recovery is set up, so nothing is re-encrypted.
+- A forgotten password is reset with the recovery code, which unwraps the data
+  key, writes a new password wrap and rotates the code (the used code stops
+  working). Five wrong attempts back off for 30 seconds (in memory only).
+- An optional authenticator app (RFC 6238 TOTP, sealed under the data key) adds
+  a second check at reset. Offline, this is a UI-level gate only: anyone with
+  the recovery code and devtools can unwrap the data key without it. The
+  recovery code is the factor that actually protects the data.
+
+### Admin passes and the debug console
+
+- Owner ADMIN access comes from an Ed25519-signed pass
+  (`tools/admin/README.md`). The browser and the relay hold only the public
+  key and run one shared verifier (`server/adminPassVerify.mjs`); an edited,
+  expired, revoked or foreign-signed pass is ignored, and a stored pass is
+  re-verified at every sign-in. The private key stays offline in the
+  gitignored `local-secrets/`.
+- Admin overrides cover access gates only (authorization training, the
+  preflight checklist, the usage-policy window, the instructor access code).
+  Each override is labelled in the UI and, where it feeds the mission log,
+  recorded as an `admin_override` event. Training assurance, weather doctrine
+  and device gates are never overridden.
+- The admin debug console loads only for a verified admin. Commands that change
+  the simulation (fault injection, wind, battery) mark the run DEBUG: the
+  change is recorded in the hash chain as a `debug_override` event, the saved
+  run carries `debugTaint`, and analytics exclude it. A patched local bundle
+  can still give someone admin on their own device; nothing it can do reaches
+  other users or the relay, which verifies the pass itself.
 
 ### Instructor authority
 
@@ -128,7 +160,7 @@ Primary boundaries:
 | Metadata disclosure | TLS protects network traffic in transit, but the relay necessarily handles connection metadata and roster/routing fields. Host/device logs may retain IPs and timing. |
 | Availability | Limits reduce abuse but cannot prevent Wi-Fi disruption, host failure, local denial of service, or a malicious authorized participant. |
 | Browser/XSS risk | Active pages hold decrypted data. CSP reduces but does not eliminate XSS, dependency, extension, or browser compromise. |
-| Recovery/data loss | Local-first encryption means forgotten passwords, cleared browser profiles, or corrupt storage may be unrecoverable. |
+| Recovery/data loss | A forgotten password is recoverable only with the profile's recovery code. Without it, and after cleared browser profiles or corrupt storage, data is unrecoverable. Anyone holding the recovery code can reset the password (the offline authenticator check does not change that). |
 | Export leakage | Downloaded reports may be plaintext and fall outside application encryption/retention controls. |
 | Supply chain | npm packages, GitHub Actions, signing infrastructure, and host integrations remain trusted dependencies. Review lockfile/action changes and protect release credentials. |
 | Deployment drift | Repository state alone does not prove external environment values or aliases. Verify target and SHA from the served artifact. |

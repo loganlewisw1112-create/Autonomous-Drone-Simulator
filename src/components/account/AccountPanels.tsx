@@ -4,9 +4,11 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import {
-  buildAggregates, buildTimeline, completionReasons, eventTypeTotals, runsByScenario, safetyTrend, sortiesByPlatform,
+  buildAggregates, buildTimeline, debugExcludedNote, completionReasons, eventTypeTotals, runsByScenario, safetyTrend, sortiesByPlatform,
 } from '@/components/account/analyticsData'
 import { useAuthStore } from '@/store/authStore'
+import { AccountRecoverySection } from '@/components/account/AccountRecoverySection'
+import { AdminPassSection } from '@/components/account/AdminPassSection'
 import {
   accountCipherAad,
   decryptJson,
@@ -156,6 +158,9 @@ function AnalyticsPanel() {
             <StatTile label="RECOVERIES" value={aggregates.recoveryDispatches} />
             <StatTile label="GROUND DISPATCHES" value={aggregates.groundDispatches} />
           </div>
+          {debugExcludedNote(aggregates.debugExcluded) && (
+            <p className="account-status">{debugExcludedNote(aggregates.debugExcluded)} from these totals (admin console changed them).</p>
+          )}
 
           <div className="account-chart-grid">
             <div className="account-chart-card">
@@ -273,12 +278,13 @@ function AnalyticsPanel() {
 function SettingsPanel() {
   const {
     showSettings, setShowSettings, activeAccount, sessionKey, storageReadOnly,
-    prefs, savePrefs, signOut, setShowAnalytics,
+    prefs, savePrefs, signOut, setShowAnalytics, changePasswordWrapped,
   } = useAuthStore(
     useShallow((s) => ({
       showSettings: s.showSettings, setShowSettings: s.setShowSettings,
       activeAccount: s.activeAccount, sessionKey: s.sessionKey, storageReadOnly: s.storageReadOnly,
       prefs: s.prefs, savePrefs: s.savePrefs, signOut: s.signOut, setShowAnalytics: s.setShowAnalytics,
+      changePasswordWrapped: s.changePasswordWrapped,
     })),
   )
   const [status, setStatus] = useState<string | null>(null)
@@ -334,7 +340,17 @@ function SettingsPanel() {
     if (newPassword.length < 8) { flash('New password must be at least 8 characters'); return }
     const record = await getAccountByUsername(activeAccount!.username)
     if (!record) { flash('Profile record not found'); return }
-    // Re-key everything atomically: new salt + key, re-encrypted check blob and
+    // Wrapped accounts (recovery-enabled): the data key stays; only its password wrap
+    // and salt change, so no run, mission or classroom blob is rewritten.
+    if (record.keyWraps) {
+      if (newPassword.length > 128) { flash('New password must be 128 characters or fewer'); return }
+      const wrapped = await changePasswordWrapped(newPassword)
+      if (!wrapped) { flash('Password change failed — nothing was modified; your old password still works'); return }
+      setNewPassword('')
+      flash('Password changed — your recovery code still works')
+      return
+    }
+    // Legacy account, no key wraps. Re-key everything atomically: new salt + key, re-encrypted check blob and
     // prefs, plus every run / run-detail / mission blob — all in ONE transaction.
     // If any row fails to re-encrypt the whole change aborts and the old password
     // still decrypts the untouched data.
@@ -461,10 +477,15 @@ function SettingsPanel() {
             <button className="btn" onClick={() => void handleChangePassword()} disabled={!newPassword || storageReadOnly}>CHANGE PASSWORD</button>
           </div>
           <p className="account-fineprint">
-            Changing the password re-encrypts your entire mission history with a new key.
-            Passwords cannot be recovered — a lost password means the encrypted history is unreadable.
+            Profiles with a recovery code change passwords instantly; mission history is not
+            re-encrypted. Profiles without one re-encrypt their whole history with a new key.
+            A forgotten password can only be reset with a recovery code (see Account recovery).
           </p>
         </div>
+
+        <AccountRecoverySection />
+
+        <AdminPassSection />
 
         <div className="account-settings-section">
           <span className="account-label">DANGER ZONE</span>

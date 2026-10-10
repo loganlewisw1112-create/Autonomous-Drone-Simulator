@@ -160,3 +160,31 @@ export async function unlockWithInstructorAccessCode(code: string): Promise<Inst
     error: 'Classroom relay unavailable. Start the local classroom host and try again.',
   }
 }
+
+/**
+ * Authenticate the relay session with a signed ADMIN pass instead of the
+ * supervised access code. The relay verifies the pass itself (same trusted
+ * keys and revocation list), applies the same rate limit and issues the same
+ * HttpOnly session cookie.
+ */
+export async function unlockWithAdminPass(pass: string): Promise<InstructorUnlockResult> {
+  const trimmed = pass.trim()
+  if (!trimmed || trimmed.length > 4096) return { ok: false, error: 'That admin pass is not valid' }
+  try {
+    const res = await fetch('/api/instructor-access/session', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ adminPass: trimmed }),
+    })
+    if (res.status === 401) return { ok: false, error: 'The classroom relay rejected this admin pass' }
+    if (res.status === 429) return { ok: false, error: 'Too many failed attempts. Wait a few minutes and try again.' }
+    if (!res.ok) return { ok: false, error: 'Classroom relay unavailable. Start the local classroom host and try again.' }
+    const body = await readJson(res) as { ok?: unknown } | null
+    return body?.ok === true
+      ? { ok: true }
+      : { ok: false, error: 'The classroom relay did not accept this admin pass' }
+  } catch {
+    return { ok: false, error: 'Classroom relay unavailable. Start the local classroom host and try again.' }
+  }
+}
