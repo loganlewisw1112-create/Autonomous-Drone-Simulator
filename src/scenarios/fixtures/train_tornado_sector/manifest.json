@@ -8,6 +8,67 @@
   "generatedAt": "2026-09-17",
   "sources": [
     {
+      "fixture": "roads.json",
+      "source": "Overture Maps Foundation — transportation theme",
+      "url": "https://docs.overturemaps.org/guides/transportation/",
+      "license": "ODbL 1.0",
+      "attribution": "© OpenStreetMap contributors, Overture Maps Foundation",
+      "retrievedAt": "2026-10-09",
+      "sha256": "8a88ff6513d1ed0675dfbf679a39092b6c23fd0c87db9a38ad3ed1e36255201f",
+      "rawBytes": 143476,
+      "gzipBytes": 43790,
+      "input": "overturemaps==1.0.2",
+      "inputSha256": "39cc83eff75856c808044ff430f418cfd5cc4b52730542174c3016c859200a86",
+      "dataRelease": "2026-09-23.1",
+      "schemaVersion": "v2.0.0 (per docs 2026-10-09; shapes verified against the downloaded file)",
+      "stacCollection": "https://stac.overturemaps.org/2026-09-23.1/transportation/segment/collection.json",
+      "client": {
+        "package": "overturemaps",
+        "version": "1.0.2"
+      },
+      "roadBbox": [
+        -94.534958,
+        37.068504,
+        -94.490704,
+        37.099496
+      ],
+      "downloadBbox": [
+        -94.534958,
+        37.068504,
+        -94.490704,
+        37.099496
+      ],
+      "filters": "subtype=road; classes motorway..track; drops under-construction/abandoned/indoor, driveway/parking_aisle/sidewalk/crosswalk/cycle_crossing; per-direction vehicle access (last matching rule wins); rail, ferry and water are never shipped",
+      "budgetSteps": [],
+      "stats": {
+        "select": {
+          "input": 3412,
+          "kept": 2320,
+          "ambiguousAccessRules": 44,
+          "droppedByAccess": 1
+        },
+        "split": {
+          "droppedSelfLoops": 0,
+          "droppedShort": 0
+        },
+        "contracted": 28,
+        "nodes": 2526,
+        "edges": 3932,
+        "entries": 8
+      },
+      "validation": {
+        "waterChecked": true,
+        "buildingsChecked": false,
+        "waterToleranceM": 8,
+        "droppedWaterCrossings": 0,
+        "droppedBuildingCrossings": 0,
+        "droppedDisconnectedEdges": 7,
+        "remainingWaterCrossings": 0,
+        "ambiguousAccessRules": 44,
+        "startSnapM": 6
+      }
+    },
+    {
       "fixture": "weather.json",
       "source": "Open-Meteo ERA5 archive",
       "url": "https://archive-api.open-meteo.com/v1/archive?latitude=37.084&longitude=-94.513&start_date=2024-05-22&end_date=2024-05-22&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_gusts_10m%2Ccloud_cover&wind_speed_unit=kn&temperature_unit=fahrenheit&timezone=auto",

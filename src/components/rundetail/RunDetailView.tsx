@@ -1,10 +1,14 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { buildGeoJSON } from '@/utils/geojsonExport'
 import { buildFullKML } from '@/utils/kmlExport'
 import { exportChainAsJsonl } from '@/utils/chainOfCustody'
 import type { StoredRunDetailV2, StoredRunSummary } from '@/account/types'
 import { ArchivedReplay } from './ArchivedReplay'
 import { inspectEvidence } from './evidenceStatus'
+import { reportSourceFromStoredRun } from '@/sim/demo/reportAdapters'
+
+// Lazy: keeps the report view (SVG map, print CSS) out of the account panels' startup chunk.
+const AfterActionReport = lazy(() => import('@/components/debrief/AfterActionReport').then((m) => ({ default: m.AfterActionReport })))
 
 const TABS = ['Overview', 'Report', 'Event Log', 'Evidence Chain', 'Replay'] as const
 type RunDetailTab = typeof TABS[number]
@@ -51,10 +55,14 @@ function Overview({ summary, detail }: { summary: StoredRunSummary; detail: Stor
   )
 }
 
-function Report({ detail }: { detail: StoredRunDetailV2 | null }) {
-  if (!detail) return <p className="rundetail-empty">No full report is available for this run.</p>
-  const report = detail.report
-  return <div className="rundetail-report"><h2>{report.missionReport.title}</h2><p>{report.missionReport.summary}</p><div className="rundetail-report-grid"><section><span className="account-label">OUTCOME</span><pre>{JSON.stringify(report.outcome, null, 2)}</pre></section><section><span className="account-label">TRAINING COMPLIANCE EXERCISE</span><pre>{JSON.stringify(report.compliance, null, 2)}</pre></section><section><span className="account-label">TRAINING ASSURANCE</span><pre>{JSON.stringify(report.assurance, null, 2)}</pre></section><section><span className="account-label">SCRIPTED AIRSPACE &amp; TRAFFIC</span><pre>{JSON.stringify(report.utm, null, 2)}</pre></section><section><span className="account-label">APPLICATION RECORDS</span><pre>{JSON.stringify(report.evidence, null, 2)}</pre></section></div></div>
+function Report({ summary, detail }: { summary: StoredRunSummary; detail: StoredRunDetailV2 | null }) {
+  const source = useMemo(() => reportSourceFromStoredRun(summary, detail), [summary, detail])
+  if (!source) return <p className="rundetail-empty">No full report is available for this run.</p>
+  return (
+    <Suspense fallback={<p className="rundetail-empty">Loading report…</p>}>
+      <AfterActionReport source={source} mode="inline" showExports={false} />
+    </Suspense>
+  )
 }
 
 function EventLog({ detail }: { detail: StoredRunDetailV2 | null }) {
@@ -74,14 +82,28 @@ function EvidenceChain({ summary, detail }: { summary: StoredRunSummary; detail:
 
 export function RunDetailView({ summary, detail, onBack, mobile = false }: { summary: StoredRunSummary; detail: StoredRunDetailV2 | null; onBack: () => void; mobile?: boolean }) {
   const [tab, setTab] = useState<RunDetailTab>('Overview')
+  const [htmlDownloadFailed, setHtmlDownloadFailed] = useState(false)
   const slug = `${summary.scenarioId}-${summary.completedAt}`
+  // The HTML export loads on click so none of it sits in this panel's startup chunk.
+  const downloadHtmlReport = async () => {
+    setHtmlDownloadFailed(false)
+    try {
+      const source = reportSourceFromStoredRun(summary, detail)
+      if (!source) throw new Error('no full detail for this run')
+      const { downloadReportHtmlFromSource } = await import('@/components/debrief/reportDownload')
+      downloadReportHtmlFromSource(source)
+    } catch {
+      setHtmlDownloadFailed(true)
+    }
+  }
   return (
     <section className={`rundetail${mobile ? ' rundetail--mobile' : ''}`} data-testid="run-detail-view">
-      <header className="rundetail-header"><button className="btn" onClick={onBack}>← BACK</button><div><span className="modal-title">{detail?.scenario.name ?? summary.scenarioId}</span><small>{new Date(summary.completedAt).toLocaleString()}</small></div><div className="rundetail-exports"><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}-report.json`, JSON.stringify(detail.report, null, 2), 'application/json')}>REPORT</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}-evidence.jsonl`, exportChainAsJsonl(detail.events), 'application/x-ndjson')}>EVIDENCE</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}.kml`, buildFullKML(detail.finalDrones, detail.positionHistory, detail.scenario, []), 'application/vnd.google-earth.kml+xml')}>KML</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}.geojson`, buildGeoJSON(detail.finalDrones, detail.positionHistory, detail.scenario, []), 'application/geo+json')}>GEOJSON</button></div></header>
+      <header className="rundetail-header"><button className="btn" onClick={onBack}>← BACK</button><div><span className="modal-title">{detail?.scenario.name ?? summary.scenarioId}</span><small>{new Date(summary.completedAt).toLocaleString()}</small></div><div className="rundetail-exports"><button className="btn" data-testid="rundetail-download-html" disabled={!detail} onClick={() => void downloadHtmlReport()}>Download report (HTML)</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}-report.json`, JSON.stringify(detail.report, null, 2), 'application/json')}>REPORT</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}-evidence.jsonl`, exportChainAsJsonl(detail.events), 'application/x-ndjson')}>EVIDENCE</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}.kml`, buildFullKML(detail.finalDrones, detail.positionHistory, detail.scenario, []), 'application/vnd.google-earth.kml+xml')}>KML</button><button className="btn" disabled={!detail} onClick={() => detail && download(`${slug}.geojson`, buildGeoJSON(detail.finalDrones, detail.positionHistory, detail.scenario, []), 'application/geo+json')}>GEOJSON</button></div></header>
+      {htmlDownloadFailed && <p className="rundetail-empty" role="alert">Could not prepare the HTML report for download.</p>}
       <nav className="rundetail-tabs" aria-label="Run detail sections">{TABS.map((candidate) => <button key={candidate} className={candidate === tab ? 'active' : ''} onClick={() => setTab(candidate)}>{candidate}</button>)}</nav>
       <div className="rundetail-body">
         {tab === 'Overview' && <Overview summary={summary} detail={detail} />}
-        {tab === 'Report' && <Report detail={detail} />}
+        {tab === 'Report' && <Report summary={summary} detail={detail} />}
         {tab === 'Event Log' && <EventLog detail={detail} />}
         {tab === 'Evidence Chain' && <EvidenceChain summary={summary} detail={detail} />}
         {tab === 'Replay' && (detail ? <ArchivedReplay detail={detail} /> : <p className="rundetail-empty">No archived replay is available for this run.</p>)}

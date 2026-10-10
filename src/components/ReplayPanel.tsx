@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore, MAX_REPLAY_FRAMES, MAX_REPLAY_DURATION_SEC } from '@/store/droneStore'
 import { weatherSummaryLabel } from '@/sim/weather/weatherEngine'
 import { buildAfterActionPackage, serializeAfterActionPackage } from '@/sim/demo/missionReport'
+import { reportSourceFromLive } from '@/sim/demo/reportAdapters'
+import type { ReportSource } from '@/sim/demo/reportViewModel'
+
+// Lazy: the readable report (map, SVG, print CSS) must stay out of the startup path.
+const AfterActionReport = lazy(() => import('@/components/debrief/AfterActionReport').then((m) => ({ default: m.AfterActionReport })))
 
 export function ReplayPanel() {
   const { replaySession, replayIndex, ui, scenario, scenarioVariant, drones, metrics, thermalContacts, events, elapsedSec, positionHistory, setReplayIndex, setIsReplayMode } = useDroneStore(
@@ -16,6 +21,9 @@ export function ReplayPanel() {
   const [playing, setPlaying] = useState(false)
   const [playSpeed, setPlaySpeed] = useState(1)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Snapshot taken when VIEW REPORT is pressed, so the report stays stable while the user scrubs.
+  const [reportSource, setReportSource] = useState<ReportSource | null>(null)
+  const closeReport = useCallback(() => setReportSource(null), [])
 
   const frames = replaySession?.frames ?? []
   const total = frames.length
@@ -88,6 +96,16 @@ export function ReplayPanel() {
     window.setTimeout(() => { URL.revokeObjectURL(url); a.remove() }, 1000)
   }
 
+  function handleViewReport() {
+    setReportSource(reportSourceFromLive(useDroneStore.getState()))
+  }
+
+  const reportDialog = reportSource && (
+    <Suspense fallback={null}>
+      <AfterActionReport source={reportSource} onClose={closeReport} />
+    </Suspense>
+  )
+
   function handleSeek(e: React.ChangeEvent<HTMLInputElement>) {
     const i = Number(e.target.value)
     setPlaying(false)
@@ -109,7 +127,7 @@ export function ReplayPanel() {
         background: 'var(--bg-panel)', border: '1px solid var(--accent-blue)',
         borderRadius: 6, padding: '6px 16px',
         display: 'flex', alignItems: 'center', gap: 10,
-        fontFamily: 'var(--font-mono)', fontSize: 10, zIndex: 200,
+        fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', zIndex: 200,
       }}>
         <span style={{ color: 'var(--accent-blue)' }}>▶ REPLAY AVAILABLE</span>
         <span style={{ color: 'var(--text-dim)' }}>
@@ -121,12 +139,16 @@ export function ReplayPanel() {
             ⚠ recording stopped at 25 min MAX
           </span>
         )}
-        <button className="btn primary" onClick={handleEnterReplay} style={{ padding: '3px 10px', fontSize: 9 }}>
+        <button className="btn primary" onClick={handleEnterReplay} style={{ padding: '3px 10px', fontSize: 'var(--fs-min)' }}>
           ENTER REPLAY
         </button>
-        <button className="btn" onClick={handleExportAfterAction} style={{ padding: '3px 10px', fontSize: 9 }}>
+        <button className="btn primary" onClick={handleViewReport} data-testid="view-report" style={{ padding: '3px 10px', fontSize: 12 }}>
+          VIEW REPORT
+        </button>
+        <button className="btn" onClick={handleExportAfterAction} style={{ padding: '3px 10px', fontSize: 'var(--fs-min)' }}>
           EXPORT REPORT
         </button>
+        {reportDialog}
       </div>
     )
   }
@@ -139,7 +161,7 @@ export function ReplayPanel() {
       background: 'var(--bg-panel)', border: '1px solid var(--accent-blue)',
       borderRadius: 6, padding: '8px 16px',
       display: 'flex', flexDirection: 'column', gap: 6,
-      fontFamily: 'var(--font-mono)', fontSize: 10, zIndex: 200,
+      fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', zIndex: 200,
       minWidth: 560,
     }}>
       {/* Weather state during scrub */}
@@ -147,7 +169,7 @@ export function ReplayPanel() {
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '3px 6px', background: 'var(--bg-input)', borderRadius: 3,
-          fontSize: 9,
+          fontSize: 'var(--fs-min)',
         }}>
           <span style={{ color: 'var(--text-dim)' }}>WX</span>
           <span style={{ color: weather.activeHazards.length > 0 ? 'var(--accent-yellow)' : 'var(--accent-green)' }}>
@@ -176,13 +198,13 @@ export function ReplayPanel() {
           ◈ REPLAY{recordingCapped ? ' ⚠' : ''}
         </span>
         {recordingCapped && (
-          <span style={{ color: 'var(--accent-yellow)', fontSize: 9 }} title="Replay recording stops at 25 minutes of mission time.">
+          <span style={{ color: 'var(--accent-yellow)', fontSize: 'var(--fs-min)' }} title="Replay recording stops at 25 minutes of mission time.">
             25 min MAX
           </span>
         )}
 
         {/* Play/pause */}
-        <button className="btn primary" onClick={handlePlayPause} style={{ padding: '3px 10px', fontSize: 11, minWidth: 32 }}>
+        <button className="btn primary" onClick={handlePlayPause} style={{ padding: '3px 10px', fontSize: 'var(--fs-min)', minWidth: 32 }}>
           {playing ? '⏸' : '▶'}
         </button>
 
@@ -208,20 +230,24 @@ export function ReplayPanel() {
         {/* Speed */}
         <div className="btn-group">
           {[1, 2, 4].map((s) => (
-            <button key={s} className={`btn${playSpeed === s ? ' active' : ''}`} onClick={() => setPlaySpeed(s)} style={{ fontSize: 9, padding: '2px 6px' }}>
+            <button key={s} className={`btn${playSpeed === s ? ' active' : ''}`} onClick={() => setPlaySpeed(s)} style={{ fontSize: 'var(--fs-min)', padding: '2px 6px' }}>
               {s}×
             </button>
           ))}
         </div>
 
-        <button className="btn" onClick={handleExportAfterAction} style={{ padding: '3px 8px', fontSize: 9 }}>
+        <button className="btn primary" onClick={handleViewReport} data-testid="view-report" style={{ padding: '3px 8px', fontSize: 12 }}>
+          VIEW REPORT
+        </button>
+        <button className="btn" onClick={handleExportAfterAction} style={{ padding: '3px 8px', fontSize: 'var(--fs-min)' }}>
           REPORT
         </button>
 
         {/* Exit */}
-        <button className="btn danger" onClick={handleExitReplay} style={{ padding: '3px 8px', fontSize: 9 }}>
+        <button className="btn danger" onClick={handleExitReplay} style={{ padding: '3px 8px', fontSize: 'var(--fs-min)' }}>
           EXIT
         </button>
+        {reportDialog}
       </div>
     </div>
   )

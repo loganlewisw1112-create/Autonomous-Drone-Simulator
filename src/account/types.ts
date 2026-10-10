@@ -74,6 +74,42 @@ export interface AccountRecord {
    * accounts unlocked at signup via accessCode.
    */
   instructorUnlockPending?: boolean
+  /**
+   * Signed ADMIN pass (see src/account/adminPass.ts). Re-verified against the
+   * build's admin public key on every sign-in; an edited or forged pass is
+   * ignored, so storing it here grants nothing by itself.
+   */
+  adminPass?: string
+  // ── Password recovery fields (recovery code + optional authenticator) ──
+  // See src/account/recovery.ts. Absent on legacy accounts: there the
+  // password-derived key IS the data key and sign-in works exactly as before.
+  keyWraps?: KeyWraps
+  /** Optional authenticator-app pairing (see src/account/totp.ts). */
+  totp?: TotpRecord
+}
+
+/**
+ * Envelope key wraps. The random 32-byte data key K encrypts every record; K is
+ * itself stored encrypted twice, so a password change or a recovery reset only
+ * re-wraps K and never re-encrypts any run, mission or classroom blob.
+ */
+export interface KeyWraps {
+  version: 1
+  /** K encrypted under the key derived from the password (`kdfParams`). */
+  password: CipherBlob
+  /** K encrypted under the key derived from the recovery code (`recoveryKdf`). */
+  recovery: CipherBlob
+  recoveryKdf: KdfParams
+}
+
+export interface TotpRecord {
+  /**
+   * Authenticator seed encrypted under the data key K. The recovery code unwraps K,
+   * so the reset flow can still verify a code, while pairing and recovery-code
+   * rotation never need the (shown-once) recovery code.
+   */
+  seed: CipherBlob
+  pairedAt: number
 }
 
 export interface AccountPrefs {
@@ -118,6 +154,11 @@ export interface StoredRunSummary {
   source?: 'solo' | 'classroom'
   classId?: string
   classroomId?: string
+  /**
+   * Present when the run was modified through the admin debug console (fault injection,
+   * state edits). Such runs are excluded from analytics; absent on clean and older runs.
+   */
+  debugTaint?: { firstAt: number; reasons: string[] }
 }
 
 export interface RunRecord {

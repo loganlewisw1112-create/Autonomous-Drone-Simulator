@@ -42,10 +42,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <div style={{ fontSize: 14, color: '#ff4444', letterSpacing: '0.08em' }}>
             ⚠ SIMULATOR ENCOUNTERED AN ERROR
           </div>
-          <div style={{ fontSize: 11, color: '#8899aa', maxWidth: 480 }}>
+          <div style={{ fontSize: 'var(--fs-min)', color: '#8899aa', maxWidth: 480 }}>
             {this.state.error.message}
           </div>
-          <div style={{ fontSize: 9, color: '#556677' }}>
+          <div style={{ fontSize: 'var(--fs-min)', color: '#556677' }}>
             Simulation-only build error — no real flight data affected.
           </div>
           <button

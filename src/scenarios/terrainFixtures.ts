@@ -9,6 +9,7 @@ import {
   prepareScenarioBuildings,
   requireScenarioBuildingsPrepared,
 } from './buildingFixtures'
+import { prepareScenarioRoadsNonFatal } from './roadFixtures'
 
 // Frozen terrain DEMs produced by tools/fixtures/terrain.mjs (REALISM_ROADMAP WP-0/WP-4).
 // Runtime mission loading is local-only: dynamic imports split committed fixtures into
@@ -166,6 +167,12 @@ export async function prepareScenarioTerrain(
       state: 'failed',
       reason: error instanceof Error ? error.message : 'Building fixture failed to load',
     }
+  }
+  // c12a: committed road graphs stage here too, before the not_required return, because scenarios
+  // without a DEM (demo_basic, custom aliases) return there. Non-fatal: a road failure leaves the
+  // scenario with no network ("No road access") and never fails the gate; failures are not cached.
+  for (const id of new Set([scenarioId, fixtureId])) {
+    if (id) await prepareScenarioRoadsNonFatal(id)
   }
   if (!fixtureId) return { ok: true, fixtureId: null, state: 'not_required' }
   if (preparedFixtures.has(fixtureId)) return { ok: true, fixtureId, state: 'cached' }

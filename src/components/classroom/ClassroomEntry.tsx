@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import App from '@/App'
 import { useClassroomStore } from '@/classroom/classroomStore'
@@ -9,6 +9,7 @@ import { JoinGate } from '@/components/classroom/JoinGate'
 import { ClassSetup } from '@/components/classroom/ClassSetup'
 import { ClassroomHome } from '@/components/classroom/ClassroomHome'
 import { ClassroomAuthGate } from '@/components/classroom/ClassroomAuthGate'
+import { PostSignupRecovery } from '@/components/account/PostSignupRecovery'
 import { ClassroomServerPrompt } from '@/components/classroom/ClassroomServerPrompt'
 import { InstructorHub } from '@/components/classroom/InstructorHub'
 import { CoordinatorConsole } from '@/components/classroom/CoordinatorConsole'
@@ -16,7 +17,21 @@ import { MissionScorecard } from '@/components/classroom/MissionScorecard'
 import { ClassroomWindowsGate } from '@/components/PlatformGate'
 import { BuildInfoFooter } from '@/components/BuildInfoFooter'
 import { isWindowsClient } from '@/platform/appTarget'
+import { registerDebugCommands } from '@/debug/registry'
+import { classroomDebugCommands } from '@/classroom/debugCommands'
 import './classroom.css'
+
+// Admin debug console: relay diagnostics exist only in the classroom edition.
+registerDebugCommands(classroomDebugCommands)
+
+const DebugConsoleRoot = lazy(() => import('@/components/debug/DebugConsoleRoot').then((m) => ({ default: m.DebugConsoleRoot })))
+
+/** The student path renders App, which mounts the console itself; the instructor path needs this. */
+function InstructorAdminConsole() {
+  const isAdmin = useAuthStore((s) => s.activeAccount?.isAdmin === true)
+  if (!isAdmin) return null
+  return <Suspense fallback={null}><DebugConsoleRoot /></Suspense>
+}
 
 function InsecureClassroomBanner() {
   if (typeof location !== 'undefined' && location.protocol === 'https:') return null
@@ -44,6 +59,9 @@ export function ClassroomEntry({
       {isWindowsClient()
         ? <ClassroomEntryInner mode={mode} initialClassId={initialClassId} />
         : <ClassroomWindowsGate />}
+      {/* Classroom home's auth form unmounts the moment signup signs in; this host keeps the
+          mandatory "save your recovery code" step on screen (deduped with nested hosts). */}
+      <PostSignupRecovery />
       <InsecureClassroomBanner />
       <BuildInfoFooter />
     </>
@@ -71,6 +89,7 @@ function ClassroomEntryInner({
     return (
       <ClassroomAuthGate requiredRole="instructor">
         <InstructorFlow status={status} role={role} />
+        <InstructorAdminConsole />
       </ClassroomAuthGate>
     )
   }

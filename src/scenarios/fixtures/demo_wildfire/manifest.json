@@ -49,6 +49,67 @@
       "propagation": "IS-GPS-200 almanac algorithm (no harmonic corrections); az/el at the AO reference position"
     },
     {
+      "fixture": "roads.json",
+      "source": "Overture Maps Foundation — transportation theme",
+      "url": "https://docs.overturemaps.org/guides/transportation/",
+      "license": "ODbL 1.0",
+      "attribution": "© OpenStreetMap contributors, Overture Maps Foundation",
+      "retrievedAt": "2026-10-09",
+      "sha256": "056108caffe462056015ad3004521555b44c0722c43911d2b5e4ab63adc3be96",
+      "rawBytes": 31653,
+      "gzipBytes": 12687,
+      "input": "overturemaps==1.0.2",
+      "inputSha256": "0f112b4f811cca050fbe96c160a1fe6b61c240cf2582103669ec06ad56372d6c",
+      "dataRelease": "2026-09-23.1",
+      "schemaVersion": "v2.0.0 (per docs 2026-10-09; shapes verified against the downloaded file)",
+      "stacCollection": "https://stac.overturemaps.org/2026-09-23.1/transportation/segment/collection.json",
+      "client": {
+        "package": "overturemaps",
+        "version": "1.0.2"
+      },
+      "roadBbox": [
+        -122.261576,
+        37.882025,
+        -122.214724,
+        37.915475
+      ],
+      "downloadBbox": [
+        -122.261576,
+        37.882025,
+        -122.214724,
+        37.915475
+      ],
+      "filters": "subtype=road; classes motorway..track; drops under-construction/abandoned/indoor, driveway/parking_aisle/sidewalk/crosswalk/cycle_crossing; per-direction vehicle access (last matching rule wins); rail, ferry and water are never shipped",
+      "budgetSteps": [],
+      "stats": {
+        "select": {
+          "input": 764,
+          "kept": 310,
+          "ambiguousAccessRules": 66,
+          "droppedByAccess": 27
+        },
+        "split": {
+          "droppedSelfLoops": 0,
+          "droppedShort": 0
+        },
+        "contracted": 16,
+        "nodes": 271,
+        "edges": 334,
+        "entries": 7
+      },
+      "validation": {
+        "waterChecked": true,
+        "buildingsChecked": true,
+        "waterToleranceM": 8,
+        "droppedWaterCrossings": 0,
+        "droppedBuildingCrossings": 0,
+        "droppedDisconnectedEdges": 45,
+        "remainingWaterCrossings": 0,
+        "ambiguousAccessRules": 66,
+        "startSnapM": 291.2
+      }
+    },
+    {
       "fixture": "terrain-refpoints.json",
       "source": "USGS 3DEP Elevation Point Query Service (EPQS)",
       "url": "https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&units=Meters&wkid=4326",

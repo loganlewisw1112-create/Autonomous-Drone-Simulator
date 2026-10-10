@@ -1,20 +1,20 @@
 import { MOBILE_APP_URL } from '@/platform/appTarget'
 import '@/styles/platform-gate.css'
 
-export function WindowsPlatformGate() {
+export function DesktopPlatformGate() {
   return (
-    <main className="platform-gate" data-testid="windows-platform-gate">
+    <main className="platform-gate" data-testid="desktop-platform-gate">
       <section className="platform-gate-card" role="alert">
         <div className="platform-gate-code">ERROR</div>
-        <h1>WINDOWS VERSION ONLY</h1>
+        <h1>DESKTOP VERSION ONLY</h1>
         <p>
-          This simulator link can only open on a Windows computer. Open it again on Windows,
-          or continue with the mobile version on this device.
+          This simulator link opens on Windows and Mac computers. Open it again on a desktop
+          or laptop, or continue with the mobile version on this device.
         </p>
         <a className="platform-gate-action" href={MOBILE_APP_URL}>
           OPEN MOBILE VERSION
         </a>
-        <span className="platform-gate-note">Windows users can return to the README and choose the Windows launch link.</span>
+        <span className="platform-gate-note">Windows and Mac users can return to the README and choose the Desktop launch link.</span>
       </section>
     </main>
   )

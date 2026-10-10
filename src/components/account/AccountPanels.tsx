@@ -4,9 +4,11 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import {
-  buildAggregates, buildTimeline, completionReasons, eventTypeTotals, runsByScenario, safetyTrend, sortiesByPlatform,
+  buildAggregates, buildTimeline, debugExcludedNote, completionReasons, eventTypeTotals, runsByScenario, safetyTrend, sortiesByPlatform,
 } from '@/components/account/analyticsData'
 import { useAuthStore } from '@/store/authStore'
+import { AccountRecoverySection } from '@/components/account/AccountRecoverySection'
+import { AdminPassSection } from '@/components/account/AdminPassSection'
 import {
   accountCipherAad,
   decryptJson,
@@ -156,6 +158,9 @@ function AnalyticsPanel() {
             <StatTile label="RECOVERIES" value={aggregates.recoveryDispatches} />
             <StatTile label="GROUND DISPATCHES" value={aggregates.groundDispatches} />
           </div>
+          {debugExcludedNote(aggregates.debugExcluded) && (
+            <p className="account-status">{debugExcludedNote(aggregates.debugExcluded)} from these totals (admin console changed them).</p>
+          )}
 
           <div className="account-chart-grid">
             <div className="account-chart-card">
@@ -163,9 +168,9 @@ function AnalyticsPanel() {
               <ResponsiveContainer width="100%" height={180}>
                 <LineChart data={timeline} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
                   <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
-                  <XAxis dataKey="run" tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <XAxis dataKey="run" tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <YAxis tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 'var(--fs-min)' }} />
                   <Line type="monotone" dataKey="distanceKm" stroke="#00d4ff" strokeWidth={2} dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -176,9 +181,9 @@ function AnalyticsPanel() {
                 {/* Real scenario names, angled so they stay legible at this width. */}
                 <BarChart data={byScenario} margin={{ top: 8, right: 12, bottom: 34, left: -18 }}>
                   <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
-                  <XAxis dataKey="label" tick={{ fill: '#8b949e', fontSize: 9 }} angle={-30} textAnchor="end" interval={0} height={48} />
-                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <XAxis dataKey="label" tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} angle={-30} textAnchor="end" interval={0} height={48} />
+                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 'var(--fs-min)' }} />
                   <Bar dataKey="count" fill="#44ff88" />
                 </BarChart>
               </ResponsiveContainer>
@@ -188,12 +193,12 @@ function AnalyticsPanel() {
               <span className="account-label">HOW MISSIONS ENDED</span>
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
-                  <Pie data={reasons} dataKey="count" nameKey="reason" cx="50%" cy="50%" outerRadius={62} label={{ fill: '#8b949e', fontSize: 9 }}>
+                  <Pie data={reasons} dataKey="count" nameKey="reason" cx="50%" cy="50%" outerRadius={62} label={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }}>
                     {reasons.map((entry, i) => (
                       <Cell key={entry.reason} fill={REASON_COLORS[i % REASON_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 'var(--fs-min)' }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -203,9 +208,9 @@ function AnalyticsPanel() {
               <ResponsiveContainer width="100%" height={180}>
                 <LineChart data={safety} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
                   <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
-                  <XAxis dataKey="run" tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <XAxis dataKey="run" tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 'var(--fs-min)' }} />
                   <Line type="monotone" dataKey="conflicts" stroke="#ffaa00" strokeWidth={2} dot={{ r: 2 }} />
                   <Line type="monotone" dataKey="breaches" stroke="#ff4444" strokeWidth={2} dot={{ r: 2 }} />
                 </LineChart>
@@ -217,9 +222,9 @@ function AnalyticsPanel() {
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={byPlatform} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
                   <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
-                  <XAxis dataKey="label" tick={{ fill: '#8b949e', fontSize: 9 }} interval={0} />
-                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <XAxis dataKey="label" tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} interval={0} />
+                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 'var(--fs-min)' }} />
                   <Bar dataKey="sorties" fill="#00d4ff" />
                 </BarChart>
               </ResponsiveContainer>
@@ -230,9 +235,9 @@ function AnalyticsPanel() {
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={eventMix.totals} layout="vertical" margin={{ top: 8, right: 12, bottom: 0, left: 46 }}>
                   <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
-                  <XAxis type="number" allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <YAxis type="category" dataKey="eventType" width={96} tick={{ fill: '#8b949e', fontSize: 8.5 }} />
-                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <YAxis type="category" dataKey="eventType" width={96} tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 'var(--fs-min)' }} />
                   <Bar dataKey="count" fill="#a371f7" />
                 </BarChart>
               </ResponsiveContainer>
@@ -273,12 +278,13 @@ function AnalyticsPanel() {
 function SettingsPanel() {
   const {
     showSettings, setShowSettings, activeAccount, sessionKey, storageReadOnly,
-    prefs, savePrefs, signOut, setShowAnalytics,
+    prefs, savePrefs, signOut, setShowAnalytics, changePasswordWrapped,
   } = useAuthStore(
     useShallow((s) => ({
       showSettings: s.showSettings, setShowSettings: s.setShowSettings,
       activeAccount: s.activeAccount, sessionKey: s.sessionKey, storageReadOnly: s.storageReadOnly,
       prefs: s.prefs, savePrefs: s.savePrefs, signOut: s.signOut, setShowAnalytics: s.setShowAnalytics,
+      changePasswordWrapped: s.changePasswordWrapped,
     })),
   )
   const [status, setStatus] = useState<string | null>(null)
@@ -334,7 +340,17 @@ function SettingsPanel() {
     if (newPassword.length < 8) { flash('New password must be at least 8 characters'); return }
     const record = await getAccountByUsername(activeAccount!.username)
     if (!record) { flash('Profile record not found'); return }
-    // Re-key everything atomically: new salt + key, re-encrypted check blob and
+    // Wrapped accounts (recovery-enabled): the data key stays; only its password wrap
+    // and salt change, so no run, mission or classroom blob is rewritten.
+    if (record.keyWraps) {
+      if (newPassword.length > 128) { flash('New password must be 128 characters or fewer'); return }
+      const wrapped = await changePasswordWrapped(newPassword)
+      if (!wrapped) { flash('Password change failed — nothing was modified; your old password still works'); return }
+      setNewPassword('')
+      flash('Password changed — your recovery code still works')
+      return
+    }
+    // Legacy account, no key wraps. Re-key everything atomically: new salt + key, re-encrypted check blob and
     // prefs, plus every run / run-detail / mission blob — all in ONE transaction.
     // If any row fails to re-encrypt the whole change aborts and the old password
     // still decrypts the untouched data.
@@ -461,10 +477,15 @@ function SettingsPanel() {
             <button className="btn" onClick={() => void handleChangePassword()} disabled={!newPassword || storageReadOnly}>CHANGE PASSWORD</button>
           </div>
           <p className="account-fineprint">
-            Changing the password re-encrypts your entire mission history with a new key.
-            Passwords cannot be recovered — a lost password means the encrypted history is unreadable.
+            Profiles with a recovery code change passwords instantly; mission history is not
+            re-encrypted. Profiles without one re-encrypt their whole history with a new key.
+            A forgotten password can only be reset with a recovery code (see Account recovery).
           </p>
         </div>
+
+        <AccountRecoverySection />
+
+        <AdminPassSection />
 
         <div className="account-settings-section">
           <span className="account-label">DANGER ZONE</span>

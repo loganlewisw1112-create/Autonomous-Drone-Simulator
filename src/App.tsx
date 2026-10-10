@@ -7,13 +7,15 @@ import { ControlBar } from '@/components/ControlBar'
 import { LoadingScreen } from '@/components/LoadingScreen'
 import { WelcomeOverlay } from '@/components/WelcomeOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { WindowsPlatformGate } from '@/components/PlatformGate'
+import { DesktopPlatformGate } from '@/components/PlatformGate'
 import { AccountChip } from '@/components/account/AccountChip'
 import { BuildInfoFooter } from '@/components/BuildInfoFooter'
+import { ThermalHoldCoach } from '@/components/ThermalHoldCoach'
 import { useDeviceMode } from '@/hooks/useDeviceMode'
-import { APP_TARGET, isWindowsClient } from '@/platform/appTarget'
+import { APP_TARGET, isDesktopClient } from '@/platform/appTarget'
 import { HARNESS_ENABLED } from '@/scene3d/harness/flag'
 import { useDroneStore } from '@/store/droneStore'
+import { useAuthStore } from '@/store/authStore'
 import '@/styles/tactical.css'
 
 // Modal/conditional components (gated behind ui.showX or replaySession) are lazy-loaded —
@@ -26,13 +28,15 @@ const MobileShell = lazy(() => import('@/components/mobile/MobileShell').then((m
 // Account panels are lazy for the same reason: gated on auth-store flags, null until opened.
 const SignInModal = lazy(() => import('@/components/account/SignInModal').then((m) => ({ default: m.SignInModal })))
 const AccountPanels = lazy(() => import('@/components/account/AccountPanels').then((m) => ({ default: m.AccountPanels })))
+// Admin-only debug console: its own chunk, mounted solely when the verified profile is an admin.
+const DebugConsoleRoot = lazy(() => import('@/components/debug/DebugConsoleRoot').then((m) => ({ default: m.DebugConsoleRoot })))
 
 // Isolated so the 20-200Hz tick clock re-renders only this tiny span, not the whole header
 // or the rest of the app shell (which are independent siblings, not children of this).
 function MissionClock() {
   const { tick, elapsedSec } = useDroneStore(useShallow((s) => ({ tick: s.tick, elapsedSec: s.elapsedSec })))
   return (
-    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)' }}>
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--text-dim)' }}>
       T+{Math.floor(elapsedSec / 60)}:{Math.floor(elapsedSec % 60).toString().padStart(2, '0')} · #{tick}
     </span>
   )
@@ -43,12 +47,14 @@ export default function App() {
     useShallow((s) => ({ scenario: s.scenario, isRunning: s.ui.isRunning, mapReady: s.mapReady })),
   )
   const [loadingDone, setLoadingDone] = useState(HARNESS_ENABLED)
+  const isAdmin = useAuthStore((s) => s.activeAccount?.isAdmin === true)
   const deviceMode = useDeviceMode()
 
-  // The public Windows deployment fails closed before any simulator UI loads.
+  // The public desktop deployment (internal target id `windows`) serves Windows and Mac
+  // computers and fails closed before any simulator UI loads on anything else.
   // Its error screen offers the independent mobile deployment as the safe path.
-  if (APP_TARGET === 'windows' && !isWindowsClient()) {
-    return <WindowsPlatformGate />
+  if (APP_TARGET === 'windows' && !isDesktopClient()) {
+    return <DesktopPlatformGate />
   }
 
   // Both phone orientations use one persistent shell so rotation never resets
@@ -91,6 +97,9 @@ export default function App() {
         {/* Bottom: Control bar */}
         <ControlBar />
 
+        {/* First-thermal-hold guidance (once per mission); renders null otherwise */}
+        <ThermalHoldCoach />
+
         {/* Preflight modal, launch bay planning modal, and after-action replay panel — each
             renders null most of the time (gated on ui state), so they're lazy chunks with no
             fallback UI needed for the common "not shown yet" case. */}
@@ -100,6 +109,7 @@ export default function App() {
           <ReplayPanel />
           <SignInModal />
           <AccountPanels />
+          {isAdmin && <DebugConsoleRoot />}
         </Suspense>
 
         {/* First-visit onboarding — after the loading screen clears, before any scenario */}

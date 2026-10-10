@@ -1,6 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useDeviceMode } from '@/hooks/useDeviceMode'
+import { APP_TARGET } from '@/platform/appTarget'
 import { getClassroomDesktopBridge, type DesktopEntitlementState } from '@/licensing/desktopBridge'
 import { EntitlementActivation } from '@/components/licensing/EntitlementActivation'
+import { ADMIN_OVERRIDE_LABEL, useIsAdmin } from '@/account/adminOverride'
 import {
   evaluateUsagePhase,
   remainingUsageMs,
@@ -14,6 +17,12 @@ interface UsagePolicyContextValue {
   phase: UsagePhase
   canBeginNewActivity: boolean
   remainingMs: number | null
+  /**
+   * True when a verified ADMIN pass overrides the usage window: either holding open a
+   * window that has otherwise closed (desktop gate) or running with no session clock at all
+   * (public demo gate, where remainingMs is null and phase stays 'active').
+   */
+  adminOverride?: boolean
 }
 
 const UsagePolicyContext = createContext<UsagePolicyContextValue>({
@@ -63,16 +72,54 @@ function entitlementWarningLabel(state: DesktopEntitlementState): string {
   return '24-HOUR WARNING · '
 }
 
-function PolicyBanner({ phase, children }: { phase: UsagePhase; children: React.ReactNode }) {
+/** CSS custom property on <html>: px from the viewport top to the bottom of the policy banner. */
+export const POLICY_BANNER_HEIGHT_VAR = '--policy-banner-h'
+
+/**
+ * Phone chrome only: the mobile shell sits under the banner (`.mobile-shell { top: var(--policy-banner-h, 0px) }`),
+ * so the banner is measured and published instead of covering the topbar. Desktop and classroom never publish it,
+ * and the variable's 0px default keeps their layout unchanged.
+ */
+function usePublishBannerOffset(ref: React.RefObject<HTMLDivElement | null>, enabled: boolean) {
+  useEffect(() => {
+    const el = ref.current
+    if (!enabled || !el) return
+    const root = document.documentElement
+    const publish = () => root.style.setProperty(POLICY_BANNER_HEIGHT_VAR, `${Math.ceil(el.getBoundingClientRect().bottom)}px`)
+    publish()
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(publish) : null
+    observer?.observe(el)
+    window.addEventListener('resize', publish)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', publish)
+      root.style.removeProperty(POLICY_BANNER_HEIGHT_VAR)
+    }
+  }, [ref, enabled])
+}
+
+function PolicyBanner({ phase, interactive = false, children }: { phase: UsagePhase; interactive?: boolean; children: React.ReactNode }) {
+  const deviceMode = useDeviceMode()
+  const phone = APP_TARGET !== 'classroom' && deviceMode !== 'desktop'
+  const ref = useRef<HTMLDivElement>(null)
+  usePublishBannerOffset(ref, phone)
+  const admin = useIsAdmin()
   return (
-    <div role={phase === 'active' ? 'status' : 'alert'} style={{
+    <div ref={ref} role={phase === 'active' ? 'status' : 'alert'} style={{
       position: 'fixed', zIndex: 100000, top: 6, left: '50%', transform: 'translateX(-50%)',
-      padding: '5px 10px', borderRadius: 4, font: '11px ui-monospace, monospace',
+      padding: '5px 10px', borderRadius: 4, font: phone ? '12px ui-monospace, monospace' : '11px ui-monospace, monospace',
       background: phase === 'active' ? '#102a34ee' : '#431b1bee', color: '#fff',
       border: `1px solid ${phase === 'active' ? '#2b8296' : '#d65c5c'}`,
       maxWidth: 'min(92vw, 760px)', textAlign: 'center',
-    }} data-testid="usage-policy-banner">
+      // Phone only, and only for a banner with no links or buttons: it must not swallow taps on the topbar.
+      ...(phone && !interactive ? { pointerEvents: 'none' as const } : {}),
+    }} data-testid="usage-policy-banner" data-phone={phone ? 'true' : undefined}>
       {children}
+      {admin && phase !== 'active' && (
+        <strong data-testid="admin-override-policy" style={{ marginLeft: 8, color: '#ffd166' }}>
+          {' · '}{ADMIN_OVERRIDE_LABEL}: new missions and classes stay enabled
+        </strong>
+      )}
     </div>
   )
 }
@@ -111,27 +158,55 @@ function EntitlementBannerActions({ state }: { state: DesktopEntitlementState })
   )
 }
 
+function freshPublicDemoClock(now: number): UsageClock {
+  return { firstSeenAt: now, lastActivityAt: now, debriefStartedAt: null }
+}
+
 function PublicDemoPolicyGate({ children }: { children: React.ReactNode }) {
   const now = Date.now()
+  const admin = useIsAdmin()
   const clockRef = useRef<UsageClock>(readPublicDemoClock(now))
+  const adminRef = useRef(admin)
   const [, render] = useState(0)
-  const phase = evaluateUsagePhase(USAGE_POLICY, clockRef.current, now)
-  const remainingMs = remainingUsageMs(USAGE_POLICY, clockRef.current, now)
 
-  if (phase === 'debrief' && clockRef.current.debriefStartedAt === null) {
+  // A verified admin runs with no session clock at all. Whenever the admin state flips, the
+  // clock restarts from now and is persisted: signing in leaves no stale (possibly expired)
+  // window behind, and signing out hands the next, non-admin visitor a fresh public-demo
+  // window instead of an inherited debrief/expiry or a half-used countdown. Done during render
+  // (not in an effect) so no frame ever shows the stale state.
+  if (adminRef.current !== admin) {
+    adminRef.current = admin
+    clockRef.current = freshPublicDemoClock(now)
+    writePublicDemoClock(clockRef.current)
+  }
+
+  const phase: UsagePhase = admin ? 'active' : evaluateUsagePhase(USAGE_POLICY, clockRef.current, now)
+  const remainingMs = admin ? null : remainingUsageMs(USAGE_POLICY, clockRef.current, now)
+
+  if (!admin && phase === 'debrief' && clockRef.current.debriefStartedAt === null) {
     clockRef.current.debriefStartedAt = now
     writePublicDemoClock(clockRef.current)
   }
 
   useEffect(() => {
     const activity = () => {
+      if (adminRef.current) return
       if (evaluateUsagePhase(USAGE_POLICY, clockRef.current) !== 'active') return
       clockRef.current.lastActivityAt = Date.now()
       writePublicDemoClock(clockRef.current)
     }
     const events = ['pointerdown', 'keydown'] as const
     events.forEach((event) => window.addEventListener(event, activity, { passive: true }))
-    const timer = window.setInterval(() => render((value) => value + 1), 15_000)
+    const timer = window.setInterval(() => {
+      // While an admin is signed in the stored clock is kept at "now": the pass lives in memory
+      // only, so a reload signs the admin out and the page must not then restore a window that
+      // opened before the admin signed in.
+      if (adminRef.current) {
+        clockRef.current = freshPublicDemoClock(Date.now())
+        writePublicDemoClock(clockRef.current)
+      }
+      render((value) => value + 1)
+    }, 15_000)
     writePublicDemoClock(clockRef.current)
     return () => {
       events.forEach((event) => window.removeEventListener(event, activity))
@@ -143,7 +218,8 @@ function PublicDemoPolicyGate({ children }: { children: React.ReactNode }) {
     phase,
     canBeginNewActivity: usageAllowsNewActivity(phase),
     remainingMs,
-  }), [phase, remainingMs])
+    ...(admin ? { adminOverride: true } : {}),
+  }), [phase, remainingMs, admin])
   const wall = USAGE_POLICY.wallClockMs === null
     ? null
     : Math.max(0, USAGE_POLICY.wallClockMs - (now - clockRef.current.firstSeenAt))
@@ -154,11 +230,20 @@ function PublicDemoPolicyGate({ children }: { children: React.ReactNode }) {
   return (
     <UsagePolicyContext.Provider value={value}>
       <PolicyBanner phase={phase}>
-        {phase === 'active'
-          ? `PUBLIC DEMO · session: ${formatRemaining(wall)} · idle timeout: ${formatRemaining(idle)}`
-          : phase === 'debrief'
-            ? `DEBRIEF ONLY · New missions/classes are disabled · monitoring, recovery and exports remain available · ${formatRemaining(remainingMs)}`
-            : 'DEMO WINDOW ENDED · New missions/classes are disabled · existing records are not deleted'}
+        {admin
+          ? (
+            <>
+              {'PUBLIC DEMO · '}
+              <strong data-testid="admin-override-policy" style={{ color: '#ffd166' }}>
+                {ADMIN_OVERRIDE_LABEL}: no session time limit
+              </strong>
+            </>
+          )
+          : phase === 'active'
+            ? `PUBLIC DEMO · session: ${formatRemaining(wall)} · idle timeout: ${formatRemaining(idle)}`
+            : phase === 'debrief'
+              ? `DEBRIEF ONLY · New missions/classes are disabled · monitoring, recovery and exports remain available · ${formatRemaining(remainingMs)}`
+              : 'DEMO WINDOW ENDED · New missions/classes are disabled · existing records are not deleted'}
       </PolicyBanner>
       {children}
     </UsagePolicyContext.Provider>
@@ -212,7 +297,7 @@ function DesktopEntitlementGate({ children }: { children: React.ReactNode }) {
 
   return (
     <UsagePolicyContext.Provider value={value}>
-      <PolicyBanner phase={phase}>
+      <PolicyBanner phase={phase} interactive>
         <span>
           {entitlement.status === 'active' || entitlement.status === 'warning'
             ? `${entitlementWarningLabel(entitlement)}${entitlement.tier === 'agency_classroom_pilot' ? 'AGENCY CLASSROOM PILOT' : 'SELECTED EVALUATOR DEMO'} · ${formatRemaining(entitlement.remainingMs)} · up to ${entitlement.maxStudentsPerClass} students`
@@ -240,5 +325,11 @@ export function UsagePolicyGate({ children }: { children: React.ReactNode }) {
 }
 
 export function useUsagePolicy(): UsagePolicyContextValue {
-  return useContext(UsagePolicyContext)
+  const policy = useContext(UsagePolicyContext)
+  const admin = useIsAdmin()
+  // ADMIN override: a verified admin pass keeps new missions/classes available
+  // when the demo or licence window has closed. The banner says so out loud.
+  return admin && !policy.canBeginNewActivity
+    ? { ...policy, canBeginNewActivity: true, adminOverride: true }
+    : policy
 }

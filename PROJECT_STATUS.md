@@ -1,6 +1,6 @@
 # Project status
 
-Status date: 2026-09-22
+Status date: 2026-10-10
 Release line: `main`. The **v1.1 web beta is published** and all three public
 targets are promoted automatically from `main` by CI. Do not trust a SHA quoted
 here — it goes stale on the next merge. Run `npm run deploy:status` for the
@@ -40,11 +40,12 @@ dispatch, camera, weather, or aircraft-telemetry services.
 | Scenarios | 25 incident missions plus 6 NIST-inspired skills drills |
 | Simulation | Seeded fixed-timestep multi-aircraft missions, safety decisions, replay, and hash-chained evidence |
 | Realism | Frozen terrain, building, weather, airspace, thermal, SAR, GNSS, RF, turbulence, and battery fixtures/models for covered scenarios |
-| Operations | Preflight, launch/recovery planning, route editing, suggestions, retasking, hover/divert/resume/RTB, OPS HUB, after-action review |
-| Targets | Separate Mobile, Windows web, and Classroom client builds using one simulation contract |
-| Accounts | Browser-local encrypted profiles, runs, custom missions, backups, and classroom history |
+| Operations | Preflight, launch/recovery planning, route editing, suggestions, retasking, hover/divert/resume/RTB, OPS HUB, ground units and drone-recovery teams driving frozen road networks, after-action review |
+| Targets | Separate Mobile, Desktop web (Windows & Mac), and Classroom client builds using one simulation contract |
+| Accounts | Browser-local encrypted profiles, runs, custom missions, backups, and classroom history; forgotten-password reset with a one-time recovery code plus an optional authenticator app |
+| Admin | Owner ADMIN profiles unlocked by an Ed25519-signed pass, with labelled and logged access-gate overrides, and an in-sim debug console (inspect, export, sim control, fault injection, overlays, chain verify, relay diagnostics) |
 | Classroom | Instructor/student roles, HTTPS/WSS local relay, persistent school-local CA and renewable leaf, encrypted protocol-v3 messages, fingerprint-pinned join URL/QR, coordinator wall, commands, scoring, and archives |
-| Evidence | Replay, JSONL chain, KML, GeoJSON, reports, and after-action exports |
+| Evidence | Replay, JSONL chain, KML, GeoJSON, a one-page readable report with an offline HTML download, and after-action exports |
 | Assurance | Training-envelope evaluator, mechanically prohibited operational claims, geographic-familiarization acknowledgement, and assurance state in preflight/readiness/classroom/reports |
 | Licensing | Public-demo wall/idle/debrief windows; evaluation/pilot expiry channels; 30-180 minute classroom schedule |
 
@@ -69,6 +70,50 @@ The current branch is a qualification and hardening line:
 
 No phase is complete merely because its source exists. Promotion requires the
 evidence in `RELEASE_CHECKLIST.md`.
+
+## Demo-blocker pass, 2026-10-09 to 2026-10-10
+
+A review of the live demo found blockers that a first-time viewer would hit. Each fix below was merged to `main`, promoted by CI, and checked on the live targets with a scripted guest session.
+
+| Item | Change | PR |
+|---|---|---|
+| c2 | Healthy fleets no longer show "link lost" on the tactical summary | #127 |
+| c8 | Phone usage banner, header and build info no longer overlap; banner taps pass through | #128 |
+| c4 | First thermal hold is explained by a banner with a visible pulse ring; "Show thermal view" selects the contact | #130 |
+| c12a | Every incident scenario ships a frozen, validated, drivable road graph (`roads.json`) | #131 |
+| c12b (f3) | Dispatched ground units and recovery teams drive those roads; "+ Additional unit" sends a second vehicle from another direction | #132 |
+| c4b | Owner-supplied truck, SUV and drone-recovery pickup avatars on the map | #133 |
+| c5a, c5b | End Mission → "VIEW REPORT" opens a one-page report; "Download report (HTML)" saves a self-contained file that opens offline | #134 |
+| c9 | The boot screen no longer shows an all-zero genesis hash | #134 |
+| c10 | The classroom server prompt says what it does ("Check this PC for a classroom server") | #134 |
+| c11 | Marshall Fire carries a no-launch mission brief and dispatch timeline (#134). Seeded launch plans now run the launch-doctrine weather gate, so START stays disabled and names the closed bay and the gust | #134, this PR |
+| c7 | Text floor of 12 px on phones and 11 px on desktop, enforced by `src/tests/fontSizeFloor.spec.ts` | #134 |
+
+Parked by decision: **c3** and **c6**. No scenario was parked for road-fixture size.
+
+Notes from this pass:
+- **Weather-gated seeded launch plans.** At their default weather this grounds Marshall Fire (56 kt gust against the 30 kt limit for a semi-exposed site) and the USCG maritime SAR drill (25.1 kt against the 25 kt exposed-site limit). The owner chose to apply the doctrine as written. The other 29 seeded scenarios stay launchable.
+- Not reachable from the guest UI, so verified by unit tests only: the "No road access" state (no shipped contact lacks road access) and the drone-recovery pickup flow (remote land exists only in the classroom console).
+
+## Admin profiles, password recovery and debug console, 2026-10-10
+
+Merged as #138 (`2c135a8`). It reaches the public targets through the normal CI promote; confirm with `npm run deploy:status`.
+
+| Area | What shipped |
+|---|---|
+| Password recovery | Records sit under a data key wrapped by the password and by a 120-bit recovery code shown once at signup. "Forgot password?" resets with the code, keeps run history, rotates the code and backs off after five wrong attempts. Existing profiles set a code up once in Settings; nothing is re-encrypted. |
+| Authenticator | Optional RFC 6238 TOTP (QR pairing), asked for at reset when paired. Offline it is a UI-level gate; the recovery code is the factor that protects the data (`SECURITY_THREAT_MODEL.md`). |
+| Admin profiles | Ed25519-signed passes verified by one shared verifier in the browser and the relay (`server/adminPassVerify.mjs`). Passes exist for both owners. The private key is held offline by the owner in gitignored `local-secrets/`; issuing, revoking and rotating are in `tools/admin/README.md`. |
+| Admin overrides | Authorization training, preflight checklist, usage window and instructor access code. Each is labelled "ADMIN override" and logged as an `admin_override` event. Training assurance, weather doctrine and device gates are never overridden. |
+| Debug console | Ctrl+` (pop-out window; DBG button on phones). Sim-changing commands write a `debug_override` event into the hash chain, tag the saved run and keep it out of analytics. Relay diagnostics exist only in the classroom edition. |
+
+Evidence at merge: typecheck, lint and the training-scope assertion clean; full suite 2026 passed / 0 failed; `assert:bundles` OK (default startup 1,926,167 of 1,950,000 bytes). Checked in the dev server: signup, recovery code, authenticator pairing, admin pass, console commands, the preflight override label, and a full forgot-password reset.
+
+Known limits:
+- `replay verify` reports "not available": the sim runs on the global store and `SimulationLoop` module state, so it needs an isolated store or a worker before a side-by-side re-run is possible.
+- Verified by tests only, not in a browser: the pop-out window, the phone DBG button, the console in the classroom instructor view, and an admin pass against a live relay.
+- The sim models wind speed, not direction, so `wind <kts> <dir>` ignores the direction.
+- An admin whose profile is a classroom student does not see the instructor home.
 
 ## Open qualification blockers
 
@@ -162,8 +207,9 @@ These block release-candidate or stable promotion even if all local tests pass.
 
 ## Residual product limitations
 
-- Browser accounts are origin/device local; password loss can make encrypted
-  data unrecoverable.
+- Browser accounts are origin/device local. A forgotten password is
+  recoverable only with the profile's recovery code; without it, encrypted
+  data is unrecoverable.
 - Map tiles are network dependent; the fallback is tactical, not geographic.
 - Replay and browser storage are bounded and are not operational flight-data
   recording.

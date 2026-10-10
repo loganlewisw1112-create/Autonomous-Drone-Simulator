@@ -15,12 +15,18 @@ import { buildMissionSituation, planFleetRetask } from '@/sim/mission/tacticalAd
 import type { TerrainRouteWarning } from '@/sim/mission/routeAudit'
 import { assessSiteReposition, type SiteRepositionResult } from '@/sim/mission/siteReposition'
 import { buildLaunchBayPlan } from '@/sim/mission/launchDoctrine'
-import { replanLaunchSlots } from '@/sim/mission/launchPlanGeometry'
+import { isSeededLaunchPlan, replanLaunchSlots, seededLaunchPlanFromScenario } from '@/sim/mission/launchPlanGeometry'
 import { clearAllSavedWaypointPlans, clearSavedDroneWaypointRoute, saveDroneWaypointRoute, saveFleetWaypointRoutes } from '@/sim/mission/waypointPersistence'
 import { hashEvent } from '@/utils/chainOfCustody'
 import { getActiveOperator } from '@/store/authStore'
+import { adminOverridePayload, isAdminActive } from '@/account/adminOverride'
+import { clearRunDebugTaint, setTaintEventSink } from '@/debug/taint'
+import { clearInjectedFaults } from '@/sim/faults/injectedFaults'
 import { assuranceForScenario } from '@/assurance/trainingAssurance'
 import { getDefaultWeatherState, isWeatherForceRtb } from '@/sim/weather/weatherEngine'
+import { collectApproaches, planGroundDispatch, routeMemo } from '@/sim/mission/routeMemo'
+import { headingAtDistance } from '@/sim/mission/roadRouter'
+import { etaAlongRoute } from '@/sim/mission/groundUnits'
 import type {
   AuthorizationStepId,
   DroneState,
@@ -146,6 +152,7 @@ export type FleetRetaskReason =
   | 'battery_reserve'
   | 'geofence_breach'
   | 'weather'
+  | 'motor_failure'
   | 'no_viable_assignment'
   | 'advisor_hold'
   | 'cooldown_active'
@@ -366,6 +373,9 @@ interface DroneStore {
 // ─── Derived getter: thermalDetections for backward compat ────────────────────
 // Export functions use ThermalDetection[] — ThermalContactState extends ThermalDetection so
 // callers can pass thermalContacts directly without a cast.
+
+/** A contact can be worked by at most this many ground units. */
+const MAX_UNITS_PER_CONTACT = 3
 
 export const useDroneStore = create<DroneStore>()(
   devtools(
@@ -726,36 +736,54 @@ export const useDroneStore = create<DroneStore>()(
 
         selectThermal: (id) => set({ selectedThermalId: id }),
 
-        dispatchGroundUnit: (thermalId, role, stagingPos) =>
-          set((s) => {
-            const contact = s.thermalContacts.find((c) => c.sourceId === thermalId)
-            if (!contact || contact.groundUnitId) return {}
-            // Deterministic id: one dispatch per contact (guarded above), keyed by sim tick.
-            const unitId = `gu-${thermalId}-t${s.tick}`
-            const newUnit: GroundUnitState = {
-              id: unitId,
-              role,
-              position: { ...stagingPos },
-              status: 'enroute',
-              targetThermalId: thermalId,
-              weatherRiskNote: s.weatherState.activeHazards.length > 0
-                ? s.weatherState.activeHazards.join(', ')
-                : undefined,
-            }
-            const updatedContacts = s.thermalContacts.map((c) =>
-              c.sourceId === thermalId
-                ? { ...c, action: 'dispatch_unit' as ThermalAction, groundUnitId: unitId }
-                : c
-            )
-            return {
-              thermalContacts: updatedContacts,
-              groundUnits: [...s.groundUnits, newUnit],
-              metrics: {
-                ...s.metrics,
-                groundUnitDispatch: s.metrics.groundUnitDispatch + 1,
-              },
-            }
-          }),
+        // Road-routed dispatch. The caller's staging position is ignored: the unit starts at a graph
+        // node of the scenario's road network (the incident post for the first unit, an entries[] node
+        // for each additional one) and drives the route. No network, or a contact more than 2 km from
+        // any road, refuses with no state change: there is never a straight-line fallback.
+        dispatchGroundUnit: (thermalId, role, _stagingPos) => {
+          const s = get()
+          const contact = s.thermalContacts.find((c) => c.sourceId === thermalId)
+          if (!contact || !s.scenario) return
+          const siblings = s.groundUnits.filter((u) => u.targetThermalId === thermalId)
+          if (siblings.length >= MAX_UNITS_PER_CONTACT) return
+          const approaches = collectApproaches(s.groundUnits, s.thermalContacts, s.recoveryTeams)
+          const plan = planGroundDispatch(s.scenario, contact, siblings.length, approaches)
+          if (!plan.ok) return
+          // First unit keeps the legacy id; additional units are suffixed with the count so far, so two
+          // dispatches in one tick get distinct ids (each reads the previous result from the store).
+          const unitId = siblings.length === 0 ? `gu-${thermalId}-t${s.tick}` : `gu-${thermalId}-t${s.tick}-n${siblings.length}`
+          const newUnit: GroundUnitState = {
+            id: unitId,
+            role,
+            position: plan.stagingPos,
+            status: 'enroute',
+            targetThermalId: thermalId,
+            weatherRiskNote: s.weatherState.activeHazards.length > 0
+              ? s.weatherState.activeHazards.join(', ')
+              : undefined,
+            routeFromNode: plan.node,
+            routeDistM: 0,
+            accessGapM: plan.accessGapM,
+            headingDeg: plan.route.lengthM > 0 ? Math.round(headingAtDistance(plan.route, 0) * 10) / 10 : 0,
+            etaSec: etaAlongRoute(plan.route, 0, s.weatherState),
+            etaComputed: true,
+          }
+          routeMemo.set(unitId, { net: plan.net, sig: plan.sig, route: plan.route })
+          const firstUnit = !contact.groundUnitId
+          set({
+            thermalContacts: firstUnit
+              ? s.thermalContacts.map((c) =>
+                c.sourceId === thermalId
+                  ? { ...c, action: 'dispatch_unit' as ThermalAction, groundUnitId: unitId }
+                  : c)
+              : s.thermalContacts,
+            groundUnits: [...s.groundUnits, newUnit],
+            metrics: {
+              ...s.metrics,
+              groundUnitDispatch: s.metrics.groundUnitDispatch + 1,
+            },
+          })
+        },
 
         resolveThermal: (sourceId, action) =>
           set((s) => ({
@@ -788,6 +816,14 @@ export const useDroneStore = create<DroneStore>()(
 
         setWeatherState: (state) => set((current) => ({
           weatherState: state,
+          // A variant/weather change before launch re-gates a plan that is still the authored
+          // seed. Operator-confirmed plans and in-flight missions are never rewritten here.
+          launchPlan: current.scenario
+            && !current.ui.isRunning
+            && (current.lifecycle === 'idle' || current.lifecycle === 'preflight')
+            && isSeededLaunchPlan(current.scenario, current.launchPlan)
+            ? seededLaunchPlanFromScenario(current.scenario, state, current.siteOverrides)
+            : current.launchPlan,
           latestFleetRetaskPlan: null,
           latestFleetRetaskResult: null,
           fleetRetaskCache: null,
@@ -809,7 +845,9 @@ export const useDroneStore = create<DroneStore>()(
         applyParkedLaunchPlan: (plan, placements) => {
           let applied = false
           set((state) => {
-            const authReady = evaluateAuthorizationTraining(
+            // ADMIN override: the owner may apply the plan without the training steps.
+            // The override is recorded at beginLaunchSequence (evidence chain), never faked here.
+            const authReady = isAdminActive() || evaluateAuthorizationTraining(
               state.scenario,
               state.scenarioVariant,
               state.authorizationCompletedSteps,
@@ -1142,6 +1180,7 @@ export const useDroneStore = create<DroneStore>()(
         },
 
         abortRecovery: (droneId) => {
+          for (const t of get().recoveryTeams) if (t.droneId === droneId) routeMemo.delete(t.id)
           set((s) => ({
             drones: s.drones.map((d) => (d.id === droneId
               ? { ...d, missionState: 'landed', emergencyStartSec: undefined, commsLostSec: 0 }
@@ -1595,12 +1634,23 @@ export const useDroneStore = create<DroneStore>()(
         // (evaluated in MissionManager), producing the staggered takeoff.
         beginLaunchSequence: () => {
           const state = get()
-          if (!evaluateAuthorizationTraining(
+          const trainingReady = evaluateAuthorizationTraining(
             state.scenario,
             state.scenarioVariant,
             state.authorizationCompletedSteps,
-          ).ready) {
-            return
+          ).ready
+          if (!trainingReady) {
+            // ADMIN override: launch anyway, but record it as an override on the
+            // evidence chain. Training steps stay incomplete in the record.
+            if (!isAdminActive()) return
+            get().emitEvent({
+              eventType: 'operator_command',
+              droneId: 'system',
+              payload: adminOverridePayload('authorization_training', {
+                scenarioId: state.scenario?.id,
+                authorizationStepsCompleted: state.authorizationCompletedSteps,
+              }),
+            })
           }
           // Independent re-check of the training assurance disposition at the launch
           // boundary (audit F-06). The preflight UI also refuses a blocked disposition, but
@@ -1719,6 +1769,8 @@ export const useDroneStore = create<DroneStore>()(
 
         isAuthorizationTrainingReady: () => {
           const state = get()
+          // ADMIN override: gate passes for admins. UI shows the "ADMIN override" label.
+          if (isAdminActive()) return true
           return evaluateAuthorizationTraining(
             state.scenario,
             state.scenarioVariant,
@@ -1731,7 +1783,10 @@ export const useDroneStore = create<DroneStore>()(
 
         setMapReady: (ready) => set({ mapReady: ready }),
 
-        resetMission: () =>
+        resetMission: () => {
+          // A new run starts clean: no DEBUG taint, no injected faults carried over.
+          clearRunDebugTaint()
+          clearInjectedFaults()
           set((s) => ({
             // Route editing is a live-map mode; a reset must not leave it latched.
             ui: { ...s.ui, routeEditMode: false },
@@ -1752,12 +1807,23 @@ export const useDroneStore = create<DroneStore>()(
               thermalContacts: 0, geofenceBreaches: 0, rtbTriggers: 0,
               recoveryDispatches: 0, groundUnitDispatch: 0,
             },
-          })),
+          }))
+        },
       })
     }),
     { name: 'DroneOpsStore' },
   ),
 )
+
+// Admin debug console: every DEBUG taint is recorded IN the hash chain (a debug_override event),
+// so a modified run stays verifiable and its modification is part of the evidence.
+setTaintEventSink((reason, info) => {
+  useDroneStore.getState().emitEvent({
+    eventType: 'debug_override',
+    droneId: 'system',
+    payload: { reason, overrideIndex: info.index, taintedSinceMs: info.firstAt, simulationOnly: true },
+  })
+})
 
 function cloneWaypointRoute(route: Waypoint[]): Waypoint[] {
   return route.map((waypoint) => ({

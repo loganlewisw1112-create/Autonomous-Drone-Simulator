@@ -8,6 +8,7 @@ import { FleetPanel } from '@/components/FleetPanel'
 import { TelemetryPanel } from '@/components/TelemetryPanel'
 import { MissionStatusFeed } from '@/components/MissionStatusFeed'
 import { OperatorCommandPanel } from '@/components/OperatorCommandPanel'
+import { ThermalHoldCoach } from '@/components/ThermalHoldCoach'
 import { MAX_WAYPOINTS_PER_DRONE } from '@/components/designer/designerValidation'
 import { LoadingScreen } from '@/components/LoadingScreen'
 import { WelcomeOverlay } from '@/components/WelcomeOverlay'
@@ -31,7 +32,10 @@ const LaunchBayPlanner = lazy(() => import('@/components/LaunchBayPlanner').then
 const ReplayPanel = lazy(() => import('@/components/ReplayPanel').then((m) => ({ default: m.ReplayPanel })))
 const SignInModal = lazy(() => import('@/components/account/SignInModal').then((m) => ({ default: m.SignInModal })))
 const AccountPanels = lazy(() => import('@/components/account/AccountPanels').then((m) => ({ default: m.AccountPanels })))
+const MissionCompleteChip = lazy(() => import('@/components/debrief/MissionCompleteChip').then((m) => ({ default: m.MissionCompleteChip })))
 const CustomMissionHub = lazy(() => import('@/components/designer/CustomMissionHub').then((m) => ({ default: m.CustomMissionHub })))
+// Admin-only debug console: its own chunk, mounted solely when the verified profile is an admin.
+const DebugConsoleRoot = lazy(() => import('@/components/debug/DebugConsoleRoot').then((m) => ({ default: m.DebugConsoleRoot })))
 
 function MobileClock() {
   const { elapsedSec } = useDroneStore(useShallow((s) => ({ elapsedSec: s.elapsedSec })))
@@ -205,6 +209,8 @@ export function MobileShell() {
           <div className="route-edit-toast" role="status">{routeCommandError}</div>
         )}
 
+        <ThermalHoldCoach placement="phone" />
+
         <button className="mobile-edge-tab left" onClick={() => toggleSurface('fleet')} aria-pressed={activeSurface === 'fleet'}>
           FLEET
         </button>
@@ -267,6 +273,7 @@ export function MobileShell() {
               <button onClick={() => openAccount('settings')} disabled={!activeAccount}>SETTINGS</button>
             </div>
             <MapToolsSheet onRecenter={requestRecenter} />
+            <BuildInfoFooter inline />
           </SurfacePane>
         </Drawer>
       </div>
@@ -279,12 +286,13 @@ export function MobileShell() {
         {activeSurface === 'replay' && <div className="mobile-replay-host"><ReplayPanel /></div>}
         <SignInModal />
         <AccountPanels />
+        {lifecycle === 'completed' && activeSurface !== 'replay' && <MissionCompleteChip />}
         {showDesigner && <CustomMissionHub mobile onClose={() => setShowDesigner(false)} />}
+        {activeAccount?.isAdmin === true && <DebugConsoleRoot variant="mobile" />}
       </Suspense>
 
       {loadingDone && <WelcomeOverlay />}
       {!loadingDone && <LoadingScreen mapReady={mapReady} onComplete={() => setLoadingDone(true)} />}
-      <BuildInfoFooter />
     </div>
   )
 }

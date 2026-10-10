@@ -146,7 +146,12 @@ describe('mission lifecycle — run-record invariants', () => {
     render(<Harness />)
     await act(async () => {
       fireEvent.click(screen.getByText('browse'))
-      await Promise.resolve()
+      // Still staging: no run record may exist before the wait either.
+      expect(finalizeCount).toBe(0)
+      expect(useDroneStore.getState().replaySession).toBeNull()
+      // demo_sar's road graph is a real async chunk import now (c12a), so one microtask no longer
+      // covers the scenario gate.
+      await vi.waitFor(() => expect(useDroneStore.getState().lifecycle).toBe('preflight'))
     })
 
     expect(finalizeCount).toBe(0)

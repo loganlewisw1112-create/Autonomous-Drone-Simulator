@@ -60,8 +60,8 @@ export function isValidClassId(value: unknown): value is ClassId {
 // or an authored mission, plus the deterministic variant dials. Same bytes for all
 // students → byte-identical conditions, the one guarantee determinism gives for free.
 export type ClassConfig =
-  | { kind: 'catalog'; scenarioId: string; variant: ScenarioVariantConfig; durationMinutes?: number }
-  | { kind: 'custom'; definition: CustomMissionDefinition; variant: ScenarioVariantConfig; durationMinutes?: number }
+  | { kind: 'catalog'; scenarioId: string; variant: ScenarioVariantConfig; durationMinutes?: number | null }
+  | { kind: 'custom'; definition: CustomMissionDefinition; variant: ScenarioVariantConfig; durationMinutes?: number | null }
 
 export interface RosterEntry {
   studentId: StudentId

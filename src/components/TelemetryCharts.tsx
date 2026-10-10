@@ -39,9 +39,9 @@ function ChartSection({ label, history, dataKey, color, domain, gradId, unit, me
             </linearGradient>
           </defs>
           <XAxis dataKey="t" hide />
-          <YAxis domain={domain} tick={{ fill: '#556677', fontSize: 9 }} tickCount={3} />
+          <YAxis domain={domain} tick={{ fill: '#556677', fontSize: 'var(--fs-min)' }} tickCount={3} />
           <Tooltip
-            contentStyle={{ background: C_BG, border: `1px solid ${C_GRID}`, fontSize: 10 }}
+            contentStyle={{ background: C_BG, border: `1px solid ${C_GRID}`, fontSize: 'var(--fs-min)' }}
             labelStyle={{ color: '#8899aa' }}
             itemStyle={{ color }}
             // Inline (not a passed-in prop) so TS infers the param types from

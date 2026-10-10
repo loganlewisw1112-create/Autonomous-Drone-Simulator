@@ -188,7 +188,7 @@ export function TelemetryPanel() {
               flex: 1,
               padding: '5px 0',
               fontFamily: 'var(--font-mono)',
-              fontSize: 9,
+              fontSize: 'var(--fs-min)',
               letterSpacing: 1,
               background: activeTab === t ? 'var(--bg-panel)' : 'transparent',
               color: activeTab === t ? 'var(--accent-blue)' : 'var(--text-dim)',
@@ -240,7 +240,7 @@ export function TelemetryPanel() {
                 <TRow label="WP INDEX" value={`${selected.currentWaypointIndex + 1}`} />
               </div>
             ) : (
-              <div style={{ color: 'var(--text-dim)', fontSize: 11 }}>Select a drone</div>
+              <div style={{ color: 'var(--text-dim)', fontSize: 'var(--fs-min)' }}>Select a drone</div>
             )}
           </div>
 
@@ -285,7 +285,7 @@ export function TelemetryPanel() {
                       value={`±${status.radiometricAccuracyC} °C (sim metadata)`}
                     />
                   )}
-                  <div style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 2, lineHeight: 1.35 }}>
+                  <div style={{ fontSize: 'var(--fs-min)', color: 'var(--text-dim)', marginTop: 2, lineHeight: 1.35 }}>
                     SIMULATION ONLY — Johnson detection + NETD/contrast; not a full IR image chain.
                   </div>
                 </div>
@@ -338,7 +338,7 @@ export function TelemetryPanel() {
           <div className="panel-section" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div className="panel-label">
               Application Event-Custody Log
-              <span style={{ marginLeft: 6, fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)' }}>
+              <span style={{ marginLeft: 6, fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--text-dim)' }}>
                 {events.length} events
               </span>
               {events.length > 0 && (
@@ -348,7 +348,7 @@ export function TelemetryPanel() {
                     ? 'verifyChain(): every prevHash link and SHA-256 recomputation checks out'
                     : 'verifyChain() FAILED — hash chain is broken or tampered'}
                   style={{
-                    marginLeft: 6, fontFamily: 'var(--font-mono)', fontSize: 8, fontWeight: 700,
+                    marginLeft: 6, fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', fontWeight: 700,
                     padding: '1px 5px', borderRadius: 2, letterSpacing: '0.06em',
                     color: chainValid ? 'var(--accent-green)' : '#fff',
                     background: chainValid ? 'rgba(68,255,136,0.12)' : 'var(--accent-red)',
@@ -362,7 +362,7 @@ export function TelemetryPanel() {
             <div className="event-log">
               {recentEvents.map((e, i) => <EventRow key={i} event={e} chainValid={chainValid} />)}
               {events.length === 0 && (
-                <div style={{ color: 'var(--text-dim)', fontSize: 10, padding: 4 }}>No events yet — start a mission</div>
+                <div style={{ color: 'var(--text-dim)', fontSize: 'var(--fs-min)', padding: 4 }}>No events yet — start a mission</div>
               )}
             </div>
           </div>
@@ -377,7 +377,7 @@ export function TelemetryPanel() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
               {drones.map((d) => (
                 <div key={d.id} style={{
-                  fontFamily: 'var(--font-mono)', fontSize: 9,
+                  fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)',
                   color: d.color, border: `1px solid ${d.color}44`,
                   padding: '2px 6px', borderRadius: 3,
                 }}>
@@ -390,7 +390,7 @@ export function TelemetryPanel() {
                 const [name, id] = m.split('·')
                 return (
                   <div key={m} style={{
-                    fontFamily: 'var(--font-mono)', fontSize: 8,
+                    fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)',
                     color: 'var(--text-secondary)', background: 'var(--bg-body)',
                     padding: '3px 6px', borderRadius: 3,
                   }}>
@@ -405,7 +405,7 @@ export function TelemetryPanel() {
             ref={mavFeedRef}
             style={{
               flex: 1, overflowY: 'auto', overflowX: 'hidden',
-              fontFamily: 'var(--font-mono)', fontSize: 8,
+              fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)',
               color: '#44cc66', background: '#050a05',
               padding: '6px 8px', lineHeight: 1.6,
               borderTop: '1px solid var(--border)',
@@ -454,7 +454,7 @@ export function TelemetryPanel() {
               <div key={d.id} style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 padding: '4px 0', borderBottom: '1px solid var(--border)',
-                fontFamily: 'var(--font-mono)', fontSize: 10,
+                fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)',
               }}>
                 <span style={{ color: d.color, minWidth: 64 }}>{d.label}</span>
                 <span style={{ color: 'var(--text-secondary)' }}>{d.missionState.replace(/_/g, ' ').toUpperCase()}</span>
@@ -463,14 +463,14 @@ export function TelemetryPanel() {
               </div>
             ))}
             {drones.length === 0 && (
-              <div style={{ color: 'var(--text-dim)', fontSize: 10 }}>No drones — load a scenario</div>
+              <div style={{ color: 'var(--text-dim)', fontSize: 'var(--fs-min)' }}>No drones — load a scenario</div>
             )}
           </div>
 
           <div className="panel-section">
             <div className="panel-label" style={{ marginBottom: 6 }}>FAA Part 107 — Fleet</div>
             {drones.map((d) => (
-              <div key={d.id} style={{ display: 'flex', gap: 8, marginBottom: 3, fontSize: 9, fontFamily: 'var(--font-mono)' }}>
+              <div key={d.id} style={{ display: 'flex', gap: 8, marginBottom: 3, fontSize: 'var(--fs-min)', fontFamily: 'var(--font-mono)' }}>
                 <span style={{ color: d.color, minWidth: 56 }}>{d.label}</span>
                 <CompCheck ok={d.altitudeFt <= 400} label={`${Math.round(d.altitudeFt)}ft`} />
                 <CompCheck ok={d.speedMs <= certifiedSpeedLimitMs(scenario, d.id) + 0.5} label={`${(d.speedMs * 2.237).toFixed(0)}mph`} />
@@ -524,7 +524,7 @@ export function TelemetryPanel() {
                   color={laneScore.withinTimeLimit ? C_GREEN : C_YELLOW}
                 />
               </div>
-              <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--text-dim)', lineHeight: 1.35 }}>
+              <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--text-dim)', lineHeight: 1.35 }}>
                 {laneScore.standardRef}
               </div>
             </div>
@@ -535,7 +535,7 @@ export function TelemetryPanel() {
             <ReadinessPill label="MODE" value={assurance.mode.replaceAll('_', ' ').toUpperCase()} tone={assurance.trainingRunAllowed ? 'good' : 'warn'} />
             <ReadinessPill label="DISPOSITION" value={assurance.launchDisposition.replaceAll('_', ' ').toUpperCase()} tone={assurance.trainingRunAllowed ? 'good' : 'bad'} />
             <ReadinessPill label="TRAINING INPUT GAPS" value={`${assurance.blockers.length}`} tone={assurance.blockers.length === 0 ? 'good' : 'bad'} />
-            <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--text-dim)', lineHeight: 1.35 }}>
+            <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--text-dim)', lineHeight: 1.35 }}>
               {assurance.disclaimer}
             </div>
           </div>
@@ -564,7 +564,7 @@ export function TelemetryPanel() {
             {compliance.waiverFlags.map((flag) => (
               <ReadinessPill key={`${flag.kind}-${flag.label}`} label={flag.kind.replace(/_/g, ' ').toUpperCase()} value={flag.detail} tone={flag.severity === 'critical' ? 'bad' : 'warn'} />
             ))}
-            <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--text-dim)', lineHeight: 1.35 }}>
+            <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--text-dim)', lineHeight: 1.35 }}>
               {compliance.disclaimer}
             </div>
           </div>
@@ -615,7 +615,7 @@ function SectorPodSection({ report }: { report: SectorPodReport }) {
       <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
         {report.sweeps.map((sweep) => <SweepRow key={sweep.droneId} sweep={sweep} />)}
       </div>
-      <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--text-dim)', lineHeight: 1.35 }}>
+      <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--text-dim)', lineHeight: 1.35 }}>
         POD = 1 − e^(−coverage), coverage = (track × W) / area, W = 1.645 · R_d (USCG/NASAR
         detection experiments, R² = 0.827). R_d is the Johnson-criteria range for this platform's
         published thermal optics after atmospheric transmission.
@@ -635,7 +635,7 @@ function SweepRow({ sweep }: { sweep: SectorSweep }) {
         ? 'swath occluded'
         : `${(sweep.trackLengthM / 1000).toFixed(2)}km × ${Math.round(sweep.sweepWidthM)}m W${sweep.losFraction < 1 ? ` · ${Math.round(sweep.losFraction * 100)}% LOS` : ''}`
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 9, fontFamily: 'var(--font-mono)' }}>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 'var(--fs-min)', fontFamily: 'var(--font-mono)' }}>
       <span style={{ minWidth: 56, color: 'var(--text-dim)' }}>{sweep.label}</span>
       <strong style={{ minWidth: 40, color: podPct === null ? C_YELLOW : podPct >= 50 ? C_GREEN : C_YELLOW }}>
         {podPct === null ? '—' : `${podPct}%`}
@@ -666,7 +666,7 @@ function EventRow({ event: e, chainValid }: { event: MissionEvent; chainValid: b
       <span className="event-tick" style={{ minWidth: 44 }}>T+{e.tick}</span>
       <span className="event-drone" style={{ minWidth: 32, color: '#8899aa' }}>{droneShort}</span>
       <span className="event-type" style={{ flex: 1, color }}>{label}</span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: chainValid ? '#44cc66' : 'var(--accent-red)', letterSpacing: 0 }}>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: chainValid ? '#44cc66' : 'var(--accent-red)', letterSpacing: 0 }}>
         {shortHash}{chainValid ? '✓' : '✗'}
       </span>
     </div>
@@ -679,7 +679,6 @@ function TRow({ label, value, warn, crit }: { label: string; value: string; warn
       <span className="telem-key">{label}</span>
       <span className="telem-val" style={{
         color: crit ? 'var(--accent-red)' : warn ? 'var(--accent-yellow)' : undefined,
-        fontSize: label === 'POSITION' ? 9 : undefined,
       }}>
         {value}
       </span>
@@ -690,7 +689,7 @@ function TRow({ label, value, warn, crit }: { label: string; value: string; warn
 function MetricRow({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)', letterSpacing: 0.5 }}>{label}</span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--text-dim)', letterSpacing: 0.5 }}>{label}</span>
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color, fontWeight: 600 }}>{value}</span>
     </div>
   )
@@ -707,7 +706,7 @@ function WarnBadge({ level, text }: { level: 'critical' | 'caution' | 'info'; te
 
 function CompCheck({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <div style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 9 }}>
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 'var(--fs-min)' }}>
       <span className={ok ? 'part107-ok' : 'part107-warn'}>{ok ? '✓' : '✗'}</span>
       <span style={{ color: ok ? 'var(--text-secondary)' : 'var(--accent-yellow)' }}>{label}</span>
     </div>

@@ -41,7 +41,7 @@ export function PerfMonitor() {
       bottom: 30,
       right: 10,
       fontFamily: 'var(--font-mono)',
-      fontSize: 9,
+      fontSize: 'var(--fs-min)',
       background: 'var(--bg-panel)',
       border: '1px solid #ffffff11',
       padding: '2px 7px',

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { ALL_SCENARIOS } from '@/scenarios/catalog'
-import { getGenesisHash } from '@/utils/chainOfCustody'
 
 const MIN_DISPLAY_MS = 900
 const STAGGER_MS = 160
@@ -48,12 +47,11 @@ export function LoadingScreen({ mapReady, onComplete }: Props) {
   // Stagger through the first 4 instant checks
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = []
-    const genesisSnippet = getGenesisHash().slice(0, 8) + '…'
     const syncChecks: Array<{ index: number; detail: string }> = [
       { index: 0, detail: 'ok' },
       { index: 1, detail: `${ALL_SCENARIOS.length} scenarios verified` },
       { index: 2, detail: 'ok' },
-      { index: 3, detail: genesisSnippet },
+      { index: 3, detail: 'waiting for first event' },
     ]
 
     syncChecks.forEach(({ index, detail }, i) => {
@@ -160,13 +158,13 @@ export function LoadingScreen({ mapReady, onComplete }: Props) {
             borderBottom: '1px solid var(--border)',
             padding: '18px 24px 14px',
           }}>
-            <div style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.18em', marginBottom: 6 }}>
+            <div style={{ fontSize: 'var(--fs-min)', color: 'var(--text-dim)', letterSpacing: '0.18em', marginBottom: 6 }}>
               ◈ AUTONOMOUS DRONE MISSION SIMULATOR
             </div>
             <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent-blue)', letterSpacing: '0.04em' }}>
               SYSTEM BOOT
             </div>
-            <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 4 }}>
+            <div style={{ fontSize: 'var(--fs-min)', color: 'var(--text-secondary)', marginTop: 4 }}>
               initializing command interface · all systems check
             </div>
           </div>
@@ -182,7 +180,7 @@ export function LoadingScreen({ mapReady, onComplete }: Props) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 10,
-                  fontSize: 11,
+                  fontSize: 'var(--fs-min)',
                 }}
               >
                 {/* Status icon */}
@@ -207,13 +205,13 @@ export function LoadingScreen({ mapReady, onComplete }: Props) {
                 </span>
 
                 {/* Dot fill */}
-                <span style={{ flex: 1, color: 'var(--text-dim)', overflow: 'hidden', fontSize: 10 }}>
+                <span style={{ flex: 1, color: 'var(--text-dim)', overflow: 'hidden', fontSize: 'var(--fs-min)' }}>
                   {'·'.repeat(30)}
                 </span>
 
                 {/* Detail / status */}
                 <span style={{
-                  fontSize: 10,
+                  fontSize: 'var(--fs-min)',
                   color: check.status === 'pass'
                     ? 'var(--accent-green)'
                     : check.status === 'waiting' || check.status === 'degraded'
@@ -254,7 +252,7 @@ export function LoadingScreen({ mapReady, onComplete }: Props) {
               display: 'flex',
               justifyContent: 'space-between',
               marginTop: 6,
-              fontSize: 9,
+              fontSize: 'var(--fs-min)',
               color: 'var(--text-dim)',
             }}>
               <span>{passCount}/{checks.length} systems nominal</span>
@@ -266,7 +264,7 @@ export function LoadingScreen({ mapReady, onComplete }: Props) {
           <div style={{
             borderTop: '1px solid var(--border)',
             padding: '10px 24px',
-            fontSize: 11,
+            fontSize: 'var(--fs-min)',
             minHeight: 36,
             display: 'flex',
             alignItems: 'center',

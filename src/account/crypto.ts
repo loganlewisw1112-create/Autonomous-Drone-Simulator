@@ -21,6 +21,9 @@ export type AccountCipherKind =
   | 'custom-mission'
   | 'classroom-meta'
   | 'classroom-session'
+  | 'key-wrap-password'
+  | 'key-wrap-recovery'
+  | 'totp-seed'
 
 /** Stable, record-specific identity used as AES-GCM additional authenticated data. */
 export function accountCipherAad(

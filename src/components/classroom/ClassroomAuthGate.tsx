@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAuthStore, listAccounts } from '@/store/authStore'
+import { PostSignupRecovery } from '@/components/account/PostSignupRecovery'
+import { PasswordResetFlow } from '@/components/account/PasswordResetFlow'
 import type { AccountRecord, AccountRole } from '@/account/types'
 
 /**
@@ -19,7 +21,16 @@ export function ClassroomAuthGate({
     signOut: s.signOut,
   })))
 
-  if (activeAccount?.role === requiredRole) return <>{children}</>
+  // PostSignupRecovery holds the mandatory "save your recovery code" step. It must
+  // outlive the auth form, which unmounts the moment signup signs the user in.
+  if (activeAccount?.role === requiredRole) {
+    return (
+      <>
+        {children}
+        <PostSignupRecovery />
+      </>
+    )
+  }
 
   if (activeAccount && activeAccount.role !== requiredRole) {
     return (
@@ -45,6 +56,7 @@ export function ClassroomAuthGate({
   return (
     <div className="cls-center">
       <ClassroomAuthForm requiredRole={requiredRole} allowRoleSwitch={false} />
+      <PostSignupRecovery />
     </div>
   )
 }
@@ -74,7 +86,7 @@ export function ClassroomAuthForm({
   })))
 
   const [role, setRole] = useState<AccountRole>(fixedRole ?? 'student')
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin')
   const [profiles, setProfiles] = useState<AccountRecord[]>([])
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -141,6 +153,19 @@ export function ClassroomAuthForm({
   const title = mode === 'signup'
     ? (activeRole === 'instructor' ? 'Create instructor account' : 'Create student account')
     : 'Sign in'
+
+  if (mode === 'reset') {
+    return (
+      <div className="cls-card" data-testid="classroom-auth">
+        <div style={{ fontSize: 18, fontWeight: 700 }}>Reset forgotten password</div>
+        <PasswordResetFlow
+          variant="classroom"
+          initialUsername={username}
+          onCancel={() => { setMode('signin'); clearAuthError() }}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="cls-card" data-testid="classroom-auth">
@@ -248,6 +273,16 @@ export function ClassroomAuthForm({
       >
         {busy ? 'Working…' : mode === 'signup' ? 'Create account' : 'Sign in'}
       </button>
+
+      {mode === 'signin' && (
+        <button
+          type="button"
+          className="cls-btn ghost"
+          onClick={() => { setMode('reset'); clearAuthError() }}
+        >
+          Forgot password?
+        </button>
+      )}
 
       <button
         type="button"

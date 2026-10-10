@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // REALISM_ROADMAP §19/§21: keep each sourced scenario fixture under 500 KB shipped,
 // with Overture buildings under 250 KB gzip. This checks committed artifacts directly.
+// Overture road graphs (roads.json, DEMO_BLOCKERS c12a) count toward the same 500 KB total;
+// src/tests/roadFixtures.spec.ts proves it by running this script on an oversized roads.json.
 
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -16,12 +18,14 @@ for (const scenarioId of readdirSync(root)) {
   const dir = join(root, scenarioId)
   let shippedBytes = 0
   let buildingsGzip = 0
+  let roadsGzip = 0
 
-  for (const name of ['terrain.png', 'terrain.json', 'terrain-refpoints.json', 'buildings.json', 'manifest.json']) {
+  for (const name of ['terrain.png', 'terrain.json', 'terrain-refpoints.json', 'buildings.json', 'roads.json', 'manifest.json']) {
     let bytes
     try { bytes = readFileSync(join(dir, name)) } catch { continue }
     const size = name.endsWith('.png') ? bytes.length : gzipSync(bytes, { level: 9 }).length
     shippedBytes += size
+    if (name === 'roads.json') roadsGzip = size
     if (name === 'buildings.json') {
       buildingsGzip = size
       const fixture = JSON.parse(bytes.toString('utf8'))
@@ -48,7 +52,8 @@ for (const scenarioId of readdirSync(root)) {
   }
   if (shippedBytes > 0) {
     console.log(`${scenarioId}: ${(shippedBytes / 1024).toFixed(1)} KB shipped` +
-      (buildingsGzip ? ` · buildings ${(buildingsGzip / 1024).toFixed(1)} KB gzip` : ''))
+      (buildingsGzip ? ` · buildings ${(buildingsGzip / 1024).toFixed(1)} KB gzip` : '') +
+      (roadsGzip ? ` · roads ${(roadsGzip / 1024).toFixed(1)} KB gzip` : ''))
   }
 }
 

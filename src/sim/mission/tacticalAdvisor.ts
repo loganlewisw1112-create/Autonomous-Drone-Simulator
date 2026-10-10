@@ -122,7 +122,7 @@ export interface FleetRetaskPlan {
   candidatesByDrone: Record<string, TacticalCandidate[]>
   skippedDrones: Array<{
     droneId: string
-    reason: 'not_retaskable' | 'critical_battery' | 'battery_reserve' | 'geofence_breach' | 'weather'
+    reason: 'not_retaskable' | 'critical_battery' | 'battery_reserve' | 'geofence_breach' | 'weather' | 'motor_failure'
   }>
   unassignedDroneIds: string[]
 }

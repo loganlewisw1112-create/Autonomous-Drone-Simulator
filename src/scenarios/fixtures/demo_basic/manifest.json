@@ -1,0 +1,67 @@
+{
+  "scenarioId": "demo_basic",
+  "generatedAt": "2026-10-09",
+  "sources": [
+    {
+      "fixture": "roads.json",
+      "source": "Overture Maps Foundation — transportation theme",
+      "url": "https://docs.overturemaps.org/guides/transportation/",
+      "license": "ODbL 1.0",
+      "attribution": "© OpenStreetMap contributors, Overture Maps Foundation",
+      "retrievedAt": "2026-10-09",
+      "sha256": "843f2a3385c946a89d9e12fd39f57adffaf166a26a946da9f917fe46839b6ea7",
+      "rawBytes": 63902,
+      "gzipBytes": 21399,
+      "input": "overturemaps==1.0.2",
+      "inputSha256": "e1feaad1bf6531d2e85ade4c03341324a83fd09e8b087bd3707ba0414f7ab2d5",
+      "dataRelease": "2026-09-23.1",
+      "schemaVersion": "v2.0.0 (per docs 2026-10-09; shapes verified against the downloaded file)",
+      "stacCollection": "https://stac.overturemaps.org/2026-09-23.1/transportation/segment/collection.json",
+      "client": {
+        "package": "overturemaps",
+        "version": "1.0.2"
+      },
+      "roadBbox": [
+        -122.506047,
+        37.755525,
+        -122.466353,
+        37.786675
+      ],
+      "downloadBbox": [
+        -122.506047,
+        37.755525,
+        -122.466353,
+        37.786675
+      ],
+      "filters": "subtype=road; classes motorway..track; drops under-construction/abandoned/indoor, driveway/parking_aisle/sidewalk/crosswalk/cycle_crossing; per-direction vehicle access (last matching rule wins); rail, ferry and water are never shipped",
+      "budgetSteps": [],
+      "stats": {
+        "select": {
+          "input": 4680,
+          "kept": 1556,
+          "ambiguousAccessRules": 145,
+          "droppedByAccess": 2
+        },
+        "split": {
+          "droppedSelfLoops": 0,
+          "droppedShort": 1
+        },
+        "contracted": 15,
+        "nodes": 1098,
+        "edges": 1729,
+        "entries": 8
+      },
+      "validation": {
+        "waterChecked": true,
+        "buildingsChecked": false,
+        "waterToleranceM": 8,
+        "droppedWaterCrossings": 0,
+        "droppedBuildingCrossings": 0,
+        "droppedDisconnectedEdges": 37,
+        "remainingWaterCrossings": 0,
+        "ambiguousAccessRules": 145,
+        "startSnapM": 230.3
+      }
+    }
+  ]
+}

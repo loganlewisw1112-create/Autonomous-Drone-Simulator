@@ -6,6 +6,7 @@ import {
   type TerrainCoverage,
 } from '@/sim/terrain/altitude'
 import { clutterForLocationTag, reportedSignalDbm, resolveLink } from '@/sim/safety/commsModel'
+import { INJECTED_LINK_JAM_DB, isFaultInjected } from '@/sim/faults/injectedFaults'
 
 const FT_TO_M = 0.3048
 /** Ground control station antenna height above local ground, m. */
@@ -204,7 +205,8 @@ export function applyCommsModel(
         seed: scenario.seed,
         linkId: drone.id,
         occlusion,
-        interferenceDb,
+        // Admin-injected link fault: extra path loss on this drone's whole link (empty by default).
+        interferenceDb: isFaultInjected('link', drone.id) ? interferenceDb + INJECTED_LINK_JAM_DB : interferenceDb,
       },
       relayPool.filter((candidate) => candidate.id !== drone.id),
     )

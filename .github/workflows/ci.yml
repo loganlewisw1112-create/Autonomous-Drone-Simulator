@@ -24,7 +24,8 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:17-alpine
+        # The official postgres image through its ECR Public mirror: Docker Hub throttles anonymous pulls from shared runners.
+        image: public.ecr.aws/docker/library/postgres:17-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

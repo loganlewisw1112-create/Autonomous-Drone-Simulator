@@ -1,0 +1,20 @@
+[
+  {
+    "file": "src/components/BuildInfoFooter.tsx",
+    "text": "font: inline ? '12px/1.35 var(--font-mono, monospace)' : '11px/1.25 var(--font-mono, monospace)',",
+    "count": 1,
+    "reason": "Fixed corner footer renders only on desktop and classroom, where 11px is the floor; the phone shell uses the inline 12px arm."
+  },
+  {
+    "file": "src/licensing/UsagePolicyGate.tsx",
+    "text": "padding: '5px 10px', borderRadius: 4, font: phone ? '12px ui-monospace, monospace' : '11px ui-monospace, monospace',",
+    "count": 1,
+    "reason": "Policy banner sits outside the shell and the stylesheet token; the phone arm is 12px, the 11px arm is the desktop-only floor."
+  },
+  {
+    "file": "src/styles/tactical.css",
+    "text": ".designer-steps button { min-width: 54px; font-size: 0; }",
+    "count": 1,
+    "reason": "Deliberately hides the button label (the step is drawn by the pseudo-element); no visible text, so no size to floor."
+  }
+]

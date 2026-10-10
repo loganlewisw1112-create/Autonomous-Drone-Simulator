@@ -5,6 +5,7 @@ import { putRunBundle } from '@/account/accountDb'
 import { getClassroomRunTag } from '@/account/runContext'
 import { buildAfterActionPackage } from '@/sim/demo/missionReport'
 import { verifyChain } from '@/utils/chainOfCustody'
+import { getRunDebugTaint } from '@/debug/taint'
 import type { EventType, FullMissionFrame, LatLng, MissionEvent, MissionReplaySession, ScenarioConfig, TelemetryPoint, Waypoint } from '@/types'
 import type {
   RunRecord,
@@ -28,9 +29,24 @@ import type {
 // stores a longer buffer.
 const MAX_DETAIL_FRAMES = MAX_REPLAY_FRAMES
 
+/**
+ * DEBUG taint for a finished run. The chain is the evidence: any `debug_override` event in the
+ * session marks it, so a run stays tainted even if the in-memory flag was cleared. The live
+ * taint (if any) can only add to it.
+ */
+export function debugTaintForSession(session: MissionReplaySession): StoredRunSummary['debugTaint'] {
+  const live = getRunDebugTaint()
+  const overrides = session.events.filter((event) => event.eventType === 'debug_override')
+  if (overrides.length === 0 && !live) return undefined
+  const reasons = overrides.map((event) => String(event.payload.reason ?? 'debug override'))
+  for (const reason of live?.reasons ?? []) if (!reasons.includes(reason)) reasons.push(reason)
+  return { firstAt: overrides[0]?.timestamp ?? live?.firstAt ?? session.completedAt, reasons }
+}
+
 export function buildRunSummary(session: MissionReplaySession): StoredRunSummary {
   const lastFrame = session.frames[session.frames.length - 1]
   const tag = getClassroomRunTag()
+  const debugTaint = debugTaintForSession(session)
   return {
     scenarioId: session.scenarioId,
     scenarioVariant: session.scenarioVariant,
@@ -50,6 +66,7 @@ export function buildRunSummary(session: MissionReplaySession): StoredRunSummary
     })),
     eventTypeCounts: countEventTypes(session.events),
     ...(tag ? { source: 'classroom' as const, classId: tag.classId, classroomId: tag.classroomId } : {}),
+    ...(debugTaint ? { debugTaint } : {}),
   }
 }
 

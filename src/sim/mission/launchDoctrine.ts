@@ -431,7 +431,7 @@ function candidateFor(
   return candidatesByDrone[droneId]?.find((candidate) => candidate.siteId === siteId)
 }
 
-function buildBayStatuses(
+export function buildBayStatuses(
   situation: LaunchDoctrineSituation,
   assignments: Readonly<Record<string, string>>,
 ): LaunchBayStatus[] {
