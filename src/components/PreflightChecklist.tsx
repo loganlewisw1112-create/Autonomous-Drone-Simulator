@@ -108,14 +108,14 @@ export function PreflightChecklist() {
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowPreflight(false)}>
       <div className="modal">
         <div className="modal-title">⚙ Pre-Flight Checklist</div>
-        <div style={{ marginBottom: 12, fontSize: 11, color: 'var(--text-secondary)' }}>
+        <div style={{ marginBottom: 12, fontSize: 'var(--fs-min)', color: 'var(--text-secondary)' }}>
           Scenario: <strong style={{ color: 'var(--text-primary)' }}>{scenario?.name}</strong>
           {' · '}
           Drones: <strong style={{ color: 'var(--text-primary)' }}>{scenario?.droneCount}</strong>
           {' · '}
           Seed: <strong style={{ color: 'var(--accent-blue)', fontFamily: 'var(--font-mono)' }}>{scenario?.seed}</strong>
         </div>
-        <div style={{ marginBottom: 10, fontSize: 10, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+        <div style={{ marginBottom: 10, fontSize: 'var(--fs-min)', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
           {checkedIds.size}/{CHECKLIST.length} vehicle/mission items ·{' '}
           {authProgress.completedStepIds.length}/{authProgress.requiredStepIds.length} authorization steps
           — both must be complete before launch planning.
@@ -128,14 +128,14 @@ export function PreflightChecklist() {
           borderRadius: 'var(--radius-sm)',
           background: 'var(--bg-input)',
         }}>
-          <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', color: assurance.trainingRunAllowed ? 'var(--accent-green)' : 'var(--accent-yellow)', marginBottom: 6 }}>
+          <div style={{ fontSize: 'var(--fs-min)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', color: assurance.trainingRunAllowed ? 'var(--accent-green)' : 'var(--accent-yellow)', marginBottom: 6 }}>
             TRAINING ASSURANCE · {assurance.launchDisposition.replaceAll('_', ' ').toUpperCase()}
           </div>
-          <div style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+          <div style={{ fontSize: 'var(--fs-min)', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
             {assurance.disclaimer}
           </div>
           {lostLink && (
-            <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+            <div style={{ marginTop: 6, fontSize: 'var(--fs-min)', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
               <strong>Lost link:</strong>{' '}
               {lostLink.action === 'hold_then_rtb'
                 ? `hold ${lostLink.holdSec}s, then use a validated RTB route; emergency-land in the model when no validated route is available.`
@@ -148,21 +148,21 @@ export function PreflightChecklist() {
             </div>
           )}
           {assurance.blockers.length > 0 && (
-            <ul style={{ margin: '6px 0', paddingLeft: 18, fontSize: 10, color: 'var(--accent-yellow)' }}>
+            <ul style={{ margin: '6px 0', paddingLeft: 18, fontSize: 'var(--fs-min)', color: 'var(--accent-yellow)' }}>
               {assurance.blockers.slice(0, 6).map((blocker) => <li key={blocker}>{blocker}</li>)}
             </ul>
           )}
           {launchBlocked && (
             <div
               data-testid="assurance-blocked-notice"
-              style={{ fontSize: 10, color: 'var(--accent-yellow)', lineHeight: 1.4 }}
+              style={{ fontSize: 'var(--fs-min)', color: 'var(--accent-yellow)', lineHeight: 1.4 }}
             >
               Launch is blocked for this scenario and cannot be acknowledged past. Resolve the
               training evidence listed above, then reopen preflight.
             </div>
           )}
           {requiresDegradedAcknowledgement && (
-            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 10, color: 'var(--text-secondary)' }}>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 'var(--fs-min)', color: 'var(--text-secondary)' }}>
               <input type="checkbox" checked={degradedAcknowledged} onChange={(event) => setDegradedAcknowledged(event.target.checked)} />
               Run as geographic familiarization only. I understand coordinates are training context and the result is not real-mission validation, FAA authorization, a safe-route determination, or an obstacle-avoidance guarantee.
             </label>
@@ -181,17 +181,17 @@ export function PreflightChecklist() {
             }}
           >
             <div style={{
-              fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', marginBottom: 6,
+              fontSize: 'var(--fs-min)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', marginBottom: 6,
               color: envelope.length > 0 ? 'var(--accent-yellow)' : 'var(--accent-green)',
             }}>
               AIRFRAME LIMITS VS FORECAST · ADVISORY
             </div>
             {envelope.length === 0 ? (
-              <div style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+              <div style={{ fontSize: 'var(--fs-min)', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                 Forecast wind, gusts and temperature are within every assigned airframe&apos;s limits.
               </div>
             ) : (
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 10, color: 'var(--accent-yellow)', lineHeight: 1.4 }}>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 'var(--fs-min)', color: 'var(--accent-yellow)', lineHeight: 1.4 }}>
                 {envelope.map((advisory) => (
                   <li key={`${advisory.platformId}-${advisory.kind}`}>
                     {advisory.message} ({advisory.droneIds.map((id) => id.toUpperCase()).join(', ')})
@@ -210,18 +210,18 @@ export function PreflightChecklist() {
           background: 'var(--bg-input)',
         }}>
           <div style={{
-            fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em',
+            fontSize: 'var(--fs-min)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em',
             color: 'var(--accent-yellow)', marginBottom: 6,
           }}>
             OPERATIONAL AUTHORIZATION TRAINING
           </div>
-          <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 8, lineHeight: 1.4 }}>
+          <div style={{ fontSize: 'var(--fs-min)', color: 'var(--text-secondary)', marginBottom: 8, lineHeight: 1.4 }}>
             Practice the authorization workflow for this AO — RID, airspace request, ceiling,
             and any TFR / BVLOS / night flags. No real FAA network calls.
           </div>
           {authProgress.tfrExercise && (
             <div style={{
-              marginBottom: 8, padding: '6px 8px', fontSize: 10, lineHeight: 1.4,
+              marginBottom: 8, padding: '6px 8px', fontSize: 'var(--fs-min)', lineHeight: 1.4,
               borderLeft: '2px solid var(--accent-yellow)', color: 'var(--text-secondary)',
             }}>
               <strong style={{ color: 'var(--accent-yellow)' }}>{authProgress.tfrExercise.label}</strong>
@@ -256,10 +256,10 @@ export function PreflightChecklist() {
               </span>
               <span style={{ flex: 1 }}>
                 <div>{step.label}</div>
-                <div style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 2 }}>{step.detail}</div>
+                <div style={{ fontSize: 'var(--fs-min)', color: 'var(--text-dim)', marginTop: 2 }}>{step.detail}</div>
               </span>
               <span style={{
-                fontSize: 9, padding: '1px 4px', borderRadius: 2,
+                fontSize: 'var(--fs-min)', padding: '1px 4px', borderRadius: 2,
                 background: 'var(--accent-yellow)22',
                 color: 'var(--accent-yellow)',
                 fontFamily: 'var(--font-mono)',
@@ -268,7 +268,7 @@ export function PreflightChecklist() {
               </span>
             </div>
           ))}
-          <div style={{ marginTop: 6, fontSize: 9, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+          <div style={{ marginTop: 6, fontSize: 'var(--fs-min)', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
             {AUTH_TRAINING_DISCLAIMER}
           </div>
         </div>
@@ -297,7 +297,7 @@ export function PreflightChecklist() {
               </span>
               <span style={{ flex: 1 }}>{item.text}</span>
               <span style={{
-                fontSize: 9, padding: '1px 4px', borderRadius: 2,
+                fontSize: 'var(--fs-min)', padding: '1px 4px', borderRadius: 2,
                 background: CATEGORY_COLORS[item.category] + '22',
                 color: CATEGORY_COLORS[item.category],
                 fontFamily: 'var(--font-mono)',
@@ -310,12 +310,12 @@ export function PreflightChecklist() {
 
         {scenario?.perDroneMissionRoles && Object.keys(scenario.perDroneMissionRoles).length > 0 && (
           <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)', marginBottom: 6, letterSpacing: '0.08em' }}>
+            <div style={{ fontSize: 'var(--fs-min)', fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)', marginBottom: 6, letterSpacing: '0.08em' }}>
               DRONE ASSIGNMENTS
             </div>
             <div style={{ display: 'grid', gap: 4 }}>
               {Object.entries(scenario.perDroneMissionRoles).map(([droneId, role]) => (
-                <div key={droneId} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 10 }}>
+                <div key={droneId} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--fs-min)' }}>
                   <span style={{
                     fontFamily: 'var(--font-mono)', fontWeight: 700,
                     color: 'var(--accent-yellow)', minWidth: 56,
@@ -334,7 +334,7 @@ export function PreflightChecklist() {
           padding: '8px 10px',
           background: 'var(--bg-input)',
           borderRadius: 'var(--radius-sm)',
-          fontSize: 10,
+          fontSize: 'var(--fs-min)',
           color: 'var(--text-dim)',
           fontFamily: 'var(--font-mono)',
         }}>

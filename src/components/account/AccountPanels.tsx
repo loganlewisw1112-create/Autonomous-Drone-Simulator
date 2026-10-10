@@ -163,9 +163,9 @@ function AnalyticsPanel() {
               <ResponsiveContainer width="100%" height={180}>
                 <LineChart data={timeline} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
                   <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
-                  <XAxis dataKey="run" tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <XAxis dataKey="run" tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <YAxis tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 'var(--fs-min)' }} />
                   <Line type="monotone" dataKey="distanceKm" stroke="#00d4ff" strokeWidth={2} dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -176,9 +176,9 @@ function AnalyticsPanel() {
                 {/* Real scenario names, angled so they stay legible at this width. */}
                 <BarChart data={byScenario} margin={{ top: 8, right: 12, bottom: 34, left: -18 }}>
                   <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
-                  <XAxis dataKey="label" tick={{ fill: '#8b949e', fontSize: 9 }} angle={-30} textAnchor="end" interval={0} height={48} />
-                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <XAxis dataKey="label" tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} angle={-30} textAnchor="end" interval={0} height={48} />
+                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 'var(--fs-min)' }} />
                   <Bar dataKey="count" fill="#44ff88" />
                 </BarChart>
               </ResponsiveContainer>
@@ -188,12 +188,12 @@ function AnalyticsPanel() {
               <span className="account-label">HOW MISSIONS ENDED</span>
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
-                  <Pie data={reasons} dataKey="count" nameKey="reason" cx="50%" cy="50%" outerRadius={62} label={{ fill: '#8b949e', fontSize: 9 }}>
+                  <Pie data={reasons} dataKey="count" nameKey="reason" cx="50%" cy="50%" outerRadius={62} label={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }}>
                     {reasons.map((entry, i) => (
                       <Cell key={entry.reason} fill={REASON_COLORS[i % REASON_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 'var(--fs-min)' }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -203,9 +203,9 @@ function AnalyticsPanel() {
               <ResponsiveContainer width="100%" height={180}>
                 <LineChart data={safety} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
                   <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
-                  <XAxis dataKey="run" tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <XAxis dataKey="run" tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 'var(--fs-min)' }} />
                   <Line type="monotone" dataKey="conflicts" stroke="#ffaa00" strokeWidth={2} dot={{ r: 2 }} />
                   <Line type="monotone" dataKey="breaches" stroke="#ff4444" strokeWidth={2} dot={{ r: 2 }} />
                 </LineChart>
@@ -217,9 +217,9 @@ function AnalyticsPanel() {
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={byPlatform} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
                   <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
-                  <XAxis dataKey="label" tick={{ fill: '#8b949e', fontSize: 9 }} interval={0} />
-                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <XAxis dataKey="label" tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} interval={0} />
+                  <YAxis allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 'var(--fs-min)' }} />
                   <Bar dataKey="sorties" fill="#00d4ff" />
                 </BarChart>
               </ResponsiveContainer>
@@ -230,9 +230,9 @@ function AnalyticsPanel() {
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={eventMix.totals} layout="vertical" margin={{ top: 8, right: 12, bottom: 0, left: 46 }}>
                   <CartesianGrid stroke="#30363d" strokeDasharray="3 3" />
-                  <XAxis type="number" allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 10 }} />
-                  <YAxis type="category" dataKey="eventType" width={96} tick={{ fill: '#8b949e', fontSize: 8.5 }} />
-                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <YAxis type="category" dataKey="eventType" width={96} tick={{ fill: '#8b949e', fontSize: 'var(--fs-min)' }} />
+                  <Tooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 'var(--fs-min)' }} />
                   <Bar dataKey="count" fill="#a371f7" />
                 </BarChart>
               </ResponsiveContainer>

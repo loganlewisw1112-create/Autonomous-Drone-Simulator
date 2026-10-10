@@ -99,7 +99,7 @@ function PolicyBanner({ phase, interactive = false, children }: { phase: UsagePh
   return (
     <div ref={ref} role={phase === 'active' ? 'status' : 'alert'} style={{
       position: 'fixed', zIndex: 100000, top: 6, left: '50%', transform: 'translateX(-50%)',
-      padding: '5px 10px', borderRadius: 4, font: '11px ui-monospace, monospace',
+      padding: '5px 10px', borderRadius: 4, font: phone ? '12px ui-monospace, monospace' : '11px ui-monospace, monospace',
       background: phase === 'active' ? '#102a34ee' : '#431b1bee', color: '#fff',
       border: `1px solid ${phase === 'active' ? '#2b8296' : '#d65c5c'}`,
       maxWidth: 'min(92vw, 760px)', textAlign: 'center',

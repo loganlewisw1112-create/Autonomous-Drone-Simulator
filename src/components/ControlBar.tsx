@@ -45,13 +45,13 @@ export function ControlBar() {
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           background: 'var(--bg-panel)', borderBottom: '1px solid var(--border-color)',
-          padding: '3px 12px', fontFamily: 'var(--font-mono)', fontSize: 9,
+          padding: '3px 12px', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)',
         }}>
           <button
             onClick={() => setShowVariant((v) => !v)}
             style={{
               background: 'none', border: '1px solid var(--border-color)', borderRadius: 3,
-              color: 'var(--accent-blue)', fontSize: 9, padding: '1px 6px', cursor: 'pointer',
+              color: 'var(--accent-blue)', fontSize: 'var(--fs-min)', padding: '1px 6px', cursor: 'pointer',
             }}
           >
             ⛅ WEATHER {showVariant ? '▲' : '▼'}
@@ -64,9 +64,9 @@ export function ControlBar() {
                 type="number"
                 value={scenarioVariant.seed}
                 onChange={(e) => handleVariantChange({ seed: Number(e.target.value) })}
-                style={{ width: 72, background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 3, fontFamily: 'var(--font-mono)', fontSize: 9, padding: '1px 4px' }}
+                style={{ width: 72, background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 3, fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', padding: '1px 4px' }}
               />
-              <button className="btn" onClick={handleRandomizeSeed} style={{ fontSize: 9, padding: '1px 5px' }}>🎲</button>
+              <button className="btn" onClick={handleRandomizeSeed} style={{ fontSize: 'var(--fs-min)', padding: '1px 5px' }}>🎲</button>
 
               <span style={{ color: 'var(--text-dim)' }}>SEV</span>
               <div className="btn-group">
@@ -75,7 +75,7 @@ export function ControlBar() {
                     key={s}
                     className={`btn${scenarioVariant.weatherSeverity === s ? ' active' : ''}`}
                     onClick={() => handleVariantChange({ weatherSeverity: s })}
-                    style={{ fontSize: 9, padding: '1px 5px' }}
+                    style={{ fontSize: 'var(--fs-min)', padding: '1px 5px' }}
                   >
                     {['CLR', 'LGT', 'MOD', 'SVR'][s]}
                   </button>
@@ -86,7 +86,7 @@ export function ControlBar() {
               <select
                 value={scenarioVariant.timeOfDay}
                 onChange={(e) => handleVariantChange({ timeOfDay: e.target.value as ScenarioVariantConfig['timeOfDay'] })}
-                style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 3, fontFamily: 'var(--font-mono)', fontSize: 9, padding: '1px 3px' }}
+                style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 3, fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', padding: '1px 3px' }}
               >
                 {(['dawn', 'day', 'dusk', 'night'] as const).map((t) => (
                   <option key={t} value={t}>{t.toUpperCase()}</option>
@@ -100,7 +100,7 @@ export function ControlBar() {
                     key={s}
                     className={`btn${scenarioVariant.commsDegradation === s ? ' active' : ''}`}
                     onClick={() => handleVariantChange({ commsDegradation: s })}
-                    style={{ fontSize: 9, padding: '1px 5px' }}
+                    style={{ fontSize: 'var(--fs-min)', padding: '1px 5px' }}
                   >
                     {s}
                   </button>
@@ -172,7 +172,7 @@ export function ControlBar() {
 
         {/* Operator role selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)' }}>ROLE</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--text-dim)' }}>ROLE</span>
           <div className="btn-group">
             {(['pic', 'mission_commander', 'observer'] as OperatorRole[]).map((role) => (
               <button
@@ -253,7 +253,7 @@ export function ControlBar() {
         <div className="control-divider" />
 
         {/* Speed */}
-        <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>SIM</span>
+        <span style={{ fontSize: 'var(--fs-min)', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>SIM</span>
         <div className="btn-group">
           {([1, 5, 10, ...(APP_TARGET === 'classroom' ? [] : [20])] as SimSpeed[]).map((s) => (
             <button
@@ -286,12 +286,12 @@ export function ControlBar() {
         {/* Status */}
         <MissionProgress />
         {scenario && !ui.isRunning && !launchReady && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-yellow)' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--accent-yellow)' }}>
             ⚠ BAY PLAN REQUIRED
           </span>
         )}
         <span style={{
-          fontFamily: 'var(--font-mono)', fontSize: 10,
+          fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)',
           color: ui.isRunning ? 'var(--accent-green)' : allLanded ? 'var(--accent-blue)' : 'var(--text-dim)',
         }}>
           {ui.isRunning ? '● MISSION ACTIVE' : allLanded ? '● ALL LANDED' : '○ STANDBY'}

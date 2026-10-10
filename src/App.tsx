@@ -33,7 +33,7 @@ const AccountPanels = lazy(() => import('@/components/account/AccountPanels').th
 function MissionClock() {
   const { tick, elapsedSec } = useDroneStore(useShallow((s) => ({ tick: s.tick, elapsedSec: s.elapsedSec })))
   return (
-    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)' }}>
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--text-dim)' }}>
       T+{Math.floor(elapsedSec / 60)}:{Math.floor(elapsedSec % 60).toString().padStart(2, '0')} · #{tick}
     </span>
   )

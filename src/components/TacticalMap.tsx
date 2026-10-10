@@ -1746,7 +1746,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
           .setLngLat(lngLat)
           .setPopup(
             new maplibregl.Popup({ offset: 20 }).setHTML(
-              `<div style="font-family:monospace;font-size:11px;color:#000">
+              `<div style="font-family:monospace;font-size:var(--fs-min);color:#000">
                 <b>${drone.label}</b><br/>
                 ALT: ${Math.round(drone.altitudeFt)}ft · BAT: ${Math.round(drone.batteryPct)}%<br/>
                 STATE: ${drone.missionState.toUpperCase()}<br/>
@@ -1777,7 +1777,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
           hud.style.cssText = [
             'position:absolute',
             'font-family:var(--font-mono)',
-            'font-size:9px',
+            'font-size:var(--fs-min)',
             `color:${drone.color}`,
             'background:#00000099',
             'padding:1px 5px',
@@ -2018,7 +2018,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
           </svg>
           <div style={{
             position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)',
-            fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em',
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', letterSpacing: '0.12em',
             color: '#ffaa00', background: '#0a1520ee',
             padding: '3px 10px', borderRadius: 3, border: '1px solid #ffaa0044',
             whiteSpace: 'nowrap', zIndex: 2,
@@ -2076,7 +2076,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
           }}
           style={{
             position: 'absolute', top: badgeInset.topFollow, right: 10, zIndex: 100,
-            fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', letterSpacing: '0.08em',
             background: '#00d4ff22', border: '1px solid #00d4ff44', color: '#00d4ff',
             borderRadius: 4, padding: '4px 8px', cursor: 'pointer',
           }}
@@ -2094,7 +2094,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
           style={{
             position: 'absolute', top: badgeInset.top, left: '50%', transform: 'translateX(-50%)',
             pointerEvents: 'none', zIndex: 40,
-            fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: 2,
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', letterSpacing: 2,
             color: '#eaf6ff', background: '#00000099',
             padding: '2px 10px', borderRadius: 4, border: '1px solid #eaf6ff44',
           }}
@@ -2120,7 +2120,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
           data-testid="layers-control"
           style={{
             position: 'absolute', bottom: badgeInset.bottomRaised, right: 8, zIndex: 60,
-            fontFamily: 'var(--font-mono)', fontSize: 8.5, letterSpacing: '0.04em',
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', letterSpacing: '0.04em',
             color: 'var(--text-dim)', background: 'var(--bg-panel)',
             padding: '5px 8px', borderRadius: 'var(--radius-sm)',
             display: 'flex', flexDirection: 'column', gap: 3, minWidth: 96,
@@ -2173,7 +2173,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
           style={{
             position: 'absolute', bottom: badgeInset.bottomRaised, left: 8,
             display: 'flex', flexDirection: 'column', gap: 2,
-            fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.05em',
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', letterSpacing: '0.05em',
             color: 'var(--text-dim)', background: 'var(--bg-panel)',
             padding: '3px 8px', borderRadius: 'var(--radius-sm)', pointerEvents: 'none',
           }}
@@ -2197,7 +2197,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       {scenario?.missionType === 'sar_parallel' && (
         <div style={{
           position: 'absolute', top: badgeInset.top, left: 8,
-          fontFamily: 'var(--font-mono)', fontSize: 10,
+          fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)',
           color: '#ffaa00', background: 'var(--bg-panel)',
           padding: '3px 8px', borderRadius: 4, border: '1px solid #ffaa0044',
         }}>
@@ -2209,7 +2209,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
       {thermalContacts.length > 0 && (
         <div style={{
           position: 'absolute', top: scenario?.missionType === 'sar_parallel' ? badgeInset.topStacked : badgeInset.top, left: 8,
-          fontFamily: 'var(--font-mono)', fontSize: 10,
+          fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)',
           color: '#ff6600', background: 'var(--bg-panel)',
           padding: '3px 8px', borderRadius: 4, border: '1px solid #ff660044',
           cursor: 'default',
@@ -2253,17 +2253,17 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
             position: 'absolute', top: badgeInset.top, right: 56, zIndex: 120,
             background: 'var(--bg-panel)', border: '1px solid #ff660088',
             borderRadius: 6, padding: '8px 12px', minWidth: 210,
-            fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)',
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--text-secondary)',
           }}>
             <div style={{ color: '#ff6600', fontWeight: 700, marginBottom: 6 }}>◉ THERMAL CONTACT</div>
             <div>Class: <b style={{ color: 'var(--text-primary)' }}>{contact.class}</b></div>
             <div>Confidence: <b style={{ color: confPct > 70 ? 'var(--accent-green)' : 'var(--accent-yellow)' }}>{confPct}%</b>
               {contact.weatherAdjustedConfidence !== contact.confidence && (
-                <span style={{ color: 'var(--text-dim)', fontSize: 9 }}> (adj from {Math.round(contact.confidence * 100)}%)</span>
+                <span style={{ color: 'var(--text-dim)', fontSize: 'var(--fs-min)' }}> (adj from {Math.round(contact.confidence * 100)}%)</span>
               )}
             </div>
-            <div style={{ marginTop: 4, color: 'var(--text-dim)', fontSize: 9 }}>T+{contact.tick ?? 0} ticks</div>
-            <div style={{ marginTop: 4, color: 'var(--text-dim)', fontSize: 8, maxWidth: 220, lineHeight: 1.35 }}>
+            <div style={{ marginTop: 4, color: 'var(--text-dim)', fontSize: 'var(--fs-min)' }}>T+{contact.tick ?? 0} ticks</div>
+            <div style={{ marginTop: 4, color: 'var(--text-dim)', fontSize: 'var(--fs-min)', maxWidth: 220, lineHeight: 1.35 }}>
               SIMULATION ONLY — exact heat-source coords for training (not GNSS error)
             </div>
             {contact.groundUnitId && (
@@ -2301,7 +2301,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
                 <button
                   className={holdActive && !contact.groundUnitId ? 'btn coach-outline' : 'btn'}
                   data-coach="dispatch"
-                  style={{ fontSize: 9, padding: '1px 5px' }}
+                  style={{ fontSize: 'var(--fs-min)', padding: '1px 5px' }}
                   onClick={dispatchUnit}
                   disabled={!!contact.groundUnitId}
                 >
@@ -2320,14 +2320,14 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
               )}
               <button
                 className="btn"
-                style={{ fontSize: 9, padding: '1px 5px' }}
+                style={{ fontSize: 'var(--fs-min)', padding: '1px 5px' }}
                 onClick={() => useDroneStore.getState().resolveThermal(contact.sourceId, 'mark_false_positive')}
               >
                 ✗ False Pos
               </button>
               <button
                 className="btn"
-                style={{ fontSize: 9, padding: '1px 5px' }}
+                style={{ fontSize: 'var(--fs-min)', padding: '1px 5px' }}
                 onClick={() => selectThermal(null)}
               >
                 × Close
@@ -2339,7 +2339,7 @@ export function TacticalMap({ chromeSlots = 'inline', recenterRequest = 0 }: Tac
 
       <div style={{
         position: 'absolute', bottom: badgeInset.bottom, left: 8,
-        fontFamily: 'var(--font-mono)', fontSize: 9,
+        fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)',
         color: 'var(--text-dim)', background: 'var(--bg-panel)',
         padding: '2px 6px', borderRadius: 'var(--radius-sm)',
       }}>
