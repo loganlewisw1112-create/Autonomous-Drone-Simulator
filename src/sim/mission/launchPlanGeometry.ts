@@ -1,16 +1,51 @@
 import { BAY_SPACING_M, planCoordinatedLaunch, type LaunchSlot } from '@/sim/mission/LaunchCoordinator'
+import { buildBayStatuses, buildLaunchDoctrineSituation } from '@/sim/mission/launchDoctrine'
 import { droneIdForIndex } from '@/sim/mission/routeAudit'
-import type { LatLng, LaunchBayPlan, ScenarioConfig, Waypoint } from '@/types'
+import type { LatLng, LaunchBayPlan, ScenarioConfig, Waypoint, WeatherVariantState } from '@/types'
 
-/** Seed a ready plan from authored defaults when the operator has not confirmed one yet. */
-export function seededLaunchPlanFromScenario(scenario: ScenarioConfig): LaunchBayPlan | null {
+export const WEATHER_BLOCKER_PREFIX = 'Weather:'
+
+/** First weather-closure blocker on a plan, for operator-facing START hints. */
+export function launchWeatherBlocker(plan: LaunchBayPlan | null | undefined): string | null {
+  return plan?.blockers.find((blocker) => blocker.startsWith(WEATHER_BLOCKER_PREFIX)) ?? null
+}
+
+/**
+ * Seed a plan from authored defaults when the operator has not confirmed one yet.
+ * With live weather the seed is gated by the launch doctrine itself (the same
+ * `weatherGateForSite` limits the planner uses): a bay the doctrine closes carries
+ * `weatherClosed` + `closureReason`, and the plan is not ready while any closed bay has
+ * drones assigned. Without weather the legacy always-ready seed is returned.
+ */
+export function seededLaunchPlanFromScenario(
+  scenario: ScenarioConfig,
+  weather?: WeatherVariantState,
+  siteOverrides: Readonly<Record<string, LatLng>> = {},
+): LaunchBayPlan | null {
   if (!scenario.defaultLaunchAssignments) return null
-  return {
-    assignments: { ...scenario.defaultLaunchAssignments },
-    bayStatuses: [],
-    readyToLaunch: true,
-    blockers: [],
-  }
+  const assignments = { ...scenario.defaultLaunchAssignments }
+  if (!weather) return { assignments, bayStatuses: [], readyToLaunch: true, blockers: [] }
+
+  const situation = buildLaunchDoctrineSituation({ scenario, weather, siteOverrides }, assignments)
+  const bayStatuses = buildBayStatuses(situation, assignments)
+  const conditions = `gusts ${Math.round(weather.gustKts)} kt, ceiling ${Math.round(weather.ceilingFt)} ft`
+  const blockers = bayStatuses
+    .filter((bay) => bay.weatherClosed && bay.assignedDroneIds.length > 0)
+    .map((bay) => `${WEATHER_BLOCKER_PREFIX} ${situation.launchSites[bay.siteId]?.label ?? bay.siteId} closed (${bay.closureReason ?? 'weather limits exceeded'}; ${conditions})`)
+  return { assignments, bayStatuses, readyToLaunch: blockers.length === 0, blockers }
+}
+
+/**
+ * True for a plan that is still just the authored-default seed (no doctrine
+ * `assignmentDetails`, assignments identical to the defaults), as opposed to one an
+ * operator confirmed through bay planning.
+ */
+export function isSeededLaunchPlan(scenario: ScenarioConfig, plan: LaunchBayPlan | null): boolean {
+  const defaults = scenario.defaultLaunchAssignments
+  if (!plan || !defaults || plan.assignmentDetails) return false
+  const planned = Object.entries(plan.assignments)
+  return planned.length === Object.keys(defaults).length
+    && planned.every(([droneId, siteId]) => defaults[droneId] === siteId)
 }
 
 export function effectiveLaunchPlan(

@@ -1100,7 +1100,7 @@ export function initFleet() {
   // drones resolve through the physical site pool without a manual bay-planning pass.
   // Held locally for bay computation and re-applied after resetMission() clears the store plan.
   const seededLaunchPlan: LaunchBayPlan | null = !launchPlan
-    ? seededLaunchPlanFromScenario(scenario)
+    ? seededLaunchPlanFromScenario(scenario, weatherState, siteOverrides)
     : null
   const effectiveLaunchPlan = launchPlan ?? seededLaunchPlan
   // Preserve mobile CB overrides across resetMission so initFleet / demo restarts still

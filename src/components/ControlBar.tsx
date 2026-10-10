@@ -5,6 +5,8 @@ import { useMissionControls } from '@/hooks/useMissionControls'
 import { useScenarioOptions } from '@/scenarios/registry'
 import type { OperatorRole, SimSpeed, ScenarioVariantConfig } from '@/types'
 import { useAuthStore } from '@/store/authStore'
+import { useDroneStore } from '@/store/droneStore'
+import { launchWeatherBlocker } from '@/sim/mission/launchPlanGeometry'
 import { APP_TARGET } from '@/platform/appTarget'
 import { observedWeatherFor } from '@/scenarios/observedWeather'
 
@@ -30,6 +32,7 @@ export function ControlBar() {
     handleExportLog, handleExportKML, handleExportGeoJSON, handleExportAfterAction,
   } = useMissionControls()
 
+  const weatherBlocker = useDroneStore((s) => launchWeatherBlocker(s.launchPlan))
   const scenarioOptions = useScenarioOptions().filter((option) => activeAccount || !option.config.isCustom)
   const [showVariant, setShowVariant] = useState(false)
   const [showDesigner, setShowDesigner] = useState(false)
@@ -213,7 +216,7 @@ export function ControlBar() {
           className="btn primary"
           onClick={handleStart}
           disabled={!scenario || !canStart || !launchReady}
-          title={!canStart ? 'PIC role required' : !launchReady ? 'Complete launch bay planning first' : undefined}
+          title={!canStart ? 'PIC role required' : !launchReady ? (weatherBlocker ?? 'Complete launch bay planning first') : undefined}
         >
           ▶ START
         </button>
@@ -288,6 +291,14 @@ export function ControlBar() {
         {scenario && !ui.isRunning && !launchReady && (
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--accent-yellow)' }}>
             ⚠ BAY PLAN REQUIRED
+          </span>
+        )}
+        {scenario && !ui.isRunning && !launchReady && weatherBlocker && (
+          <span
+            data-testid="launch-weather-blocker"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-min)', color: 'var(--accent-yellow)' }}
+          >
+            {weatherBlocker}
           </span>
         )}
         <span style={{

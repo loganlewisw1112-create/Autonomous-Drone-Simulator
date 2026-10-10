@@ -85,13 +85,13 @@ A review of the live demo found blockers that a first-time viewer would hit. Eac
 | c5a, c5b | End Mission → "VIEW REPORT" opens a one-page report; "Download report (HTML)" saves a self-contained file that opens offline | #134 |
 | c9 | The boot screen no longer shows an all-zero genesis hash | #134 |
 | c10 | The classroom server prompt says what it does ("Check this PC for a classroom server") | #134 |
-| c11 | Marshall Fire carries a no-launch mission brief and dispatch timeline | #134 |
+| c11 | Marshall Fire carries a no-launch mission brief and dispatch timeline (#134). Seeded launch plans now run the launch-doctrine weather gate, so START stays disabled and names the closed bay and the gust | #134, this PR |
 | c7 | Text floor of 12 px on phones and 11 px on desktop, enforced by `src/tests/fontSizeFloor.spec.ts` | #134 |
 
 Parked by decision: **c3** and **c6**. No scenario was parked for road-fixture size.
 
-Open from this pass:
-- **Marshall Fire launch gating.** The brief is shipped, but its Start button is not weather-gated. Scenarios with `defaultLaunchAssignments` get a seeded launch plan (`seededLaunchPlanFromScenario`) that is marked ready without running the launch-doctrine weather check. On Marshall the Start button is therefore enabled, and the launch is held back only by the authorization-training gate, with no on-screen reason. Owner decision pending.
+Notes from this pass:
+- **Weather-gated seeded launch plans.** At their default weather this grounds Marshall Fire (56 kt gust against the 30 kt limit for a semi-exposed site) and the USCG maritime SAR drill (25.1 kt against the 25 kt exposed-site limit). The owner chose to apply the doctrine as written. The other 29 seeded scenarios stay launchable.
 - Not reachable from the guest UI, so verified by unit tests only: the "No road access" state (no shipped contact lacks road access) and the drone-recovery pickup flow (remote land exists only in the classroom console).
 
 ## Open qualification blockers
