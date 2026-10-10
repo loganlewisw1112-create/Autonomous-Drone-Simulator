@@ -4,6 +4,15 @@
 .mobile-shell * { box-sizing: border-box; }
 
 .mobile-shell {
+  /* Text-size floor on phones: tactical.css sets --fs-min to 11px on :root; every size in the UI reads this token. */
+  --fs-min: 12px;
+}
+/* Surfaces rendered outside the shell (policy banner, portals) still sit on a phone page. */
+:root:has(.mobile-shell) {
+  --fs-min: 12px;
+}
+
+.mobile-shell {
   /* Unified mobile z-index scale. Floating chrome sits above in-map badges/chips
      but below drawers, so opening a surface covers the chrome. */
   --z-map-overlay: 100;  /* in-map badges: FOLLOW, IR/thermal HUD, SAR, thermal card */
@@ -56,19 +65,19 @@
   overflow: hidden;
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-min);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .mobile-clock {
   flex: 0 0 auto;
   color: var(--text-dim);
-  font: 10px var(--font-mono);
+  font: var(--fs-min) var(--font-mono);
   white-space: nowrap;
 }
 .mobile-paused {
   color: var(--accent-yellow);
-  font: 700 9px var(--font-mono);
+  font: 700 var(--fs-min) var(--font-mono);
   letter-spacing: 1px;
 }
 .mobile-topbar .rec-dot { flex: 0 0 auto; margin-bottom: 3px; }
@@ -112,8 +121,8 @@
 }
 .mobile-priority-chip span,
 .mobile-priority-chip strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mobile-priority-chip span { color: var(--accent-yellow); font-size: 9px; letter-spacing: 1px; }
-.mobile-priority-chip strong { margin-top: 2px; font-size: 11px; }
+.mobile-priority-chip span { color: var(--accent-yellow); font-size: var(--fs-min); letter-spacing: 1px; }
+.mobile-priority-chip strong { margin-top: 2px; font-size: var(--fs-min); }
 
 /* End-of-mission report chip (c5a). Bottom-centre, above the dock, clear of the edge tabs and topbar. */
 .mobile-complete-chip {
@@ -152,7 +161,7 @@
   border: 1px solid var(--border-accent);
   background: rgba(22, 27, 34, 0.94);
   color: var(--accent-blue);
-  font: 700 11px var(--font-mono);
+  font: 700 var(--fs-min) var(--font-mono);
   letter-spacing: 2px;
   writing-mode: vertical-rl;
   cursor: pointer;
@@ -284,7 +293,7 @@
   border-radius: 7px;
   background: var(--bg-input);
   color: var(--text-secondary);
-  font: 700 11px var(--font-mono);
+  font: 700 var(--fs-min) var(--font-mono);
 }
 .mobile-data-tabs button.active { border-color: var(--accent-blue); color: var(--accent-blue); background: rgba(0, 212, 255, 0.08); }
 .mobile-data-content { flex: 1; min-height: 0; overflow: hidden; }
@@ -353,7 +362,7 @@
   border-radius: 8px;
   background: var(--bg-input);
   color: var(--text-primary);
-  font: 700 10px var(--font-mono);
+  font: 700 var(--fs-min) var(--font-mono);
   letter-spacing: .7px;
   white-space: nowrap;
   cursor: pointer;
@@ -368,7 +377,7 @@
 
 .mobile-sheet-section { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; }
 .mobile-sheet-section .mobile-sheet-section { padding: 6px 0 0; }
-.mobile-sheet-label { color: var(--text-dim); font: 10px var(--font-mono); letter-spacing: 2px; }
+.mobile-sheet-label { color: var(--text-dim); font: var(--fs-min) var(--font-mono); letter-spacing: 2px; }
 .mobile-sheet-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .mobile-btn {
   min-width: 76px;
@@ -410,7 +419,7 @@
   border-radius: 8px;
   background: rgba(28, 12, 32, 0.94);
   color: var(--text-secondary);
-  font: 11px var(--font-mono);
+  font: var(--fs-min) var(--font-mono);
 }
 .fleet-retask-review__main { display: flex; flex-wrap: wrap; gap: 5px 8px; align-items: center; }
 .fleet-retask-review__main strong { width: 100%; color: #ff88ff; letter-spacing: .7px; }
@@ -429,7 +438,7 @@
 }
 .fleet-retask-review__undo-error { color: var(--accent-red); font-weight: 700; }
 .fleet-retask-review--compact { padding: 8px; }
-.mobile-evidence-summary { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font: 11px var(--font-mono); }
+.mobile-evidence-summary { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font: var(--fs-min) var(--font-mono); }
 .mobile-evidence-summary span:last-child { grid-column: 1 / -1; color: var(--text-secondary); }
 .evidence-ok { color: var(--accent-green); }
 .evidence-failed { color: var(--accent-red); }
@@ -443,7 +452,7 @@
   border-radius: 8px;
   background: var(--bg-input);
   color: var(--text-primary);
-  font: 700 11px var(--font-mono);
+  font: 700 var(--fs-min) var(--font-mono);
 }
 .mobile-more-grid button:disabled { opacity: .38; }
 
@@ -466,10 +475,10 @@
   flex-wrap: wrap;
 }
 
-.mobile-shell--portrait .mobile-topbar .header-logo { font-size: 11px; }
-.mobile-shell--portrait .mobile-topbar .header-mission-id { font-size: 9px; }
+.mobile-shell--portrait .mobile-topbar .header-logo { font-size: var(--fs-min); }
+.mobile-shell--portrait .mobile-topbar .header-mission-id { font-size: var(--fs-min); }
 .mobile-shell--portrait .mobile-priority-chip { width: calc(100% - 86px); }
-.mobile-shell--portrait .mobile-edge-tab { min-height: 70px; min-width: 44px; font-size: 10px; }
+.mobile-shell--portrait .mobile-edge-tab { min-height: 70px; min-width: 44px; font-size: var(--fs-min); }
 .mobile-shell--portrait .mobile-drawer.bottom { height: min(76%, 650px); }
 .mobile-shell--portrait .mobile-data-tabs { flex-basis: 52px; }
 
@@ -513,7 +522,7 @@
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-min);
   font-weight: 700;
 }
 
@@ -545,7 +554,7 @@
 }
 .mobile-shell .site-reposition-copy strong { font-size: 12px; }
 .mobile-shell .site-reposition-copy span,
-.mobile-shell .site-reposition-copy small { font-size: 11px; }
+.mobile-shell .site-reposition-copy small { font-size: var(--fs-min); }
 .mobile-shell .site-reposition-actions { display: grid; grid-template-columns: 1fr 1fr; }
 .mobile-shell .site-reposition-actions button { min-height: 44px; }
 
@@ -588,7 +597,7 @@
   -webkit-backdrop-filter: blur(6px);
   color: var(--accent-yellow);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-min);
   letter-spacing: 0.06em;
 }
 .route-edit-banner button {
@@ -600,7 +609,7 @@
   background: rgba(255, 200, 0, 0.14);
   color: var(--accent-yellow);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-min);
   font-weight: 700;
   letter-spacing: 0.08em;
 }
@@ -617,7 +626,7 @@
   background: rgba(40, 12, 12, 0.92);
   color: var(--accent-red);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-min);
   text-align: center;
 }
 
@@ -638,7 +647,7 @@
   -webkit-backdrop-filter: blur(6px);
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-min);
   white-space: nowrap;
 }
 .route-edit-confirm button {
@@ -650,7 +659,7 @@
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-min);
   font-weight: 700;
 }
 
@@ -696,7 +705,7 @@
 .mobile-shell .launch-doctrine-assignment-list { gap: 10px; }
 .mobile-shell .launch-doctrine-assignment { padding: 10px; }
 .mobile-shell .launch-doctrine-assignment-heading { grid-template-columns: 1fr; gap: 7px; }
-.mobile-shell .launch-doctrine-assignment-heading select { width: 100%; min-height: 44px; font-size: 11px; }
+.mobile-shell .launch-doctrine-assignment-heading select { width: 100%; min-height: 44px; font-size: var(--fs-min); }
 .mobile-shell .launch-doctrine-candidate dl { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .mobile-shell .launch-doctrine-candidate dl > div:last-child { grid-column: 1 / -1; }
 .mobile-shell .launch-doctrine-rejections summary { min-height: 44px; display: flex; align-items: center; }
@@ -715,7 +724,7 @@
   border-radius: 8px;
   background: var(--bg-input);
   color: var(--text-secondary);
-  font: 700 11px var(--font-mono);
+  font: 700 var(--fs-min) var(--font-mono);
   letter-spacing: .5px;
   cursor: pointer;
 }
@@ -735,7 +744,7 @@
 .mobile-suggestion.suggestion-high { border-left-color: var(--accent-red); }
 .mobile-suggestion.suggestion-medium { border-left-color: var(--accent-yellow); }
 .mobile-suggestion-title { font: 700 12px var(--font-mono); color: var(--text-primary); letter-spacing: .04em; }
-.mobile-suggestion-rationale { margin: 4px 0 8px; font-size: 11px; line-height: 1.4; color: var(--text-secondary); }
+.mobile-suggestion-rationale { margin: 4px 0 8px; font-size: var(--fs-min); line-height: 1.4; color: var(--text-secondary); }
 .mobile-suggestion-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 /* ── Mission sheet: translucent so the live map / drone flight shows through ───
@@ -781,7 +790,7 @@
 .mobile-shell--tablet .mobile-drawer-header { flex-basis: 54px; font-size: 14px; }
 
 .mobile-shell--tablet .mobile-sheet-section { padding: 16px 20px; gap: 12px; }
-.mobile-shell--tablet .mobile-sheet-label { font-size: 11px; }
+.mobile-shell--tablet .mobile-sheet-label { font-size: var(--fs-min); }
 .mobile-shell--tablet .mobile-btn { min-height: 48px; font-size: 13px; }
 .mobile-shell--tablet .mobile-status-line { font-size: 13px; }
 

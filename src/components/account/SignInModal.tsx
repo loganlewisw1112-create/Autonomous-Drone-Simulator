@@ -76,7 +76,7 @@ export function SignInModal() {
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          <label style={{ fontSize: 'var(--fs-min)', color: 'var(--text-secondary)' }}>
             USERNAME
             <input
               className="account-input"
@@ -90,7 +90,7 @@ export function SignInModal() {
           </label>
 
           {mode === 'signup' && (
-            <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            <label style={{ fontSize: 'var(--fs-min)', color: 'var(--text-secondary)' }}>
               OPERATOR ALIAS (shown in mission logs; do not use a real name for classroom pilots)
               <input
                 className="account-input"
@@ -102,7 +102,7 @@ export function SignInModal() {
             </label>
           )}
 
-          <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          <label style={{ fontSize: 'var(--fs-min)', color: 'var(--text-secondary)' }}>
             PASSWORD {mode === 'signup' && '(min 8 chars — cannot be recovered if lost)'}
             <input
               className="account-input"
@@ -133,7 +133,7 @@ export function SignInModal() {
             )}
           </div>
 
-          <p style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
+          <p style={{ fontSize: 'var(--fs-min)', color: 'var(--text-dim)', marginTop: 4 }}>
             Profiles are stored only on this device. Passwords are never transmitted; mission
             history is AES-256-GCM encrypted with a key derived from your password
             (PBKDF2-SHA-256). The key stays in memory, so reloading signs you out.

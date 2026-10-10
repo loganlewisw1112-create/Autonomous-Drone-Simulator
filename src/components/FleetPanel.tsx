@@ -145,7 +145,7 @@ function DroneCard({ drone, recoveryTeam }: { drone: DroneState; recoveryTeam?: 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 5 }}>
           {warnings.map((w) => (
             <span key={w} style={{
-              fontSize: 9, fontFamily: 'var(--font-mono)', fontWeight: 700,
+              fontSize: 'var(--fs-min)', fontFamily: 'var(--font-mono)', fontWeight: 700,
               padding: '1px 4px', borderRadius: 2,
               background: w === 'RECOVERY' ? 'var(--accent-magenta)' : 'var(--accent-red)',
               color: '#fff',
@@ -158,7 +158,7 @@ function DroneCard({ drone, recoveryTeam }: { drone: DroneState; recoveryTeam?: 
         <div style={{
           marginTop: 5, padding: '4px 6px', borderRadius: 3,
           background: 'rgba(255,136,255,0.1)', border: '1px solid #ff88ff44',
-          fontSize: 9, fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--fs-min)', fontFamily: 'var(--font-mono)',
         }}>
           <div style={{ color: 'var(--accent-magenta)', fontWeight: 700 }}>
             ⛑ RECOVERY TEAM — {recoveryTeam.status.toUpperCase()}
@@ -169,7 +169,7 @@ function DroneCard({ drone, recoveryTeam }: { drone: DroneState; recoveryTeam?: 
             </div>
           )}
           {recoveryTeam.weatherRiskNote && (
-            <div style={{ color: 'var(--accent-yellow)', fontSize: 8 }}>
+            <div style={{ color: 'var(--accent-yellow)', fontSize: 'var(--fs-min)' }}>
               ⚠ {recoveryTeam.weatherRiskNote}
             </div>
           )}
@@ -191,10 +191,10 @@ export function FleetPanel() {
     <div className="fleet-panel">
       <div className="panel-section">
         <div className="panel-label">Fleet Status</div>
-        <div style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+        <div style={{ fontSize: 'var(--fs-min)', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
           {scenario ? scenario.name : 'No scenario loaded'}
         </div>
-        <div style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+        <div style={{ fontSize: 'var(--fs-min)', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
           T+{fmtTime(elapsedSec)}
         </div>
       </div>
@@ -208,7 +208,7 @@ export function FleetPanel() {
       ))}
 
       {drones.length === 0 && (
-        <div style={{ padding: 12, color: 'var(--text-dim)', fontSize: 11, textAlign: 'center' }}>
+        <div style={{ padding: 12, color: 'var(--text-dim)', fontSize: 'var(--fs-min)', textAlign: 'center' }}>
           Load a scenario to see drones
         </div>
       )}

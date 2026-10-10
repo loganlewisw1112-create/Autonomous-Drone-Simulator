@@ -52,7 +52,7 @@ export function WelcomeOverlay() {
           comms degradation, scripted airspace deconfliction, and a verifiable application event-custody
           log — all running locally in your browser.
         </p>
-        <p style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.5, margin: '0 0 14px' }}>
+        <p style={{ fontSize: 'var(--fs-min)', color: 'var(--text-dim)', lineHeight: 1.5, margin: '0 0 14px' }}>
           Everything here is synthetic and simulation-only — no real aircraft, airspace, or
           flight data. Launch the demo for a guided mission, or explore the full operator
           workflow yourself.
@@ -78,7 +78,7 @@ export function WelcomeOverlay() {
             {launching ? 'PREPARING…' : '▶ LAUNCH DEMO'}
           </button>
         </div>
-        {launchError && <p role="alert" style={{ color: 'var(--accent-red)', fontSize: 11 }}>{launchError}</p>}
+        {launchError && <p role="alert" style={{ color: 'var(--accent-red)', fontSize: 'var(--fs-min)' }}>{launchError}</p>}
       </div>
     </div>
   )
