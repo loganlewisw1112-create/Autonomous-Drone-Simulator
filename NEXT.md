@@ -5,8 +5,8 @@ Everything from "Next action" down is yours and is never auto-edited. -->
 
 ## Evidence (hand-refreshed 2026-10-10)
 
-- Branch `main` at `5bd0cd3`. The demo-blocker pass (#127-#134) is merged; see PROJECT_STATUS.md "Demo-blocker pass".
-- All three public targets (windows, mobile, classroom) serve `5bd0cd3` per `npm run deploy:status`
+- The demo-blocker pass (#127-#135 plus the c11 weather-gate follow-up) is merged; see PROJECT_STATUS.md "Demo-blocker pass".
+- Check the live SHA with `npm run deploy:status`: all three public targets (windows, mobile, classroom) promote from `main`
 - No open PRs
 
 ## Blocker
@@ -16,12 +16,6 @@ none. The v1.1 **web beta is LIVE** and promoted from `main` by CI. Project deci
 hardening, cleanup, and polish, not the release ladder.
 
 ## Next action
-
-Owner decision on **Marshall Fire launch gating**. Scenarios with `defaultLaunchAssignments` get a seeded launch plan
-(`src/sim/mission/launchPlanGeometry.ts` `seededLaunchPlanFromScenario`) that is marked ready without the
-launch-doctrine weather check. Marshall's Start button is therefore enabled, and only the authorization-training gate
-holds it, silently. Fix options: run `weatherGateForSite` in the seeded plan and show the closure reason, or accept
-the brief-only drill. Check which other seeded scenarios a weather-gated seed would ground before choosing.
 
 Owner decision on WP-12 (below) is the only open roadmap item. Otherwise continue polish. Known
 energy-model limit left from the U-shaped power curve (2026-09-28): wind is charged as extra load,
@@ -35,6 +29,7 @@ ADS-B source, or drop WP-12 as out of scope for the flagship.
 
 ## Carry forward
 
+- Seeded launch plans are weather-gated: Marshall Fire and USCG maritime SAR do not launch at default weather, by owner decision (2026-10-10).
 - `src/tests/classroomRelayBoundaries.spec.ts` "global instructor verification limit" runs in about 3.5 s against
   a 5 s timeout, so it can time out on a loaded machine. It passes in isolation.
 - The realism roadmap (`docs/REALISM_ROADMAP.md` §0) is DONE for WP-1 through WP-11; WP-4 terrain

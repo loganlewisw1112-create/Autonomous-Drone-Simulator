@@ -31,7 +31,7 @@ export function seededLaunchPlanFromScenario(
   const conditions = `gusts ${Math.round(weather.gustKts)} kt, ceiling ${Math.round(weather.ceilingFt)} ft`
   const blockers = bayStatuses
     .filter((bay) => bay.weatherClosed && bay.assignedDroneIds.length > 0)
-    .map((bay) => `${WEATHER_BLOCKER_PREFIX} bay ${bay.siteId} closed (${bay.closureReason ?? 'weather limits exceeded'}; ${conditions})`)
+    .map((bay) => `${WEATHER_BLOCKER_PREFIX} ${situation.launchSites[bay.siteId]?.label ?? bay.siteId} closed (${bay.closureReason ?? 'weather limits exceeded'}; ${conditions})`)
   return { assignments, bayStatuses, readyToLaunch: blockers.length === 0, blockers }
 }
 

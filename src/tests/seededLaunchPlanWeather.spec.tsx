@@ -78,6 +78,7 @@ describe('Marshall Fire START shows the weather reason', () => {
     const reason = screen.getByTestId('launch-weather-blocker')
     expect(reason.textContent).toMatch(/closed/i)
     expect(reason.textContent).toMatch(/gust/i)
+    expect(reason.textContent).not.toMatch(/launch-primary/) // the site label, not the internal pool id
     expect(screen.getByText('⚠ BAY PLAN REQUIRED')).toBeInTheDocument()
   })
 
