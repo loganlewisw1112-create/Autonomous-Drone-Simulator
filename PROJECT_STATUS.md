@@ -1,6 +1,6 @@
 # Project status
 
-Status date: 2026-09-22
+Status date: 2026-10-10
 Release line: `main`. The **v1.1 web beta is published** and all three public
 targets are promoted automatically from `main` by CI. Do not trust a SHA quoted
 here — it goes stale on the next merge. Run `npm run deploy:status` for the
@@ -40,11 +40,11 @@ dispatch, camera, weather, or aircraft-telemetry services.
 | Scenarios | 25 incident missions plus 6 NIST-inspired skills drills |
 | Simulation | Seeded fixed-timestep multi-aircraft missions, safety decisions, replay, and hash-chained evidence |
 | Realism | Frozen terrain, building, weather, airspace, thermal, SAR, GNSS, RF, turbulence, and battery fixtures/models for covered scenarios |
-| Operations | Preflight, launch/recovery planning, route editing, suggestions, retasking, hover/divert/resume/RTB, OPS HUB, after-action review |
+| Operations | Preflight, launch/recovery planning, route editing, suggestions, retasking, hover/divert/resume/RTB, OPS HUB, ground units and drone-recovery teams driving frozen road networks, after-action review |
 | Targets | Separate Mobile, Desktop web (Windows & Mac), and Classroom client builds using one simulation contract |
 | Accounts | Browser-local encrypted profiles, runs, custom missions, backups, and classroom history |
 | Classroom | Instructor/student roles, HTTPS/WSS local relay, persistent school-local CA and renewable leaf, encrypted protocol-v3 messages, fingerprint-pinned join URL/QR, coordinator wall, commands, scoring, and archives |
-| Evidence | Replay, JSONL chain, KML, GeoJSON, reports, and after-action exports |
+| Evidence | Replay, JSONL chain, KML, GeoJSON, a one-page readable report with an offline HTML download, and after-action exports |
 | Assurance | Training-envelope evaluator, mechanically prohibited operational claims, geographic-familiarization acknowledgement, and assurance state in preflight/readiness/classroom/reports |
 | Licensing | Public-demo wall/idle/debrief windows; evaluation/pilot expiry channels; 30-180 minute classroom schedule |
 
@@ -69,6 +69,30 @@ The current branch is a qualification and hardening line:
 
 No phase is complete merely because its source exists. Promotion requires the
 evidence in `RELEASE_CHECKLIST.md`.
+
+## Demo-blocker pass, 2026-10-09 to 2026-10-10
+
+A review of the live demo found blockers that a first-time viewer would hit. Each fix below was merged to `main`, promoted by CI, and checked on the live targets with a scripted guest session.
+
+| Item | Change | PR |
+|---|---|---|
+| c2 | Healthy fleets no longer show "link lost" on the tactical summary | #127 |
+| c8 | Phone usage banner, header and build info no longer overlap; banner taps pass through | #128 |
+| c4 | First thermal hold is explained by a banner with a visible pulse ring; "Show thermal view" selects the contact | #130 |
+| c12a | Every incident scenario ships a frozen, validated, drivable road graph (`roads.json`) | #131 |
+| c12b (f3) | Dispatched ground units and recovery teams drive those roads; "+ Additional unit" sends a second vehicle from another direction | #132 |
+| c4b | Owner-supplied truck, SUV and drone-recovery pickup avatars on the map | #133 |
+| c5a, c5b | End Mission → "VIEW REPORT" opens a one-page report; "Download report (HTML)" saves a self-contained file that opens offline | #134 |
+| c9 | The boot screen no longer shows an all-zero genesis hash | #134 |
+| c10 | The classroom server prompt says what it does ("Check this PC for a classroom server") | #134 |
+| c11 | Marshall Fire carries a no-launch mission brief and dispatch timeline | #134 |
+| c7 | Text floor of 12 px on phones and 11 px on desktop, enforced by `src/tests/fontSizeFloor.spec.ts` | #134 |
+
+Parked by decision: **c3** and **c6**. No scenario was parked for road-fixture size.
+
+Open from this pass:
+- **Marshall Fire launch gating.** The brief is shipped, but its Start button is not weather-gated. Scenarios with `defaultLaunchAssignments` get a seeded launch plan (`seededLaunchPlanFromScenario`) that is marked ready without running the launch-doctrine weather check. On Marshall the Start button is therefore enabled, and the launch is held back only by the authorization-training gate, with no on-screen reason. Owner decision pending.
+- Not reachable from the guest UI, so verified by unit tests only: the "No road access" state (no shipped contact lacks road access) and the drone-recovery pickup flow (remote land exists only in the classroom console).
 
 ## Open qualification blockers
 
