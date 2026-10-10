@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useDroneStore } from '@/store/droneStore'
 import { buildMissionStatusFeed } from '@/sim/mission/dispatchFeed'
 import { buildInvestorDemoChapters } from '@/sim/demo/demoScript'
+import { AGENCY_NAMES_NOTICE, historicalScenarioNote } from '@/scenarios/scenarioNotices'
 import type { DispatchTimelineCategory } from '@/types'
 
 const PRIORITY_LABEL: Record<string, string> = {
@@ -46,6 +47,7 @@ export function MissionStatusFeed() {
   if (!scenario?.missionBrief) return null
 
   const brief = scenario.missionBrief
+  const historicalNote = historicalScenarioNote(scenario)
 
   return (
     <section className="mission-status-feed" aria-label="Mission brief and dispatch feed" data-testid="mission-status-feed">
@@ -57,6 +59,10 @@ export function MissionStatusFeed() {
         <div className="mission-feed-objective">{brief.primaryObjective}</div>
       </div>
       <div className="mission-feed-intent">{brief.commandIntent}</div>
+      {historicalNote && (
+        <div className="scenario-notice" data-testid="historical-scenario-note">{historicalNote}</div>
+      )}
+      <div className="scenario-notice" data-testid="agency-names-notice">{AGENCY_NAMES_NOTICE}</div>
       {investorDemo.enabled && (
         <div className="investor-demo-strip" data-testid="investor-demo-strip">
           {demoChapters.map((chapter) => (

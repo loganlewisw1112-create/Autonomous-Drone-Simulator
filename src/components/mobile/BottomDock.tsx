@@ -3,6 +3,7 @@ import { FleetRetaskReview } from '@/components/FleetRetaskReview'
 import { MissionProgress } from '@/components/MissionProgress'
 import { DroneQuickCommands } from '@/components/mobile/DroneQuickCommands'
 import { useScenarioOptions } from '@/scenarios/registry'
+import { AGENCY_NAMES_NOTICE } from '@/scenarios/scenarioNotices'
 import { useMobileStore } from '@/store/mobileStore'
 import { useDroneStore } from '@/store/droneStore'
 import { verifyChain } from '@/utils/chainOfCustody'
@@ -90,6 +91,7 @@ export function ScenarioSheet({ onScenarioSelected, onOpenCustomMissions, custom
         ))}
       </select>
       {missionLoadError && <span className="mobile-status-line" role="alert">Terrain load blocked: {missionLoadError}</span>}
+      <span className="mobile-status-line" data-testid="scenario-sheet-agency-notice">{AGENCY_NAMES_NOTICE}</span>
 
       {onOpenCustomMissions && (
         <button className="mobile-btn mobile-btn-full" onClick={onOpenCustomMissions}>

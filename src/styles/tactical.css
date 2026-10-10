@@ -149,6 +149,16 @@ html, body, #root {
   border-bottom: 1px solid var(--border);
 }
 
+/* Pitch review k5: no-endorsement and historical-event notices that travel with the brief. */
+.scenario-notice {
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-min);
+  line-height: 1.35;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+
 .dispatch-feed-list {
   max-height: 116px;
   overflow-y: auto;
