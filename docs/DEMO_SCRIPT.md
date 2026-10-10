@@ -2,13 +2,15 @@
 
 *Companion to [`BUILD_JOURNEY.html`](BUILD_JOURNEY.html) (open in a browser for the visual timeline version). Update both together as the project progresses — this is the living narration script, that's the living visual.*
 
+*This is the **build-story** narration: how the project was made. The product demo is the [3-minute demo path](../INVESTOR_DEMO_SCRIPT.md). The beats below are history and keep their dates; the counts in them are what was true at the time.*
+
 *Read this out loud, in order. Each beat has a SAY line (say it close to verbatim) and PROOF points (only pull these out if asked "how do you know?").*
 
 ---
 
 ## Open (10 sec)
 
-**SAY:** "This is a 21-scenario, multi-drone mission simulator — waypoints, telemetry, safety logic, replay. It's not just built, it's been audited and rebuilt once already. I'll walk you through how."
+**SAY:** "This is a 31-scenario, multi-drone training simulator — waypoints, telemetry, safety logic, replay. It's not just built, it's been audited and rebuilt once already. I'll walk you through how."
 
 ---
 
@@ -20,7 +22,7 @@
 
 ## 2 · Scope upgrade + scaffold in one sitting — *06-29*
 
-**SAY:** "Once I started building, I upgraded the target: instead of a toy canvas demo, a tactical operations simulator — real map tiles, an ATAK-style dark UI, a 3-drone fleet, and a chain-of-custody event log with SHA-256 hashing, aimed at how a public-safety or DoD evaluator would actually judge it."
+**SAY:** "Once I started building, I upgraded the target: instead of a toy canvas demo, a tactical operations simulator — real map tiles, an ATAK-style dark UI, a 3-drone fleet, and an application event-custody log with SHA-256 hashing, aimed at how a public-safety training evaluator would actually judge it."
 
 **PROOF:** `HANDOFF.md` session log — full scaffold (types, RNG, kinematics, 8-state mission machine, sim loop, store, 4 test suites) landed before the first git commit.
 
@@ -32,7 +34,7 @@
 
 ## 4 · Audit my own work like an adversary — *07-02 → 07-03* ⭐
 
-**SAY:** "Before calling it done, I ran a full adversarial audit against the live app — both a hiring-manager lens and a seed-investor lens. It found my flagship feature was broken: the chain-of-custody hash chain didn't actually verify at runtime, and an investor-facing ROI number was fabricated arithmetic. I wrote all of it down before anyone else could find it."
+**SAY:** "Before calling it done, I ran a full adversarial audit against the live app — both a hiring-manager lens and a seed-investor lens. It found my flagship feature was broken: the event-log hash chain didn't actually verify at runtime, and an investor-facing ROI number was fabricated arithmetic. I wrote all of it down before anyone else could find it."
 
 **PROOF:** `docs/AUDIT_PORTFOLIO_INVESTOR_READINESS.md` — 2 Critical, 7 High, 10 Medium, 6 Low findings, with file:line evidence and a live-run reproduction of each one.
 
