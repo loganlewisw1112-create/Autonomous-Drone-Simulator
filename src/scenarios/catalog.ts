@@ -277,16 +277,16 @@ function deriveRecoverySites(
   return { sites, assignments }
 }
 
-function defaultLaunchSiteFor(scenario: ScenarioConfig, droneId: string, position: LatLng): LaunchRecoverySite {
+// siteId is the internal pool key; the label is operator-facing, so it names the pad, never the key.
+function defaultLaunchSiteFor(scenario: ScenarioConfig, siteId: string, position: LatLng, padName = 'primary pad'): LaunchRecoverySite {
   const agency = primaryAgencyFor(scenario)
-  const pad = droneId.toUpperCase()
 
   if (isCityScenario(scenario)) {
     return {
-      id: droneId,
+      id: siteId,
       exposure: 'semi',
       kind: 'mobile_command',
-      label: `${agency} mobile command — pad ${pad}`,
+      label: `${agency} mobile command — ${padName}`,
       agency,
       position,
       surfaceNote: `Mobile command vehicle pad; ${missionClassFor(scenario)} launch crew staged.`,
@@ -295,10 +295,10 @@ function defaultLaunchSiteFor(scenario: ScenarioConfig, droneId: string, positio
 
   if (isMaritimeScenario(scenario)) {
     return {
-      id: droneId,
+      id: siteId,
       exposure: 'exposed',
       kind: 'vessel',
-      label: `${agency} vessel deck — pad ${pad}`,
+      label: `${agency} vessel deck — ${padName}`,
       agency,
       position,
       surfaceNote: 'Aft deck launch surface; deck recovery crew assigned.',
@@ -307,10 +307,10 @@ function defaultLaunchSiteFor(scenario: ScenarioConfig, droneId: string, positio
 
   if (scenario.name.toLowerCase().includes('airport')) {
     return {
-      id: droneId,
+      id: siteId,
       exposure: 'exposed',
       kind: 'helipad',
-      label: `${agency} helipad — pad ${pad}`,
+      label: `${agency} helipad — ${padName}`,
       agency,
       position,
       surfaceNote: 'Helipad surface inside the incident command footprint.',
@@ -318,10 +318,10 @@ function defaultLaunchSiteFor(scenario: ScenarioConfig, droneId: string, positio
   }
 
   return {
-    id: droneId,
+    id: siteId,
     exposure: 'sheltered',
     kind: 'field_icp',
-    label: `${agency} field ICP — pad ${pad}`,
+    label: `${agency} field ICP — ${padName}`,
     agency,
     position,
     surfaceNote: `Field ICP launch lane; ${missionClassFor(scenario)} crew staged.`,
