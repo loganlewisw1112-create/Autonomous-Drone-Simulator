@@ -1,6 +1,6 @@
 # Autonomous Drone Mission Simulator
 
-**A training simulator for coordinating fleets of search-and-rescue drones — entirely simulated, and never connected to a real aircraft.**
+**A training simulator for coordinating fleets of public-safety drones across 31 mission scenarios — search and rescue, wildfire, flood, hazmat, port security, structural collapse, and infrastructure inspection — entirely simulated, and never connected to a real aircraft.**
 
 This is a web-based (and optional Windows classroom) tool for practicing supervised, multi-drone public-safety missions: plan a search, run a preflight, launch a fleet, retask aircraft mid-mission, "detect" survivors, recover, replay the whole thing, and export a record. Everything happens in a simulation. It does **not** connect to aircraft, air-traffic systems, Remote ID, dispatch, or cameras, and it is **not** for real flight, real emergencies, or regulatory use.
 
