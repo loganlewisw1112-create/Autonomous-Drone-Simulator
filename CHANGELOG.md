@@ -44,6 +44,17 @@ ISO 8601.
 
 ### Changed
 
+- Training screens no longer read like compliance results: the READY lane
+  panel is "Training Lane Score" with a "modelled on the NIST sUAS test
+  methods, not an official evaluation" citation, and "FAA Part 107" panels are
+  "Sim Flight Limits" with neutral ticks. The training-scope assertion now
+  rejects those labels in UI code.
+- Mission briefs show a no-endorsement notice for agency names, and historical
+  scenarios add a short real-event note.
+- `INVESTOR_DEMO_SCRIPT.md` is now the 3-minute demo path; the README's
+  determinism line and `SUPPORTED_PLATFORMS.md` now match the code.
+- Direction: the 2026-09-16 portfolio freeze is ended (product decision 23,
+  2026-10-10).
 - Custom missions: the designer's Routes step now picks a catalog airframe per
   drone (new missions default to the Skydio X10), shown with its weight, speed,
   rated endurance and whether its thermal sensor can detect in the model.

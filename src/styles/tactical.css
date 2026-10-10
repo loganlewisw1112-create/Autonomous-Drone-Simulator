@@ -149,6 +149,16 @@ html, body, #root {
   border-bottom: 1px solid var(--border);
 }
 
+/* Pitch review k5: no-endorsement and historical-event notices that travel with the brief. */
+.scenario-notice {
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-min);
+  line-height: 1.35;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+
 .dispatch-feed-list {
   max-height: 116px;
   overflow-y: auto;
@@ -791,13 +801,15 @@ html, body, #root {
   margin: 0 4px;
 }
 
-.part107-status {
+/* Sim flight limits (TelemetryPanel). Within-limit is neutral, not compliance green (pitch review k1). */
+.limit-note {
+  margin-top: 4px;
   font-family: var(--font-mono);
   font-size: var(--fs-min);
-  color: var(--text-secondary);
+  color: var(--text-dim);
 }
-.part107-ok { color: var(--accent-green); }
-.part107-warn { color: var(--accent-yellow); }
+.limit-ok { color: var(--text-secondary); }
+.limit-warn { color: var(--accent-yellow); }
 
 /* ── MapLibre overrides ─────────────────────────────────────────────────────── */
 .maplibregl-ctrl-bottom-left,

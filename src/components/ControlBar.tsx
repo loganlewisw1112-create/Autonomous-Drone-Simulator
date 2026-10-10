@@ -3,6 +3,7 @@ import { FleetRetaskReview } from '@/components/FleetRetaskReview'
 import { MissionProgress } from '@/components/MissionProgress'
 import { useMissionControls } from '@/hooks/useMissionControls'
 import { useScenarioOptions } from '@/scenarios/registry'
+import { AGENCY_NAMES_NOTICE } from '@/scenarios/scenarioNotices'
 import type { OperatorRole, SimSpeed, ScenarioVariantConfig } from '@/types'
 import { useAuthStore } from '@/store/authStore'
 import { useDroneStore } from '@/store/droneStore'
@@ -157,6 +158,7 @@ export function ControlBar() {
         {/* Scenario selector */}
         <select
           className="scenario-select"
+          title={AGENCY_NAMES_NOTICE}
           value={scenario?.id ?? ''}
           disabled={missionLoadPending}
           onChange={(e) => { void handleScenarioChange(e.target.value) }}

@@ -1,6 +1,6 @@
 # Realism Walkthrough — Demo Script
 
-**Purpose.** The [investor demo script](../INVESTOR_DEMO_SCRIPT.md) shows the *operator workflow*.
+**Purpose.** The [3-minute demo path](../INVESTOR_DEMO_SCRIPT.md) shows the *operator workflow*.
 This one shows the *fidelity underneath it*: every environmental layer in the simulator is frozen
 from real, cited public data — never invented — and each one changes an operator decision. The
 whole point is that you can answer "where did this number come from?" for anything on screen.

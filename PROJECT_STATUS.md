@@ -16,16 +16,26 @@ pilot builds. Repository fixtures remain synthetic/recorded and do not
 command aircraft or connect to operational FAA, LAANC, USS/UTM, Remote ID,
 dispatch, camera, weather, or aircraft-telemetry services.
 
-> **Direction (2026-09-16): this build is maintained as a portfolio/demo
-> flagship at the live web beta.** Release-candidate and stable promotion are
-> **not currently being pursued** — they depend on external inputs the
-> repository cannot supply itself (an organization Windows code-signing
-> certificate, a real school pilot with two-machine and 40-student load, an
-> administrator-provided licence-service `DATABASE_URL` secret, and independent
-> security/accessibility assessment; see "External blockers"). Ongoing work is
-> hardening, cleanup, and quality polish of the shipped product rather than
-> advancing the release ladder. The RC/stable sections below remain accurate as
-> the path that *would* be taken if that decision changes.
+> **Direction (2026-10-10): the portfolio freeze is over.** The owner ended the
+> 2026-09-16 freeze on 2026-10-10 (product decision 23). The project is in
+> active development toward an investor and buyer pitch, worked from the
+> 2026-10-08 Drone Simulator Pitch Review checklist: the demo blockers, claims
+> and content, repo hygiene, customer proof and company basics. Product scope
+> is unchanged: agency training software only (decisions 18 and 21).
+>
+> Ending the freeze does **not** by itself restart the release-candidate and
+> stable ladder. That ladder still depends on external inputs the repository
+> cannot supply itself (an organization Windows code-signing certificate, a real
+> school pilot with two-machine and 40-student load, an administrator-provided
+> licence-service `DATABASE_URL` secret, and independent security/accessibility
+> assessment; see "External blockers"), and whether to pursue it now follows the
+> classroom-path decision (pitch review d3: zero-install assignment link, or the
+> licensed relay with a signed installer). The RC/stable sections below remain
+> accurate as that path.
+>
+> *Superseded direction (2026-09-16): maintained as a portfolio/demo flagship at
+> the live web beta; RC/stable not pursued; ongoing work limited to hardening,
+> cleanup and polish.*
 
 > Canonical sources of truth are the tracked documents only: this file,
 > README.md, CHANGELOG.md, SECURITY_THREAT_MODEL.md, and docs/. Ignored local
@@ -114,6 +124,28 @@ Known limits:
 - Verified by tests only, not in a browser: the pop-out window, the phone DBG button, the console in the classroom instructor view, and an admin pass against a live relay.
 - The sim models wind speed, not direction, so `wind <kts> <dir>` ignores the direction.
 - An admin whose profile is a classroom student does not see the instructor home.
+
+## Pitch-review follow-up, 2026-10-10
+
+A four-agent verification pass checked all 60 items on the 2026-10-08 Drone Simulator Pitch
+Review checklist against the code on `main` and ranked what to do next. These items followed,
+one commit each:
+
+| Item | Change |
+|---|---|
+| k1 | The READY lane panel is "Training Lane Score", and its citation says the rubric is modelled on the NIST sUAS test methods and is not an official NIST, NFPA or ASTM evaluation. "FAA Part 107" headers are now "Sim Flight Limits", with neutral ticks and a "not a compliance check" note. `assert:training-scope` fails if those labels return. |
+| k2 | `INVESTOR_DEMO_SCRIPT.md` is the 3-minute demo path; every control it names exists in `src/components`. `docs/DEMO_SCRIPT.md` is labelled as the build-story narration (31 scenarios, no DoD pitch). |
+| k5 | The mission brief carries the no-endorsement notice for agency names, and historical scenarios add a respectful real-event note (`scenarioNotices.spec.tsx`). |
+| r5 | `SUPPORTED_PLATFORMS.md` lists only what the code admits: classroom students on Windows, desktop build Windows and Mac. |
+| k3 | README separates "same inputs, same mission" (true) from the event log, whose hashes include wall-clock time and are a consistency check, not a signature. The hash-format change stays a separate, owner-approved item. |
+| d1 | The portfolio freeze is ended on the record (product decision 23, Direction note above). |
+
+Checklist state after this pass: still open for the owner are d2 (lead direction and kill date,
+which unparks c3), c6 (solo A–F grade), d4 (team), d3 (classroom path), then the proof and
+company chain (p1, e1, e2, e4). The c1 tick reflects the owner-narrowed scope (Windows and Mac
+desktop; Linux and ChromeOS follow d3). The classroom command-wire test (r3) passes in
+isolation (8/8). The next agent-executable items are k6+k7+k8 (one docs-truth PR), r2 (move the
+10 unused law-enforcement scenarios out of public source), x1 and x2.
 
 ## Open qualification blockers
 

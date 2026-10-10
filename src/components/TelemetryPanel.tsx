@@ -58,7 +58,7 @@ type Tab = 'telem' | 'mavlink' | 'metrics' | 'readiness'
 
 const MAX_MAVLINK_LINES = 80
 
-// Per-drone certified max groundspeed. Falls back to the FAA Part 107 cap when no
+// Per-drone certified max groundspeed. Falls back to the legacy regulatory groundspeed cap when no
 // scenario (and therefore no platform assignment) is loaded.
 function certifiedSpeedLimitMs(scenario: ScenarioConfig | null, droneId: string): number {
   return scenario ? platformForDrone(scenario, droneId).maxSpeedMs : LEGACY_FAA_SPEED_LIMIT_MS
@@ -316,10 +316,12 @@ export function TelemetryPanel() {
             </div>
           )}
 
-          {/* Part 107 */}
+          {/* Simulator flight limits. Training-only: these are the limits the sim enforces, shown
+              without regulatory branding or green compliance ticks (pitch review k1). The guard in
+              scripts/assert-training-scope.mjs keeps the old regulatory label out of the UI. */}
           {selected && (
             <div className="panel-section">
-              <div className="panel-label">FAA Part 107</div>
+              <div className="panel-label">Sim Flight Limits</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <CompCheck ok={selected.altitudeFt <= 400} label={`ALT ≤ 400ft (${Math.round(selected.altitudeFt)}ft)`} />
                 {/* The limit is per-airframe (9-20 m/s across the catalog), not the flat Part 107
@@ -331,6 +333,7 @@ export function TelemetryPanel() {
                 />
                 <CompCheck ok={selected.signalDbm > -90} label={`COMMS LINK (${selected.signalDbm}dBm)`} />
               </div>
+              <div className="limit-note">Training limits in the simulator, not a compliance check.</div>
             </div>
           )}
 
@@ -468,7 +471,7 @@ export function TelemetryPanel() {
           </div>
 
           <div className="panel-section">
-            <div className="panel-label" style={{ marginBottom: 6 }}>FAA Part 107 — Fleet</div>
+            <div className="panel-label" style={{ marginBottom: 6 }}>Sim Flight Limits — Fleet</div>
             {drones.map((d) => (
               <div key={d.id} style={{ display: 'flex', gap: 8, marginBottom: 3, fontSize: 'var(--fs-min)', fontFamily: 'var(--font-mono)' }}>
                 <span style={{ color: d.color, minWidth: 56 }}>{d.label}</span>
@@ -500,11 +503,12 @@ export function TelemetryPanel() {
               entirely for scenarios with no authored search area. */}
           {podReport && podReport.sweeps.length > 0 && <SectorPodSection report={podReport} />}
 
-          {/* WP-9 — the standards-referenced lane score. Only rendered on a lane trial; the
-              citation ships with the number so it is never a bare score. */}
+          {/* WP-9 — the lane score. Only rendered on a lane trial; the rubric's provenance ships with
+              the number so it is never a bare score, worded as a simulated training score rather than
+              a standards result (pitch review k1). */}
           {laneScore && (
             <div className="panel-section">
-              <div className="panel-label" style={{ marginBottom: 8 }}>NIST Standard Test Method</div>
+              <div className="panel-label" style={{ marginBottom: 8 }}>Training Lane Score</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <MetricRow
                   label="LANE SCORE"
@@ -707,7 +711,7 @@ function WarnBadge({ level, text }: { level: 'critical' | 'caution' | 'info'; te
 function CompCheck({ ok, label }: { ok: boolean; label: string }) {
   return (
     <div style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 'var(--fs-min)' }}>
-      <span className={ok ? 'part107-ok' : 'part107-warn'}>{ok ? '✓' : '✗'}</span>
+      <span className={ok ? 'limit-ok' : 'limit-warn'}>{ok ? '✓' : '✗'}</span>
       <span style={{ color: ok ? 'var(--text-secondary)' : 'var(--accent-yellow)' }}>{label}</span>
     </div>
   )

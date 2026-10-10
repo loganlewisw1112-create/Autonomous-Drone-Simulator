@@ -57,7 +57,7 @@ describe('NIST lane score on the READY tab (WP-9)', () => {
     useDroneStore.getState().resetMission()
   })
 
-  it('shows the score, target progress and the standard it is scored against', () => {
+  it('shows the score, target progress and where its rubric comes from', () => {
     useDroneStore.setState({
       scenario: laneScenario,
       events: laneEvents(MEASURED_DEPTHS),
@@ -65,16 +65,18 @@ describe('NIST lane score on the READY tab (WP-9)', () => {
     })
     openReadyTab()
 
-    expect(screen.getByText('NIST Standard Test Method')).toBeTruthy()
+    expect(screen.getByText('Training Lane Score')).toBeTruthy()
     expect(screen.getByText('44 / 100')).toBeTruthy()
     // 20 attempted, none complete — the finest features were never bought.
     expect(screen.getByText(/0 complete \/ 20 attempted of 20/)).toBeTruthy()
     expect(screen.getByText(/within limit/)).toBeTruthy()
 
-    // A score without its provenance is exactly what this package exists not to ship.
-    expect(screen.getByText(/NIST Standard Test Methods for sUAS/)).toBeTruthy()
-    expect(screen.getByText(/NFPA 2400/)).toBeTruthy()
-    expect(screen.getByText(/ASTM F38\.03/)).toBeTruthy()
+    // A score without its provenance is exactly what this package exists not to ship, and the
+    // provenance must read as a training score, not a standards result (pitch review k1).
+    expect(screen.getByText(/modelled on the NIST sUAS Standard Test Methods/)).toBeTruthy()
+    expect(screen.getByText(/not an official NIST, NFPA or ASTM evaluation/)).toBeTruthy()
+    expect(screen.queryByText('NIST Standard Test Method')).toBeNull()
+    expect(screen.queryByText(/referenced by NFPA 2400/)).toBeNull()
   })
 
   it('flags an overrun and says how much work it cost', () => {
@@ -96,7 +98,7 @@ describe('NIST lane score on the READY tab (WP-9)', () => {
     openReadyTab()
 
     // An ordinary mission must not sprout an empty or zeroed standards score.
-    expect(screen.queryByText('NIST Standard Test Method')).toBeNull()
+    expect(screen.queryByText('Training Lane Score')).toBeNull()
     // The rest of READY still renders.
     expect(screen.getByText('Mission Outcome (measured)')).toBeTruthy()
   })
@@ -119,7 +121,7 @@ describe('lane score reaches the Coordinator comparison table (WP-9)', () => {
       ...base, scenario: laneScenario, events: laneEvents(MEASURED_DEPTHS),
     })
     expect(lane.nistLane?.score).toBe(44)
-    expect(lane.nistLane?.standardRef).toMatch(/NFPA 2400/)
+    expect(lane.nistLane?.standardRef).toMatch(/simulated training score/)
     // Reported ALONGSIDE the mission score, never folded into it — the two are different kinds
     // of claim and averaging them would contaminate the standards-referenced one.
     expect(lane.total).not.toBe(lane.nistLane!.score)

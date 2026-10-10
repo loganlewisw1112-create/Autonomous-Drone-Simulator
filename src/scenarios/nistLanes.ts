@@ -35,6 +35,12 @@ function gridTargets(origin: LatLng, spacingM: number, heightAglM: number, prefi
   return targets
 }
 
+// Shown under every lane score. It names where the rubric comes from, so a score is never bare,
+// and says plainly what the score is not: this is a simulated training lane, not an official NIST
+// test or an NFPA 2400 / ASTM F38.03 evaluation (pitch review k1, training-only scope).
+export const LANE_RUBRIC_REF =
+  'Rubric modelled on the NIST sUAS Standard Test Methods (DHS S&T) · simulated training score, not an official NIST, NFPA or ASTM evaluation'
+
 export const NIST_OPEN_LANE: NistLaneDefinition = {
   id: 'nist-open-lane',
   kind: 'open',
@@ -42,7 +48,7 @@ export const NIST_OPEN_LANE: NistLaneDefinition = {
   scenarioId: 'nist_open_lane',
   targets: gridTargets(OPEN_LANE_ORIGIN, 60, 1.5, 'open'),
   timeLimitSec: LANE_TIME_LIMIT_SEC,
-  standardRef: 'NIST Standard Test Methods for sUAS (DHS S&T) · referenced by NFPA 2400 and ASTM F38.03',
+  standardRef: LANE_RUBRIC_REF,
 }
 
 export const NIST_OBSTRUCTED_LANE: NistLaneDefinition = {
@@ -52,7 +58,7 @@ export const NIST_OBSTRUCTED_LANE: NistLaneDefinition = {
   scenarioId: 'nist_obstructed_lane',
   targets: gridTargets(OBSTRUCTED_LANE_ORIGIN, 120, 1.5, 'obs'),
   timeLimitSec: LANE_TIME_LIMIT_SEC,
-  standardRef: 'NIST Standard Test Methods for sUAS (DHS S&T) · referenced by NFPA 2400 and ASTM F38.03',
+  standardRef: LANE_RUBRIC_REF,
 }
 
 export const NIST_CONFINED_LANE: NistLaneDefinition = {
@@ -62,7 +68,7 @@ export const NIST_CONFINED_LANE: NistLaneDefinition = {
   scenarioId: 'nist_confined_lane',
   targets: gridTargets(CONFINED_LANE_ORIGIN, 35, 1.2, 'conf'),
   timeLimitSec: LANE_TIME_LIMIT_SEC,
-  standardRef: 'NIST Standard Test Methods for sUAS (DHS S&T) · referenced by NFPA 2400 and ASTM F38.03',
+  standardRef: LANE_RUBRIC_REF,
 }
 
 export const NIST_NIGHT_LANE: NistLaneDefinition = {
@@ -72,7 +78,7 @@ export const NIST_NIGHT_LANE: NistLaneDefinition = {
   scenarioId: 'nist_night_acuity_lane',
   targets: gridTargets(OPEN_LANE_ORIGIN, 55, 1.5, 'night'),
   timeLimitSec: LANE_TIME_LIMIT_SEC,
-  standardRef: 'NIST Standard Test Methods for sUAS (DHS S&T) · referenced by NFPA 2400 and ASTM F38.03',
+  standardRef: LANE_RUBRIC_REF,
 }
 
 export const NIST_MARITIME_LANE: NistLaneDefinition = {
@@ -82,7 +88,7 @@ export const NIST_MARITIME_LANE: NistLaneDefinition = {
   scenarioId: 'nist_maritime_lane',
   targets: gridTargets(MARITIME_LANE_ORIGIN, 70, 1.5, 'mar'),
   timeLimitSec: LANE_TIME_LIMIT_SEC,
-  standardRef: 'NIST Standard Test Methods for sUAS (DHS S&T) · referenced by NFPA 2400 and ASTM F38.03',
+  standardRef: LANE_RUBRIC_REF,
 }
 
 export const NIST_URBAN_MASK_LANE: NistLaneDefinition = {
@@ -92,7 +98,7 @@ export const NIST_URBAN_MASK_LANE: NistLaneDefinition = {
   scenarioId: 'nist_urban_mask_lane',
   targets: gridTargets(URBAN_MASK_ORIGIN, 50, 1.5, 'urb'),
   timeLimitSec: LANE_TIME_LIMIT_SEC,
-  standardRef: 'NIST Standard Test Methods for sUAS (DHS S&T) · referenced by NFPA 2400 and ASTM F38.03',
+  standardRef: LANE_RUBRIC_REF,
 }
 
 const LANES: NistLaneDefinition[] = [

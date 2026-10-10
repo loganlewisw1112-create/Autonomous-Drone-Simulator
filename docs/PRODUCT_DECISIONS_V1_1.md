@@ -1,6 +1,6 @@
 # Approved v1.1 product decisions
 
-Approved by the legal publisher/product owner on 2026-07-31.
+Decisions 1-22 approved by the legal publisher/product owner on 2026-07-31. Decision 23 recorded on the owner's instruction on 2026-10-10.
 
 1. Release target is a controlled agency classroom pilot with the shared training-assurance core also present in Windows pilot builds.
 2. Battery action uses the earliest confirmed percentage, loaded-voltage, or energy-to-home reserve; invalid battery state is conservative and hard critical voltage triggers emergency behavior.
@@ -24,3 +24,4 @@ Approved by the legal publisher/product owner on 2026-07-31.
 20. Licensing implementation work is isolated on `codex/evaluator-demo-licensing`. The release candidate must be a clean reviewed commit merged to `main`; only after service deployment and qualification may that exact merged revision receive annotated tag `v1.1.0-rc.1` and signed/provenance-attested artifacts.
 21. Live aircraft feeds, aircraft-control links, and external aviation/dispatch/camera/weather connectors are outside the approved product scope. The only live connection is the private classroom relay between simulator clients.
 22. Selected-evaluator Windows licences run 14 days from successful activation; explicitly promoted agency/classroom pilots run 90 days. One code binds one Windows device and activating account, authorizes one concurrent class of at most 40 students, permits one publisher-approved transfer without extending the original expiry, and requires trusted entitlement renewal every 72 hours. Unused codes expire after 30 days. Students never redeem product codes. Expiry preserves debrief, recovery, records, diagnostics, and exports.
+23. The 2026-09-16 portfolio/demo-flagship freeze is ended (owner decision, 2026-10-10). The project is in active development toward an investor and buyer pitch, worked from the 2026-10-08 Drone Simulator Pitch Review checklist. Scope is unchanged (decisions 18 and 21). Ending the freeze does not by itself restart the RC/stable release ladder in decision 20; whether to pursue it follows the classroom-path decision (pitch review d3).

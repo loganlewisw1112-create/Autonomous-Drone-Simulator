@@ -5,8 +5,12 @@
 - Instructor host: packaged Windows 11 25H2 x64; 1920x1080 and 16 GB RAM
   recommended.
 - Students: current and previous Microsoft Edge or Google Chrome on supported
-  Windows 11; current ChromeOS; current and previous iPadOS Safari on screens
-  10 inches or larger; 1280x720 or equivalent minimum classroom viewport.
+  Windows 11 laptops and desktops; 1280x720 minimum classroom viewport. The
+  classroom build admits Windows clients only (`ClassroomEntry` shows
+  `ClassroomWindowsGate` everywhere else), so ChromeOS, iPadOS, macOS, Linux
+  and phones cannot join a class today. Revisit this list with the classroom
+  path decision (pitch review d3): a zero-install assignment link would open
+  Chromebooks; the licensed relay path keeps Windows.
 - Accessibility qualification targets: keyboard-only use, NVDA, Narrator,
   VoiceOver, 200% zoom, Windows high contrast, and reduced motion. Map-dependent
   decisions require equivalent text/status output.
@@ -14,6 +18,17 @@
 Phones are not assessed for classroom use. Solo mobile use is best-effort.
 Browsers, Windows versions, devices, or assistive technologies outside this
 matrix are unsupported until added to the recorded release test matrix.
+
+## Public web builds (solo simulator)
+
+What each public link admits today, as enforced in `src/platform/appTarget.ts`
+and `src/App.tsx`:
+
+| Build | Opens on | Everything else |
+|---|---|---|
+| Desktop | Windows and Mac computers (`isDesktopClient`) | Linux, ChromeOS, phones and tablets get the "desktop version only" page, which links to the mobile build |
+| Mobile | Any device: phone-sized screens get the mobile shell, larger screens the desktop layout | Not gated; best-effort |
+| Classroom | Windows laptops and desktops (`isWindowsClient`) | Every other device gets the "Windows classroom only" page |
 
 ## Offline boundary
 

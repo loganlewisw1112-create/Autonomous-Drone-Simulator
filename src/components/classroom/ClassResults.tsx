@@ -11,7 +11,7 @@ const COLUMNS: Array<{ key: string; label: string; get: (r: ClassRunResult) => s
   // WP-9: the one standards-referenced, auto-scorable number in the table. Kept in its own
   // column rather than merged into Score — see MissionAssessment.nistLane for why. '—' on
   // non-lane runs is honest: this scenario simply was not a lane trial.
-  { key: 'nist', label: 'NIST/100', get: (r) => r.assessment.nistLane?.score ?? '—' },
+  { key: 'nist', label: 'LANE/100', get: (r) => r.assessment.nistLane?.score ?? '—' },
   { key: 'nistTime', label: 'NIST-OT', get: (r) => nistOvertime(r) },
   { key: 'progress', label: 'Progress%', get: (r) => Math.round(r.assessment.progressPercent) },
   { key: 'lifeSafety', label: 'Safety', get: (r) => r.assessment.lifeSafety.status },

@@ -16,7 +16,7 @@ This is a web-based (and optional Windows classroom) tool for practicing supervi
 
 Two ideas drive the whole project.
 
-**It's deterministic.** Run the same scenario with the same inputs and you get the exact same mission, every time — same weather, same detections, same outcome — down to a hash-chained record you can replay and audit. That makes it a genuine *training* tool: instructors can compare runs fairly, and a student's mission can be reviewed move by move.
+**It's deterministic.** Run the same scenario with the same inputs and you get the exact same mission, every time — same weather, same detections, same outcome. Every run also writes a hash-chained event log you can replay and verify: editing, dropping or reordering a logged event breaks the chain. The log is stamped with wall-clock time, so two runs of the same mission produce different hashes, and the hash is a consistency check, not a signature. That makes it a genuine *training* tool: instructors can compare runs fairly, and a student's mission can be reviewed move by move.
 
 **It's honest about what it is.** Nothing here touches a real aircraft or real airspace, and the code goes out of its way to say so — the "regulatory," airspace, and traffic layers are clearly labeled training props, not the real thing. A build being publicly reachable is never treated as proof it passed a release gate.
 
