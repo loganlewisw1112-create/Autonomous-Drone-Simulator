@@ -818,8 +818,10 @@ function handleStudentCommand(sealed: Sealed, commandKind: string): void {
     return
   }
 
-  const durationMinutes = store.config?.durationMinutes ?? 60
-  const classExpired = store.sessionStartedAt !== null
+  // `null` is an explicit ADMIN override (no class time limit); only `undefined` falls back to 60.
+  const durationMinutes = store.config?.durationMinutes === undefined ? 60 : store.config.durationMinutes
+  const classExpired = durationMinutes !== null
+    && store.sessionStartedAt !== null
     && Date.now() >= store.sessionStartedAt + durationMinutes * 60_000
   if (checked.command.kind === 'restart' && classExpired) {
     store.noteCommandReject()

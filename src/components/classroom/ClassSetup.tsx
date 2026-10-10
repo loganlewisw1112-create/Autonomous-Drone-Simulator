@@ -39,6 +39,9 @@ export function ClassSetup({
   const assurance = useMemo(() => assuranceForScenario(scenario ?? null), [scenario])
   const [seed, setSeed] = useState(scenario?.seed ?? 1)
   const [durationMinutes, setDurationMinutes] = useState(USAGE_POLICY.defaultClassDurationMin)
+  // ADMIN override: default ON for a verified admin, untick to pick 30-180 min instead.
+  // Never consulted for a non-admin (see `noClassTimeLimit` below).
+  const [adminUnlimitedClass, setAdminUnlimitedClass] = useState(true)
   const [graded, setGraded] = useState(true)
   const [accessCode, setAccessCode] = useState('')
   const [relayAccessConfigured, setRelayAccessConfigured] = useState<boolean | null>(null)
@@ -67,6 +70,7 @@ export function ClassSetup({
   // ADMIN override: a verified admin pass stands in for the supervised access code.
   const unlocked = activeAccount?.instructorUnlocked === true || isAdmin
   const sessionReady = unlocked && relayAuthenticated === true
+  const noClassTimeLimit = isAdmin && adminUnlimitedClass
   const desktopBridge = getClassroomDesktopBridge()
   let desktopOwnsRelay = false
   try {
@@ -171,7 +175,7 @@ export function ClassSetup({
         setActiveClassroomId(classroomId)
       }
       await touchClassroomOpened(activeAccount.id, sessionKey, classroomId)
-      const config: ClassConfig = { kind: 'catalog', scenarioId, variant: defaultVariant(seed), durationMinutes }
+      const config: ClassConfig = { kind: 'catalog', scenarioId, variant: defaultVariant(seed), durationMinutes: noClassTimeLimit ? null : durationMinutes }
       startClass(config, graded)
     } finally {
       setBusy(false)
@@ -272,11 +276,26 @@ export function ClassSetup({
               </label>
             </div>
 
+            {isAdmin && (
+              <label
+                data-testid="admin-no-class-time-limit"
+                style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', color: 'var(--accent-yellow)' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={adminUnlimitedClass}
+                  onChange={(event) => setAdminUnlimitedClass(event.target.checked)}
+                />
+                {ADMIN_OVERRIDE_LABEL}: no class time limit
+              </label>
+            )}
+
             <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>
               Class time limit (minutes)
               <input
                 className="cls-input"
                 type="number"
+                disabled={noClassTimeLimit}
                 min={USAGE_POLICY.classDurationRangeMin[0]}
                 max={USAGE_POLICY.classDurationRangeMin[1]}
                 step={5}
@@ -287,7 +306,9 @@ export function ClassSetup({
                 ))}
               />
               <span style={{ display: 'block', marginTop: 4 }}>
-                30-180 minutes; default 60. Expiry blocks new mission starts but never deletes records or interrupts recovery/export.
+                {noClassTimeLimit
+                  ? `${ADMIN_OVERRIDE_LABEL}: this class has no time limit. It still ends when the licence/entitlement window closes.`
+                  : '30-180 minutes; default 60. Expiry blocks new mission starts but never deletes records or interrupts recovery/export.'}
               </span>
             </label>
 

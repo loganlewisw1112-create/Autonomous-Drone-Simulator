@@ -15,6 +15,11 @@ ISO 8601.
   (`tools/admin/README.md`), with visible, logged overrides of access gates and
   relay support in place of the instructor access code. Each pass works only
   on the profile whose username is the email it was issued to.
+- Admin profiles run with no session clock: the public demo's 30-minute,
+  10-minute-idle and debrief countdown is off while an admin is signed in
+  (signing out starts a fresh window), and an admin instructor can create a
+  classroom class with no time limit, bounded only by the licence. The relay
+  grants that only to a session minted from a verified admin pass.
 - Admin debug console (Ctrl+`, pop-out window, DBG button on phones): inspect,
   export a redacted debug bundle, sim control, fault injection, overlays, HUD,
   hash-chain verification, classroom relay diagnostics and bindable hotkeys.
