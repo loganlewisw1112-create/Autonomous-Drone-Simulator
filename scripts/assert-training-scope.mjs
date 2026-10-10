@@ -13,6 +13,17 @@ const forbidden = [
   'operationalLaunchAllowed',
 ]
 
+// Pitch review k1: labels that made a training screen read like a standards result or a
+// regulatory compliance check. Banned from shipped UI code (src/tests may name them in order to
+// assert they are absent). The rubric's provenance stays, worded as a simulated training score.
+const forbiddenUiLabels = [
+  { token: 'NIST Standard Test Method', extensions: sourceExtensions },
+  { token: 'referenced by NFPA 2400', extensions: sourceExtensions },
+  { token: 'FAA Part 107', extensions: new Set(['.tsx']) },
+  { token: 'FAA PART 107', extensions: new Set(['.tsx']) },
+]
+const testsDir = join(root, 'src', 'tests')
+
 function filesUnder(path) {
   return readdirSync(path).flatMap((name) => {
     const candidate = join(path, name)
@@ -28,6 +39,12 @@ for (const sourceRoot of roots) {
     for (const token of forbidden) {
       if (body.includes(token)) offenders.push(`${relative(root, file)} contains ${token}`)
     }
+    if (file.startsWith(testsDir)) continue
+    for (const { token, extensions } of forbiddenUiLabels) {
+      if (extensions.has(extname(file)) && body.includes(token)) {
+        offenders.push(`${relative(root, file)} contains UI label "${token}"`)
+      }
+    }
   }
 }
 
@@ -35,4 +52,4 @@ if (offenders.length > 0) {
   throw new Error(`Training-only scope assertion failed:\n${offenders.join('\n')}`)
 }
 
-console.log('Training-only scope assertion passed: no legacy operational modes or enablement fields found.')
+console.log('Training-only scope assertion passed: no legacy operational modes, enablement fields or compliance-styled UI labels found.')

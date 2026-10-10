@@ -161,8 +161,10 @@ describe('lane scoring (WP-9 accept criteria)', () => {
   it('carries its citation, so a score is never a bare number', () => {
     for (const lane of allLanes()) {
       expect(lane.standardRef).toMatch(/NIST/)
-      expect(lane.standardRef).toMatch(/NFPA 2400/)
-      expect(lane.standardRef).toMatch(/ASTM F38\.03/)
+      // Training-only wording: the rubric's source, never a standards or compliance result (k1).
+      expect(lane.standardRef).toMatch(/simulated training score/)
+      expect(lane.standardRef).toMatch(/not an official/)
+      expect(lane.standardRef).not.toMatch(/referenced by NFPA/)
     }
   })
 })
