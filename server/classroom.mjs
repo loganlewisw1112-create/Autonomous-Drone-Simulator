@@ -19,6 +19,8 @@ import path from 'node:path'
 import os from 'node:os'
 import crypto from 'node:crypto'
 import { WebSocketServer, WebSocket } from 'ws'
+import { verifyAdminPassText } from './adminPassVerify.mjs'
+import { REVOKED_PASS_IDS, TRUSTED_ADMIN_PUBLIC_KEYS } from './adminKeys.mjs'
 
 /**
  * @typedef {WebSocket & {
@@ -83,6 +85,15 @@ const administratorToken = process.env.CLASSROOM_ADMIN_TOKEN
 function testSeamsEnabled() {
   return process.env.NODE_ENV === 'test'
     && process.env.CLASSROOM_ENTITLEMENT_REQUIRED !== '1'
+}
+
+// ADMIN pass trust. Production always reads server/adminKeys.mjs; tests may swap in
+// a throwaway key through setAdminPassTrustForTests (refused outside NODE_ENV=test).
+let adminPassTrust = { trustedPublicKeys: TRUSTED_ADMIN_PUBLIC_KEYS, revokedPassIds: REVOKED_PASS_IDS }
+
+export function setAdminPassTrustForTests(trust) {
+  if (!testSeamsEnabled()) throw new Error('test-only')
+  adminPassTrust = trust ?? { trustedPublicKeys: TRUSTED_ADMIN_PUBLIC_KEYS, revokedPassIds: REVOKED_PASS_IDS }
 }
 
 export const LIMITS = JSON.parse(readFileSync(
@@ -1470,16 +1481,27 @@ export async function handleInstructorAccessHttp(req, res) {
     const body = await readJsonBody(req, res)
     if (!body) return true
     let verified
-    try {
-      verified = await verifyCredential(body.code)
-    } catch {
-      sendJson(req, res, 500, { ok: false, error: 'verification-failed' })
-      return true
-    }
-    if (!verified) {
-      recordFailedVerification(ip)
-      sendJson(req, res, 401, { ok: false, error: 'invalid-code' })
-      return true
+    if (body.adminPass !== undefined) {
+      // Signed ADMIN pass: same rate limit, same session cookie, no access code needed.
+      // Verified against the build's trusted public keys and revocation list.
+      verified = verifyAdminPassText(body.adminPass, adminPassTrust) !== null
+      if (!verified) {
+        recordFailedVerification(ip)
+        sendJson(req, res, 401, { ok: false, error: 'invalid-admin-pass' })
+        return true
+      }
+    } else {
+      try {
+        verified = await verifyCredential(body.code)
+      } catch {
+        sendJson(req, res, 500, { ok: false, error: 'verification-failed' })
+        return true
+      }
+      if (!verified) {
+        recordFailedVerification(ip)
+        sendJson(req, res, 401, { ok: false, error: 'invalid-code' })
+        return true
+      }
     }
     const token = mintInstructorSession(ip)
     sendJson(req, res, 200, { ok: true }, {
@@ -1804,6 +1826,7 @@ export function resetRelayState() {
   backupWriteTimes.clear()
   joinCapabilities.clear()
   relayEntitlement = null
+  adminPassTrust = { trustedPublicKeys: TRUSTED_ADMIN_PUBLIC_KEYS, revokedPassIds: REVOKED_PASS_IDS }
   credentialMigrationDeletionFailureForTests = null
 }
 

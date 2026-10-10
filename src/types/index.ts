@@ -369,6 +369,7 @@ export type EventType =
   | 'gnss_fix_lost'
   | 'gnss_fix_changed'
   | 'lane_feature_identified'
+  | 'debug_override'          // admin debug console mutated the run; taints it (src/debug/taint.ts)
 
 export interface MissionEvent {
   tick: number

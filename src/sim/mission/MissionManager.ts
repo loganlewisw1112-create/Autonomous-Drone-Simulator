@@ -1,6 +1,7 @@
 import type { DroneState, MissionState, Waypoint } from '@/types'
 import { haversineDistanceM, bearingDeg } from '@/utils/geometry'
 import { isAtVoltageReserve, isBatteryCritical } from '@/sim/drone/DroneEntity'
+import { isFaultInjected } from '@/sim/faults/injectedFaults'
 
 const ARRIVAL_RADIUS_M = 10
 /** Seconds to confirm a thermal contact before entering thermal_hold. */
@@ -28,7 +29,7 @@ export interface MissionSafetyContext {
 
 export interface MissionSafetyOverride {
   nextState: 'emergency' | 'return_to_base'
-  reason: 'critical_battery' | 'battery_reserve' | 'geofence_breach' | 'weather'
+  reason: 'critical_battery' | 'battery_reserve' | 'geofence_breach' | 'weather' | 'motor_failure'
 }
 
 export interface MissionManagerState extends MissionSafetyContext {
@@ -76,10 +77,21 @@ function routeCompleteResult(
   }
 }
 
+const MOTOR_FAULT_EXEMPT_STATES: MissionState[] = [
+  'emergency', 'landed', 'idle', 'preflight', 'recharge', 'remote_landed', 'stranded',
+  'recovery_requested', 'recovery_enroute', 'recovered', 'unrecoverable_sim',
+]
+
 export function getMissionSafetyOverride(
   drone: DroneState,
   context: MissionSafetyContext,
 ): MissionSafetyOverride | null {
+  // Admin-injected motor failure: an aircraft that is flying cannot continue, so it takes the
+  // same emergency-landing state a critical battery does. A grounded aircraft is left alone
+  // and takes the state on lift-off.
+  if (isFaultInjected('motor', drone.id) && !MOTOR_FAULT_EXEMPT_STATES.includes(drone.missionState)) {
+    return { nextState: 'emergency', reason: 'motor_failure' }
+  }
   if (isBatteryCritical(drone) && !['emergency', 'landed'].includes(drone.missionState)) {
     return { nextState: 'emergency', reason: 'critical_battery' }
   }

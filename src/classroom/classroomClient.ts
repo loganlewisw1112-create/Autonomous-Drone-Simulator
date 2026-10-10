@@ -86,6 +86,53 @@ export interface InstructorCommandAck {
 let ws: WebSocket | null = null
 let classId: ClassId | null = null
 
+// ── Read-only diagnostics (admin debug console) ───────────────────────────────
+// A small ring of recent relay problems, kept so `relay errors` can answer "what just
+// went wrong" without a console scrape. Pure observation: nothing here is read by the
+// client's own logic, so connection behaviour is unchanged. Messages are short reason
+// strings only — never keys, tokens or capabilities.
+export interface RelayErrorRecord { at: number; source: string; message: string }
+const RELAY_ERROR_LIMIT = 20
+const relayErrors: RelayErrorRecord[] = []
+let lastRelayCloseAt: number | null = null
+
+function noteRelayError(source: string, message: string): void {
+  relayErrors.push({ at: Date.now(), source, message: message.slice(0, 160) })
+  if (relayErrors.length > RELAY_ERROR_LIMIT) relayErrors.shift()
+}
+
+const SOCKET_STATE_NAMES = ['connecting', 'open', 'closing', 'closed'] as const
+
+export interface RelayDiagnostics {
+  protocolVersion: number
+  /** WebSocket URL the client dials (host only or the build-time override; no credentials). */
+  wsUrl: string
+  /** HTTP origin of the same relay, for the /api/health probe. */
+  httpBase: string
+  socket: (typeof SOCKET_STATE_NAMES)[number] | 'none'
+  classId: ClassId | null
+  lastCloseAt: number | null
+  errors: RelayErrorRecord[]
+}
+
+export function getRelayDiagnostics(): RelayDiagnostics {
+  const url = wsUrl()
+  let httpBase = ''
+  try {
+    const parsed = new URL(url)
+    httpBase = `${parsed.protocol === 'wss:' ? 'https:' : 'http:'}//${parsed.host}`
+  } catch { /* no usable URL in this environment */ }
+  return {
+    protocolVersion: PROTOCOL_VERSION,
+    wsUrl: url,
+    httpBase,
+    socket: ws ? SOCKET_STATE_NAMES[ws.readyState] ?? 'none' : 'none',
+    classId,
+    lastCloseAt: lastRelayCloseAt,
+    errors: relayErrors.map((e) => ({ ...e })),
+  }
+}
+
 // Instructor
 let instructorKeys: KeyPair | null = null
 const studentCiphers = new Map<StudentId, SessionCipher>()
@@ -188,8 +235,8 @@ function openInstructorSocket(id: ClassId, config: ClassConfig, graded: boolean)
     useClassroomStore.getState().setInstructorClass(id, config)
   }
   ws.onmessage = (ev) => handleInstructorMessage(String(ev.data))
-  ws.onclose = () => scheduleRebind(id, config, graded)
-  ws.onerror = () => useClassroomStore.getState().setStatus('error', 'connection failed')
+  ws.onclose = () => { lastRelayCloseAt = Date.now(); scheduleRebind(id, config, graded) }
+  ws.onerror = () => { noteRelayError('instructor-socket', 'connection failed'); useClassroomStore.getState().setStatus('error', 'connection failed') }
 }
 
 // Retry only once the class actually exists (token in hand). Before that, a close is a
@@ -274,6 +321,7 @@ function handleInstructorMessage(raw: string): void {
       break
     case 'class.err':
       // Only reachable if another tab already owns this code, or the relay is full.
+      noteRelayError('class.err', String(msg.reason))
       store.setStatus('error', msg.reason)
       teardown()
       break
@@ -539,11 +587,13 @@ function openStudentSocketWithCapability(capability: string): void {
   })
   ws.onmessage = (ev) => { void handleStudentMessage(String(ev.data)) }
   ws.onclose = () => {
+    lastRelayCloseAt = Date.now()
     if (!studentReconnectEnabled || !studentResumeToken) return
     if (studentReconnectTimer) clearTimeout(studentReconnectTimer)
     studentReconnectTimer = setTimeout(() => { void openStudentSocket() }, INSTRUCTOR_RECONNECT_MS)
   }
   ws.onerror = () => {
+    noteRelayError('student-socket', 'connection failed')
     if (!studentResumeToken) useClassroomStore.getState().setStatus('error', 'connection failed')
   }
 }
@@ -586,6 +636,7 @@ async function handleStudentMessage(raw: string): Promise<void> {
       break
     }
     case 'join.err':
+      noteRelayError('join.err', String(msg.reason))
       store.setStatus('error', msg.reason)
       teardown()
       break

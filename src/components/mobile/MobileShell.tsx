@@ -34,6 +34,8 @@ const SignInModal = lazy(() => import('@/components/account/SignInModal').then((
 const AccountPanels = lazy(() => import('@/components/account/AccountPanels').then((m) => ({ default: m.AccountPanels })))
 const MissionCompleteChip = lazy(() => import('@/components/debrief/MissionCompleteChip').then((m) => ({ default: m.MissionCompleteChip })))
 const CustomMissionHub = lazy(() => import('@/components/designer/CustomMissionHub').then((m) => ({ default: m.CustomMissionHub })))
+// Admin-only debug console: its own chunk, mounted solely when the verified profile is an admin.
+const DebugConsoleRoot = lazy(() => import('@/components/debug/DebugConsoleRoot').then((m) => ({ default: m.DebugConsoleRoot })))
 
 function MobileClock() {
   const { elapsedSec } = useDroneStore(useShallow((s) => ({ elapsedSec: s.elapsedSec })))
@@ -286,6 +288,7 @@ export function MobileShell() {
         <AccountPanels />
         {lifecycle === 'completed' && activeSurface !== 'replay' && <MissionCompleteChip />}
         {showDesigner && <CustomMissionHub mobile onClose={() => setShowDesigner(false)} />}
+        {activeAccount?.isAdmin === true && <DebugConsoleRoot variant="mobile" />}
       </Suspense>
 
       {loadingDone && <WelcomeOverlay />}

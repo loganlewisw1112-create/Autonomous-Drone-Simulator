@@ -3,6 +3,7 @@ import { useDeviceMode } from '@/hooks/useDeviceMode'
 import { APP_TARGET } from '@/platform/appTarget'
 import { getClassroomDesktopBridge, type DesktopEntitlementState } from '@/licensing/desktopBridge'
 import { EntitlementActivation } from '@/components/licensing/EntitlementActivation'
+import { ADMIN_OVERRIDE_LABEL, useIsAdmin } from '@/account/adminOverride'
 import {
   evaluateUsagePhase,
   remainingUsageMs,
@@ -16,6 +17,8 @@ interface UsagePolicyContextValue {
   phase: UsagePhase
   canBeginNewActivity: boolean
   remainingMs: number | null
+  /** True when an ADMIN pass is holding open a window that has otherwise closed. */
+  adminOverride?: boolean
 }
 
 const UsagePolicyContext = createContext<UsagePolicyContextValue>({
@@ -96,6 +99,7 @@ function PolicyBanner({ phase, interactive = false, children }: { phase: UsagePh
   const phone = APP_TARGET !== 'classroom' && deviceMode !== 'desktop'
   const ref = useRef<HTMLDivElement>(null)
   usePublishBannerOffset(ref, phone)
+  const admin = useIsAdmin()
   return (
     <div ref={ref} role={phase === 'active' ? 'status' : 'alert'} style={{
       position: 'fixed', zIndex: 100000, top: 6, left: '50%', transform: 'translateX(-50%)',
@@ -107,6 +111,11 @@ function PolicyBanner({ phase, interactive = false, children }: { phase: UsagePh
       ...(phone && !interactive ? { pointerEvents: 'none' as const } : {}),
     }} data-testid="usage-policy-banner" data-phone={phone ? 'true' : undefined}>
       {children}
+      {admin && phase !== 'active' && (
+        <strong data-testid="admin-override-policy" style={{ marginLeft: 8, color: '#ffd166' }}>
+          {' · '}{ADMIN_OVERRIDE_LABEL}: new missions and classes stay enabled
+        </strong>
+      )}
     </div>
   )
 }
@@ -274,5 +283,11 @@ export function UsagePolicyGate({ children }: { children: React.ReactNode }) {
 }
 
 export function useUsagePolicy(): UsagePolicyContextValue {
-  return useContext(UsagePolicyContext)
+  const policy = useContext(UsagePolicyContext)
+  const admin = useIsAdmin()
+  // ADMIN override: a verified admin pass keeps new missions/classes available
+  // when the demo or licence window has closed. The banner says so out loud.
+  return admin && !policy.canBeginNewActivity
+    ? { ...policy, canBeginNewActivity: true, adminOverride: true }
+    : policy
 }

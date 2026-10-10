@@ -15,6 +15,7 @@ import { useDeviceMode } from '@/hooks/useDeviceMode'
 import { APP_TARGET, isDesktopClient } from '@/platform/appTarget'
 import { HARNESS_ENABLED } from '@/scene3d/harness/flag'
 import { useDroneStore } from '@/store/droneStore'
+import { useAuthStore } from '@/store/authStore'
 import '@/styles/tactical.css'
 
 // Modal/conditional components (gated behind ui.showX or replaySession) are lazy-loaded —
@@ -27,6 +28,8 @@ const MobileShell = lazy(() => import('@/components/mobile/MobileShell').then((m
 // Account panels are lazy for the same reason: gated on auth-store flags, null until opened.
 const SignInModal = lazy(() => import('@/components/account/SignInModal').then((m) => ({ default: m.SignInModal })))
 const AccountPanels = lazy(() => import('@/components/account/AccountPanels').then((m) => ({ default: m.AccountPanels })))
+// Admin-only debug console: its own chunk, mounted solely when the verified profile is an admin.
+const DebugConsoleRoot = lazy(() => import('@/components/debug/DebugConsoleRoot').then((m) => ({ default: m.DebugConsoleRoot })))
 
 // Isolated so the 20-200Hz tick clock re-renders only this tiny span, not the whole header
 // or the rest of the app shell (which are independent siblings, not children of this).
@@ -44,6 +47,7 @@ export default function App() {
     useShallow((s) => ({ scenario: s.scenario, isRunning: s.ui.isRunning, mapReady: s.mapReady })),
   )
   const [loadingDone, setLoadingDone] = useState(HARNESS_ENABLED)
+  const isAdmin = useAuthStore((s) => s.activeAccount?.isAdmin === true)
   const deviceMode = useDeviceMode()
 
   // The public desktop deployment (internal target id `windows`) serves Windows and Mac
@@ -105,6 +109,7 @@ export default function App() {
           <ReplayPanel />
           <SignInModal />
           <AccountPanels />
+          {isAdmin && <DebugConsoleRoot />}
         </Suspense>
 
         {/* First-visit onboarding — after the loading screen clears, before any scenario */}

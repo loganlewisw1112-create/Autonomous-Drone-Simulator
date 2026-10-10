@@ -32,9 +32,33 @@ export interface AnalyticsAggregates {
   rtbTriggers: number
   recoveryDispatches: number
   groundDispatches: number
+  /** Runs left out of every figure because a debug command modified them. Show it, never hide it. */
+  debugExcluded: number
 }
 
-export function buildAggregates(summaries: StoredRunSummary[]): AnalyticsAggregates {
+/** True when the run was modified through the admin debug console. */
+export function isDebugRun(summary: StoredRunSummary): boolean {
+  return summary.debugTaint !== undefined
+}
+
+/** Pure filter: summaries of clean runs only. Every reducer below applies it. */
+export function excludeDebugRuns(summaries: StoredRunSummary[]): StoredRunSummary[] {
+  return summaries.some(isDebugRun) ? summaries.filter((s) => !isDebugRun(s)) : summaries
+}
+
+/** Number of debug-modified runs in the set, e.g. for an "N debug runs excluded" note. */
+export function countDebugRuns(summaries: StoredRunSummary[]): number {
+  return summaries.reduce((n, s) => n + (isDebugRun(s) ? 1 : 0), 0)
+}
+
+/** Human-readable note for the UI, or null when nothing was excluded. */
+export function debugExcludedNote(count: number): string | null {
+  if (count <= 0) return null
+  return `${count} debug run${count === 1 ? '' : 's'} excluded`
+}
+
+export function buildAggregates(allSummaries: StoredRunSummary[]): AnalyticsAggregates {
+  const summaries = excludeDebugRuns(allSummaries)
   const total = summaries.length
   const sum = (pick: (s: StoredRunSummary) => number) =>
     summaries.reduce((acc, s) => acc + pick(s), 0)
@@ -51,6 +75,7 @@ export function buildAggregates(summaries: StoredRunSummary[]): AnalyticsAggrega
     rtbTriggers: sum((s) => s.metrics.rtbTriggers),
     recoveryDispatches: sum((s) => s.metrics.recoveryDispatches),
     groundDispatches: sum((s) => s.metrics.groundUnitDispatch),
+    debugExcluded: countDebugRuns(allSummaries),
   }
 }
 
@@ -61,7 +86,8 @@ export interface TimelinePoint {
   contacts: number
 }
 
-export function buildTimeline(summaries: StoredRunSummary[]): TimelinePoint[] {
+export function buildTimeline(allSummaries: StoredRunSummary[]): TimelinePoint[] {
+  const summaries = excludeDebugRuns(allSummaries)
   return summaries.map((s, i) => ({
     name: new Date(s.completedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
     run: i + 1,
@@ -77,7 +103,8 @@ export interface ScenarioCount {
   count: number
 }
 
-export function runsByScenario(summaries: StoredRunSummary[]): ScenarioCount[] {
+export function runsByScenario(allSummaries: StoredRunSummary[]): ScenarioCount[] {
+  const summaries = excludeDebugRuns(allSummaries)
   const counts = new Map<string, number>()
   for (const s of summaries) counts.set(s.scenarioId, (counts.get(s.scenarioId) ?? 0) + 1)
   return [...counts.entries()]
@@ -102,7 +129,8 @@ export interface PlatformCount {
  * without a platformId came from pre-upgrade runs and aggregate under
  * UNASSIGNED_PLATFORM_LABEL.
  */
-export function sortiesByPlatform(summaries: StoredRunSummary[]): PlatformCount[] {
+export function sortiesByPlatform(allSummaries: StoredRunSummary[]): PlatformCount[] {
+  const summaries = excludeDebugRuns(allSummaries)
   const counts = new Map<string, number>()
   for (const summary of summaries) {
     for (const outcome of summary.droneOutcomes) {
@@ -126,7 +154,8 @@ export interface ReasonCount {
   count: number
 }
 
-export function completionReasons(summaries: StoredRunSummary[]): ReasonCount[] {
+export function completionReasons(allSummaries: StoredRunSummary[]): ReasonCount[] {
+  const summaries = excludeDebugRuns(allSummaries)
   const counts = new Map<string, number>()
   for (const s of summaries) {
     const reason = s.completionReason ?? UNKNOWN_REASON_LABEL
@@ -145,7 +174,8 @@ export interface SafetyPoint {
 }
 
 /** Per-run safety event counts, for spotting a trend across a profile's history. */
-export function safetyTrend(summaries: StoredRunSummary[]): SafetyPoint[] {
+export function safetyTrend(allSummaries: StoredRunSummary[]): SafetyPoint[] {
+  const summaries = excludeDebugRuns(allSummaries)
   return summaries.map((s, i) => ({
     run: i + 1,
     conflicts: s.metrics.conflictsDetected,
@@ -165,7 +195,8 @@ export interface EventTypeBreakdown {
   runsWithoutCounts: number
 }
 
-export function eventTypeTotals(summaries: StoredRunSummary[], limit = 8): EventTypeBreakdown {
+export function eventTypeTotals(allSummaries: StoredRunSummary[], limit = 8): EventTypeBreakdown {
+  const summaries = excludeDebugRuns(allSummaries)
   const counts = new Map<string, number>()
   let runsWithoutCounts = 0
 

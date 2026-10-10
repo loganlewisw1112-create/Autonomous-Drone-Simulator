@@ -24,6 +24,26 @@ export function AccountChip() {
       <span className="account-chip-name" title={`Signed in as ${activeAccount.displayName}`}>
         ◉ {activeAccount.displayName.toUpperCase()}
       </span>
+      {activeAccount.isAdmin && (
+        <span
+          className="account-chip-name"
+          title={`Admin pass active: ${activeAccount.adminEmail ?? ''}`}
+          data-testid="admin-badge"
+          style={{ color: 'var(--accent-yellow)', fontWeight: 700, fontSize: 'var(--fs-min)' }}
+        >
+          ADMIN
+        </span>
+      )}
+      {!activeAccount.recoveryConfigured && (
+        <button
+          className="account-chip"
+          onClick={() => setShowSettings(true)}
+          title="No recovery code yet: open Settings to set one up"
+          data-testid="recovery-nudge"
+        >
+          ⚠ RECOVERY
+        </button>
+      )}
       <button className="account-chip" onClick={() => setShowAnalytics(true)} title="Usage analytics">📊</button>
       <button className="account-chip" onClick={() => setShowSettings(true)} title="Settings">⚙</button>
       <button className="account-chip" onClick={signOut} title="Sign out">⏻</button>

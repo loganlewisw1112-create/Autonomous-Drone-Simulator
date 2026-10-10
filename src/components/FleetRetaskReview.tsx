@@ -18,6 +18,7 @@ const REASON_LABELS: Record<FleetRetaskReason, string> = {
   battery_reserve: 'below battery reserve',
   geofence_breach: 'geofence breach',
   weather: 'weather safety hold',
+  motor_failure: 'motor failure (debug fault)',
   no_viable_assignment: 'no viable assignment',
   advisor_hold: 'hold position',
   cooldown_active: 'cooldown active',

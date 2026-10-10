@@ -18,6 +18,7 @@ import {
 import { enduranceScaleForDrone, plannedLegEnergyPct } from '@/sim/mission/plannedEnergy'
 import { checkThermalDetections } from '@/sim/sensors/ThermalSim'
 import { evaluateGnss } from '@/sim/nav/gnss'
+import { isFaultInjected } from '@/sim/faults/injectedFaults'
 import { occlusionEpoch, type TerrainOcclusionService } from '@/sim/terrain/OcclusionService'
 import {
   occlusionServiceFor,
@@ -842,7 +843,8 @@ export function tick() {
             droneId: drone.id,
             position: drone.position,
             altMslM: groundM + drone.altitudeFt * FT_TO_M,
-            constellation: looks,
+            // Admin-injected GPS fault: an empty sky takes the evaluator's own no_fix path.
+            constellation: isFaultInjected('gps', drone.id) ? [] : looks,
             occlusion: missionOcclusion,
             seed: scenario.seed,
             tick: currentTick,
