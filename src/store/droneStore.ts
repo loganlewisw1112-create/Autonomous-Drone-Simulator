@@ -15,7 +15,7 @@ import { buildMissionSituation, planFleetRetask } from '@/sim/mission/tacticalAd
 import type { TerrainRouteWarning } from '@/sim/mission/routeAudit'
 import { assessSiteReposition, type SiteRepositionResult } from '@/sim/mission/siteReposition'
 import { buildLaunchBayPlan } from '@/sim/mission/launchDoctrine'
-import { replanLaunchSlots } from '@/sim/mission/launchPlanGeometry'
+import { isSeededLaunchPlan, replanLaunchSlots, seededLaunchPlanFromScenario } from '@/sim/mission/launchPlanGeometry'
 import { clearAllSavedWaypointPlans, clearSavedDroneWaypointRoute, saveDroneWaypointRoute, saveFleetWaypointRoutes } from '@/sim/mission/waypointPersistence'
 import { hashEvent } from '@/utils/chainOfCustody'
 import { getActiveOperator } from '@/store/authStore'
@@ -812,6 +812,14 @@ export const useDroneStore = create<DroneStore>()(
 
         setWeatherState: (state) => set((current) => ({
           weatherState: state,
+          // A variant/weather change before launch re-gates a plan that is still the authored
+          // seed. Operator-confirmed plans and in-flight missions are never rewritten here.
+          launchPlan: current.scenario
+            && !current.ui.isRunning
+            && (current.lifecycle === 'idle' || current.lifecycle === 'preflight')
+            && isSeededLaunchPlan(current.scenario, current.launchPlan)
+            ? seededLaunchPlanFromScenario(current.scenario, state, current.siteOverrides)
+            : current.launchPlan,
           latestFleetRetaskPlan: null,
           latestFleetRetaskResult: null,
           fleetRetaskCache: null,
