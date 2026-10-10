@@ -2,7 +2,9 @@
 
 An admin pass turns an operator profile into an ADMIN profile: every access gate
 opens (with a visible "ADMIN override" label), and the debug console becomes
-available (Ctrl+` or Ctrl+Shift+D; a DBG button on phones).
+available (Ctrl+` or Ctrl+Shift+D; a DBG button on phones). Admins also run with
+no session clock: no public-demo countdown, and classroom classes may be created
+with no time limit (still bounded by the relay licence).
 
 A pass is a line of text, `DSA1.<payload>.<signature>`, signed with an Ed25519
 key that only the owners hold. The app and the classroom relay carry the public

@@ -383,7 +383,8 @@ function onCreate(sock, msg) {
   const now = Date.now()
   refreshClassStates(now)
   const { classId, classPubKey, config } = msg
-  if (!activeInstructorSocketSession(sock)) {
+  const instructorSessionRecord = activeInstructorSocketSession(sock)
+  if (!instructorSessionRecord) {
     return send(sock, {
       v: PROTOCOL_VERSION,
       type: 'class.err',
@@ -450,24 +451,54 @@ function onCreate(sock, msg) {
     })
   }
 
-  const durationMinutes = Number(config?.durationMinutes ?? 60)
-  if (!Number.isFinite(durationMinutes) || durationMinutes < 30 || durationMinutes > 180) {
-    return send(sock, {
-      v: PROTOCOL_VERSION,
-      type: 'class.err',
-      classId,
-      reason: 'invalid-class-duration',
-    })
-  }
+  // ADMIN override: a relay session minted from a verified signed admin pass may ask for
+  // an explicit `durationMinutes: null` (no class time limit). Everything else, including
+  // null/NaN/out-of-range from an access-code session, keeps the 30..180 validation.
+  const adminUnlimited = config?.durationMinutes === null
+  const entitlementBoundMs = Math.min(authority.expMs, authority.offlineUntilMs)
+  let activeUntil
+  if (adminUnlimited) {
+    if (instructorSessionRecord.admin !== true) {
+      return send(sock, {
+        v: PROTOCOL_VERSION,
+        type: 'class.err',
+        classId,
+        reason: 'invalid-class-duration',
+      })
+    }
+    // The licence/entitlement is not a session clock: it stays the only bound.
+    activeUntil = entitlementBoundMs - CLASS_DEBRIEF_MS
+    if (activeUntil <= now) {
+      return send(sock, {
+        v: PROTOCOL_VERSION,
+        type: 'class.err',
+        classId,
+        reason: 'insufficient-entitlement-time',
+      })
+    }
+  } else {
+    const durationMinutes = Number(config?.durationMinutes ?? 60)
+    if (
+      config?.durationMinutes === null
+      || !Number.isFinite(durationMinutes) || durationMinutes < 30 || durationMinutes > 180
+    ) {
+      return send(sock, {
+        v: PROTOCOL_VERSION,
+        type: 'class.err',
+        classId,
+        reason: 'invalid-class-duration',
+      })
+    }
 
-  const activeUntil = now + durationMinutes * 60_000
-  if (activeUntil + CLASS_DEBRIEF_MS > Math.min(authority.expMs, authority.offlineUntilMs)) {
-    return send(sock, {
-      v: PROTOCOL_VERSION,
-      type: 'class.err',
-      classId,
-      reason: 'insufficient-entitlement-time',
-    })
+    activeUntil = now + durationMinutes * 60_000
+    if (activeUntil + CLASS_DEBRIEF_MS > entitlementBoundMs) {
+      return send(sock, {
+        v: PROTOCOL_VERSION,
+        type: 'class.err',
+        classId,
+        reason: 'insufficient-entitlement-time',
+      })
+    }
   }
 
   const created = {
@@ -1253,7 +1284,14 @@ function activeInstructorSocketSession(sock, now = Date.now()) {
     && process.env.CLASSROOM_TEST_SOCKET_AUTH === '1'
     && sock.instructorSessionAuthorized === true
   ) {
-    return { token: 'test-only', ip: sock.connectionIp || 'test', expiresAt: now + 1 }
+    // `instructorSessionAdmin` is read ONLY inside this seam (NODE_ENV=test, no
+    // entitlement requirement, CLASSROOM_TEST_SOCKET_AUTH=1). Wire messages cannot set it.
+    return {
+      token: 'test-only',
+      ip: sock.connectionIp || 'test',
+      expiresAt: now + 1,
+      admin: sock.instructorSessionAdmin === true,
+    }
   }
   const token = sock.instructorSessionToken
   const session = token && instructorSessions.get(token)
@@ -1277,9 +1315,15 @@ export function authenticateInstructorSocket(sock, req) {
   return true
 }
 
-function mintInstructorSession(ip, now = Date.now()) {
+// `admin` is set ONLY from a signed admin-pass claim that verified server-side in
+// POST /api/instructor-access/session; an access-code session never carries it.
+function mintInstructorSession(ip, now = Date.now(), adminClaim = null) {
   const token = crypto.randomBytes(32).toString('base64url')
-  instructorSessions.set(token, { ip, expiresAt: now + SESSION_TTL_MS })
+  instructorSessions.set(token, {
+    ip,
+    expiresAt: now + SESSION_TTL_MS,
+    ...(adminClaim ? { admin: true, adminEmail: adminClaim.email } : {}),
+  })
   return token
 }
 
@@ -1481,10 +1525,12 @@ export async function handleInstructorAccessHttp(req, res) {
     const body = await readJsonBody(req, res)
     if (!body) return true
     let verified
+    let adminClaim = null
     if (body.adminPass !== undefined) {
       // Signed ADMIN pass: same rate limit, same session cookie, no access code needed.
       // Verified against the build's trusted public keys and revocation list.
-      verified = verifyAdminPassText(body.adminPass, adminPassTrust) !== null
+      adminClaim = verifyAdminPassText(body.adminPass, adminPassTrust)
+      verified = adminClaim !== null
       if (!verified) {
         recordFailedVerification(ip)
         sendJson(req, res, 401, { ok: false, error: 'invalid-admin-pass' })
@@ -1503,7 +1549,7 @@ export async function handleInstructorAccessHttp(req, res) {
         return true
       }
     }
-    const token = mintInstructorSession(ip)
+    const token = mintInstructorSession(ip, Date.now(), adminClaim)
     sendJson(req, res, 200, { ok: true }, {
       'set-cookie': sessionCookie(token, req.socket?.encrypted === true),
     })

@@ -17,7 +17,11 @@ interface UsagePolicyContextValue {
   phase: UsagePhase
   canBeginNewActivity: boolean
   remainingMs: number | null
-  /** True when an ADMIN pass is holding open a window that has otherwise closed. */
+  /**
+   * True when a verified ADMIN pass overrides the usage window: either holding open a
+   * window that has otherwise closed (desktop gate) or running with no session clock at all
+   * (public demo gate, where remainingMs is null and phase stays 'active').
+   */
   adminOverride?: boolean
 }
 
@@ -154,27 +158,55 @@ function EntitlementBannerActions({ state }: { state: DesktopEntitlementState })
   )
 }
 
+function freshPublicDemoClock(now: number): UsageClock {
+  return { firstSeenAt: now, lastActivityAt: now, debriefStartedAt: null }
+}
+
 function PublicDemoPolicyGate({ children }: { children: React.ReactNode }) {
   const now = Date.now()
+  const admin = useIsAdmin()
   const clockRef = useRef<UsageClock>(readPublicDemoClock(now))
+  const adminRef = useRef(admin)
   const [, render] = useState(0)
-  const phase = evaluateUsagePhase(USAGE_POLICY, clockRef.current, now)
-  const remainingMs = remainingUsageMs(USAGE_POLICY, clockRef.current, now)
 
-  if (phase === 'debrief' && clockRef.current.debriefStartedAt === null) {
+  // A verified admin runs with no session clock at all. Whenever the admin state flips, the
+  // clock restarts from now and is persisted: signing in leaves no stale (possibly expired)
+  // window behind, and signing out hands the next, non-admin visitor a fresh public-demo
+  // window instead of an inherited debrief/expiry or a half-used countdown. Done during render
+  // (not in an effect) so no frame ever shows the stale state.
+  if (adminRef.current !== admin) {
+    adminRef.current = admin
+    clockRef.current = freshPublicDemoClock(now)
+    writePublicDemoClock(clockRef.current)
+  }
+
+  const phase: UsagePhase = admin ? 'active' : evaluateUsagePhase(USAGE_POLICY, clockRef.current, now)
+  const remainingMs = admin ? null : remainingUsageMs(USAGE_POLICY, clockRef.current, now)
+
+  if (!admin && phase === 'debrief' && clockRef.current.debriefStartedAt === null) {
     clockRef.current.debriefStartedAt = now
     writePublicDemoClock(clockRef.current)
   }
 
   useEffect(() => {
     const activity = () => {
+      if (adminRef.current) return
       if (evaluateUsagePhase(USAGE_POLICY, clockRef.current) !== 'active') return
       clockRef.current.lastActivityAt = Date.now()
       writePublicDemoClock(clockRef.current)
     }
     const events = ['pointerdown', 'keydown'] as const
     events.forEach((event) => window.addEventListener(event, activity, { passive: true }))
-    const timer = window.setInterval(() => render((value) => value + 1), 15_000)
+    const timer = window.setInterval(() => {
+      // While an admin is signed in the stored clock is kept at "now": the pass lives in memory
+      // only, so a reload signs the admin out and the page must not then restore a window that
+      // opened before the admin signed in.
+      if (adminRef.current) {
+        clockRef.current = freshPublicDemoClock(Date.now())
+        writePublicDemoClock(clockRef.current)
+      }
+      render((value) => value + 1)
+    }, 15_000)
     writePublicDemoClock(clockRef.current)
     return () => {
       events.forEach((event) => window.removeEventListener(event, activity))
@@ -186,7 +218,8 @@ function PublicDemoPolicyGate({ children }: { children: React.ReactNode }) {
     phase,
     canBeginNewActivity: usageAllowsNewActivity(phase),
     remainingMs,
-  }), [phase, remainingMs])
+    ...(admin ? { adminOverride: true } : {}),
+  }), [phase, remainingMs, admin])
   const wall = USAGE_POLICY.wallClockMs === null
     ? null
     : Math.max(0, USAGE_POLICY.wallClockMs - (now - clockRef.current.firstSeenAt))
@@ -197,11 +230,20 @@ function PublicDemoPolicyGate({ children }: { children: React.ReactNode }) {
   return (
     <UsagePolicyContext.Provider value={value}>
       <PolicyBanner phase={phase}>
-        {phase === 'active'
-          ? `PUBLIC DEMO · session: ${formatRemaining(wall)} · idle timeout: ${formatRemaining(idle)}`
-          : phase === 'debrief'
-            ? `DEBRIEF ONLY · New missions/classes are disabled · monitoring, recovery and exports remain available · ${formatRemaining(remainingMs)}`
-            : 'DEMO WINDOW ENDED · New missions/classes are disabled · existing records are not deleted'}
+        {admin
+          ? (
+            <>
+              {'PUBLIC DEMO · '}
+              <strong data-testid="admin-override-policy" style={{ color: '#ffd166' }}>
+                {ADMIN_OVERRIDE_LABEL}: no session time limit
+              </strong>
+            </>
+          )
+          : phase === 'active'
+            ? `PUBLIC DEMO · session: ${formatRemaining(wall)} · idle timeout: ${formatRemaining(idle)}`
+            : phase === 'debrief'
+              ? `DEBRIEF ONLY · New missions/classes are disabled · monitoring, recovery and exports remain available · ${formatRemaining(remainingMs)}`
+              : 'DEMO WINDOW ENDED · New missions/classes are disabled · existing records are not deleted'}
       </PolicyBanner>
       {children}
     </UsagePolicyContext.Provider>

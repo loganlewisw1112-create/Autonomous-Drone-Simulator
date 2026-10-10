@@ -75,7 +75,10 @@ Primary boundaries:
   revocation; the browser sends a stored pass to it only for a profile the pass
   fits.
 - Admin overrides cover access gates only (authorization training, the
-  preflight checklist, the usage-policy window, the instructor access code).
+  preflight checklist, the usage-policy window, the instructor access code,
+  the classroom class time limit). An unlimited class (`durationMinutes: null`)
+  is accepted only from a relay session minted from a verified admin pass; the
+  licence/entitlement window still bounds it.
   Each override is labelled in the UI and, where it feeds the mission log,
   recorded as an `admin_override` event. Training assurance, weather doctrine
   and device gates are never overridden.

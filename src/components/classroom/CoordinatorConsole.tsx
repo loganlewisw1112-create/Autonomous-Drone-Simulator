@@ -26,6 +26,7 @@ import { ClassResults } from '@/components/classroom/ClassResults'
 import type { ClassConfig, RosterEntry, StudentId } from '@/classroom/protocol'
 import type { DroneState, LatLng, ScenarioConfig } from '@/types'
 import { isMobileLaunchSite } from '@/sim/mission/siteResolver'
+import { ADMIN_OVERRIDE_LABEL } from '@/account/adminOverride'
 import './classroom.css'
 
 const SEVERITY_RANK: Record<AlertSeverity, number> = { crit: 0, warn: 1, none: 2 }
@@ -113,7 +114,9 @@ export function CoordinatorConsole() {
     if (!joinUrl) return null
     return new URLSearchParams(new URL(joinUrl).hash.replace(/^#/, '')).get('ik')
   }, [joinUrl])
-  const classExpiresAt = sessionStartedAt === null
+  // Explicit `null` = ADMIN override, no class time limit (undefined keeps the 60 min default).
+  const classTimeLimitless = config?.durationMinutes === null
+  const classExpiresAt = sessionStartedAt === null || classTimeLimitless
     ? null
     : sessionStartedAt + (config?.durationMinutes ?? 60) * 60_000
   const classExpired = classExpiresAt !== null && clockNow >= classExpiresAt
@@ -253,7 +256,9 @@ export function CoordinatorConsole() {
         <span className="cls-header-meta">{scenarioName}</span>
         <span className="cls-header-meta cls-header-count">{roster.length} joined</span>
         <span className="cls-header-meta" role={classExpired ? 'alert' : 'status'}>
-          {classExpired ? 'TIME LIMIT REACHED · monitoring/export remain available' : `${classRemainingMin ?? '—'} min remaining`}
+          {classTimeLimitless
+            ? `${ADMIN_OVERRIDE_LABEL} · no class time limit`
+            : classExpired ? 'TIME LIMIT REACHED · monitoring/export remain available' : `${classRemainingMin ?? '—'} min remaining`}
         </span>
         {rejected > 0 && (
           <span
