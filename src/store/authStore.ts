@@ -211,18 +211,27 @@ async function finishSignIn(set: AuthSet, record: AccountRecord, key: Uint8Array
 // edited or swapped pass is unverified (not admin) until verifyAdminPassFor runs on it.
 let adminVerdict: { accountId: string; pass: string; claim: AdminClaim | null } | null = null
 
+// A pass belongs to one profile: the one whose username is the email the pass was issued to.
+// Pasted into any other profile it verifies but grants nothing.
+function passFitsProfile(claim: AdminClaim | null, account: AccountRecord): AdminClaim | null {
+  return claim && claim.email === account.usernameLower ? claim : null
+}
+
 async function verifyAdminPassFor(record: AccountRecord): Promise<AdminClaim | null> {
   if (!record.adminPass) return null
-  if (adminVerdict?.accountId === record.id && adminVerdict.pass === record.adminPass) return adminVerdict.claim
+  if (adminVerdict?.accountId === record.id && adminVerdict.pass === record.adminPass) {
+    return passFitsProfile(adminVerdict.claim, record)
+  }
   const { verifyAdminPass } = await import('@/account/adminPass')
   const claim = verifyAdminPass(record.adminPass)
   adminVerdict = { accountId: record.id, pass: record.adminPass, claim }
-  return claim
+  return passFitsProfile(claim, record)
 }
 
 function cachedAdminClaim(account: AccountRecord): AdminClaim | null {
   if (!account.adminPass || !adminVerdict) return null
-  return adminVerdict.accountId === account.id && adminVerdict.pass === account.adminPass ? adminVerdict.claim : null
+  if (adminVerdict.accountId !== account.id || adminVerdict.pass !== account.adminPass) return null
+  return passFitsProfile(adminVerdict.claim, account)
 }
 
 function toActive(account: AccountRecord): ActiveAccount {
@@ -437,7 +446,12 @@ export const useAuthStore = create<AuthState>()(
         const record = await getAccountByUsername(activeAccount.username)
         if (!record) { set({ authError: 'Profile not found on this device' }); return false }
         if (!await verifyAdminPassFor({ ...record, adminPass: trimmed })) {
-          set({ authError: 'That admin pass is not valid' })
+          const issuedTo = adminVerdict?.pass === trimmed ? adminVerdict.claim?.email : undefined
+          set({
+            authError: issuedTo
+              ? `This admin pass belongs to the profile "${issuedTo}". Sign in to that profile to use it.`
+              : 'That admin pass is not valid',
+          })
           return false
         }
         record.adminPass = trimmed

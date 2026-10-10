@@ -19,9 +19,15 @@ pass but cannot create one.
 
 ## Use a pass
 
-1. Sign in to your profile.
+1. Sign in to the profile whose **username is the email the pass was issued
+   to** (for example `someone@example.com`; case does not matter). If you have
+   no such profile on this device, sign up with that email as the username.
 2. Open Settings and find **Admin pass**.
 3. Paste the whole line from your `.txt` file and choose **Unlock admin**.
+
+A pass works only on its own profile. Pasted into any other profile it is
+refused ("This admin pass belongs to the profile …"), and a pass copied into
+another profile's device storage grants nothing at sign-in.
 
 The pass is stored on the profile and re-verified at every sign-in. **Remove
 admin pass** takes it off again.
@@ -33,8 +39,10 @@ node tools/admin/issue-admin-pass.mjs --email someone@example.com --name "Someon
 ```
 
 Add `--expires 2027-01-01T00:00:00Z` for a pass that stops working on a date. The
-script prints only the output path and the pass id. Send the file privately;
-anyone holding it gets admin on whatever profile they paste it into.
+script prints only the output path and the pass id. The `--email` is the
+username of the profile the pass will unlock. Send the file privately: profiles
+are local and nothing verifies who owns an email, so anyone holding the file can
+still sign up on their own device with that email as the username and use it.
 
 ## Revoke a pass
 
