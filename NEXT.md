@@ -6,8 +6,9 @@ Everything from "Next action" down is yours and is never auto-edited. -->
 ## Evidence (hand-refreshed 2026-10-10)
 
 - The demo-blocker pass (#127-#135 plus the c11 weather-gate follow-up) is merged; see PROJECT_STATUS.md "Demo-blocker pass".
-- Check the live SHA with `npm run deploy:status`: all three public targets (windows, mobile, classroom) promote from `main`
-- No open PRs
+- Admin profiles, password recovery and the admin debug console merged as #138 (`2c135a8`); see PROJECT_STATUS.md "Admin profiles, password recovery and debug console".
+- Check the live SHA with `npm run deploy:status`: all three public targets (windows, mobile, classroom) promote from `main`. When this was written, CI on `main` for `2c135a8` was still running and the targets served `b6bb719`.
+- No open PRs besides this docs follow-up
 
 ## Blocker
 
@@ -16,6 +17,11 @@ none. The v1.1 **web beta is LIVE** and promoted from `main` by CI. Project deci
 hardening, cleanup, and polish, not the release ladder.
 
 ## Next action
+
+Owner to-dos from #138:
+- Back up `local-secrets/admin-signing-key.json` offline. It is the only copy; without it no admin pass can be issued or replaced.
+- Send Andrew his pass (`local-secrets/admin-passes/andrew.f.wyatt@gmail.com.txt`) privately. Each pass is a bearer credential.
+- Confirm the promote with `npm run deploy:status` (all three targets on `2c135a8` or later).
 
 Owner decision on WP-12 (below) is the only open roadmap item. Otherwise continue polish. Known
 energy-model limit left from the U-shaped power curve (2026-09-28): wind is charged as extra load,
@@ -29,6 +35,7 @@ ADS-B source, or drop WP-12 as out of scope for the flagship.
 
 ## Carry forward
 
+- Admin and recovery traps (#138): keep the admin-pass verifier lazy-loaded in `authStore` (a static import put Ed25519 into startup and broke `assert:bundles`). Keep the relay debug pack under `src/classroom/` and registered by ClassroomEntry (`classroomBundleGuard.spec` follows dynamic imports). Never describe offline TOTP or `replay verify` as doing more than they do.
 - Seeded launch plans are weather-gated: Marshall Fire and USCG maritime SAR do not launch at default weather, by owner decision (2026-10-10).
 - `src/tests/classroomRelayBoundaries.spec.ts` "global instructor verification limit" runs in about 3.5 s against
   a 5 s timeout, so it can time out on a loaded machine. It passes in isolation.
