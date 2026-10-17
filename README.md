@@ -1,8 +1,8 @@
 # Autonomous Drone Mission Simulator
 
-**A training simulator for coordinating fleets of public-safety drones across 31 mission scenarios — search and rescue, wildfire, flood, hazmat, port security, structural collapse, and infrastructure inspection — entirely simulated, and never connected to a real aircraft.**
+**A training simulator for coordinating fleets of public-safety drones across 31 mission scenarios — wildfire, flood, hazmat, structural collapse, port and perimeter security, infrastructure inspection, and search and rescue — entirely simulated, and never connected to a real aircraft.**
 
-This is a web-based (and optional Windows classroom) tool for practicing supervised, multi-drone public-safety missions: plan a search, run a preflight, launch a fleet, retask aircraft mid-mission, "detect" survivors, recover, replay the whole thing, and export a record. Everything happens in a simulation. It does **not** connect to aircraft, air-traffic systems, Remote ID, dispatch, or cameras, and it is **not** for real flight, real emergencies, or regulatory use.
+This is a web-based (and optional Windows classroom) tool for practicing supervised, multi-drone public-safety missions: plan a mission, run a preflight, launch a fleet, retask aircraft mid-mission, work thermal contacts and dispatch ground units, recover, replay the whole thing, and export a record. Everything happens in a simulation. It does **not** connect to aircraft, air-traffic systems, Remote ID, dispatch, or cameras, and it is **not** for real flight, real emergencies, or regulatory use.
 
 ![Animated coastal search-and-rescue mission: tactical map, fleet, telemetry, and route suggestions.](docs/media/readme/hero-live-workflow.gif)
 
@@ -11,6 +11,19 @@ This is a web-based (and optional Windows classroom) tool for practicing supervi
 | Mobile web | [Launch Mobile](https://autonomous-drone-simulator-mobile.vercel.app/) |
 | Desktop web (Windows & Mac) | [Launch Desktop](https://autonomous-drone-simulator.vercel.app/) |
 | Classroom demo | [Open Classroom](https://autonomous-drone-simulator-classroom.vercel.app/) |
+
+## Who it's for
+
+- **Public-safety drone programs** — police, sheriff, fire, and emergency-management UAS teams that fly more than one aircraft at a time and need to rehearse coordination, not just stick skills.
+- **Drone instructors** — high-school CTE pathways, community-college and university UAS programs, and public-safety training academies that want a repeatable, gradeable mission exercise students can run in a browser.
+
+## Why now
+
+Agency drone programs are growing from a single pilot and aircraft into multi-aircraft and drone-as-first-responder operations. Most training for that shift is still classroom instruction plus live flying, which is costly, weather-dependent, and hard to repeat or review. This simulator lets a crew run the same mission again with the same conditions, then replay it and walk through an after-action report — with no aircraft, airspace, or risk involved.
+
+## Run a 30-day pilot
+
+Agencies and training programs can evaluate the simulator free for 30 days or more under a written evaluation agreement (the [LICENSE](LICENSE) requires written permission for any organizational use). To ask for one, [open a pilot request](https://github.com/loganlewisw1112-create/Autonomous-Drone-Simulator/issues/new?template=pilot-request.yml) — please don't post personal phone numbers or emails there; we'll follow up in the issue.
 
 ## Why it's interesting
 
@@ -83,9 +96,7 @@ npm audit --audit-level=high
 
 **Deployment.** Production promotion is designed to run only after CI succeeds on the exact `main` SHA: CI qualifies the code and builds all three targets, the workflow confirms `main` still equals that SHA, protected Vercel deploy hooks build the revision, and the workflow verifies `/build-info.json` on every public alias. Tagged Windows releases re-run the full gate, require signing credentials, and produce checksums, an SBOM, and provenance attestation. See [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) and the [Windows signing runbook](docs/WINDOWS_SIGNING_RUNBOOK.md).
 
-There is no GitHub Pages deployment — `npm run deploy` is retired and now fails with a pointer, because a stale `gh-pages` script in `package.json` had previously been mistaken for the real mechanism. Vercel's own git auto-deploy from `main` is deliberately disabled in [`vercel.json`](vercel.json) so a push cannot reach production without passing CI first.
-
-That is the *designed* path, and it is worth knowing that it has not always dispatched: promote runs have sat queued with zero jobs, and production has then been brought up to date by aliasing an existing Ready preview build (`vercel alias set <preview-url> <prod-domain>`) instead. That is why a live target's `gitSha` can be a preview-branch commit rather than a `main` SHA — the content can still be identical to `main`. `npm run deploy:status` reports both the deployed SHA's relationship to `main` and the last promote run's state, so a lagging production is diagnosable in one command rather than by hand.
+Deployment history and operational notes (the retired `gh-pages` path, manual alias recovery) live in [docs/DEPLOYMENT_NOTES.md](docs/DEPLOYMENT_NOTES.md).
 
 ## Safety, privacy, and limitations
 
