@@ -26,8 +26,8 @@ None for agent work. The next pitch items are owner decisions (below).
 5. Then the proof and company chain: p1 30-target list, e1 entity + IP, e2 pilot terms (the LICENSE allows no pilot today), e4 90-second video (script ready in INVESTOR_DEMO_SCRIPT.md).
 
 **Next agent-executable items** (no decision needed):
-- k6 + k7 + k8 as one docs-truth PR: qualify "high-fidelity" at PROJECT_STATUS.md:13 and docs/AGENCY_TRAINING_ASSURANCE.md:5; add an H6.5 row to docs/REMEDIATION_LOG.md marked fixed by #132 (it is fixed, not open); refresh docs/BUILD_JOURNEY.html (242 tests, 21 scenarios) and PROJECT_STATUS's quoted SHAs.
-- r2: move the 10 unused law-enforcement scenarios out of `src/scenarios/extremeScenarios.ts` (4 of the 14 are imported by `trainingScenarios.ts`; keep those).
+- k6 + k7 + k8 as one docs-truth PR: qualify "high-fidelity" at PROJECT_STATUS.md:13 and docs/AGENCY_TRAINING_ASSURANCE.md:5; add an H6.5 row to docs/REMEDIATION_LOG.md marked fixed by #132 (it is fixed, not open); refresh PROJECT_STATUS's quoted SHAs. (BUILD_JOURNEY.html's stale "242 tests, 21 scenarios" subhead is fixed in the front-door PR.)
+- r2: done in the front-door PR — the 10 unused scenarios, their fixtures, and `sprint5Scenario.spec.ts` (which only tested two of them) are removed; the 4 imported by `trainingScenarios.ts` stay.
 - x1 (keep students in class after a refresh) and x2 (end-of-class export, per-pilot record).
 - r4 partial: ERA5 CC BY credit in the app now; the LICENSE data carve-out waits on e1.
 - Tick on the artifact checklist once merged: k1, k2, k5, r5, d1, and r3 (the classroom command-wire test passes 8/8 in isolation). k3 is reworded only; tick it if the owner accepts the reword as the fix.
