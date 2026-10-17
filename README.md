@@ -19,11 +19,7 @@ This is a web-based (and optional Windows classroom) tool for practicing supervi
 
 ## Why now
 
-Agency drone programs are growing from a single pilot and aircraft into multi-aircraft and drone-as-first-responder operations. Most training for that shift is still classroom instruction plus live flying, which is costly, weather-dependent, and hard to repeat or review. This simulator lets a crew run the same mission again with the same conditions, then replay it and walk through an after-action report — with no aircraft, airspace, or risk involved.
-
-## Run a 30-day pilot
-
-Agencies and training programs can evaluate the simulator free for 30 days or more under a written evaluation agreement (the [LICENSE](LICENSE) requires written permission for any organizational use). To ask for one, [open a pilot request](https://github.com/loganlewisw1112-create/Autonomous-Drone-Simulator/issues/new?template=pilot-request.yml) — please don't post personal phone numbers or emails there; we'll follow up in the issue.
+Agency drone programs are growing from a single operator and aircraft into multi-aircraft and drone-as-first-responder operations. Most training for that shift is still classroom instruction plus live flying, which is costly, weather-dependent, and hard to repeat or review. This simulator lets a crew run the same mission again with the same conditions, then replay it and walk through an after-action report — with no aircraft, airspace, or risk involved.
 
 ## Why it's interesting
 
