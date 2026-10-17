@@ -23,7 +23,7 @@ None for agent work. The next pitch items are owner decisions (below).
 2. **c6**: with the partner, decide whether solo mode shows the A–F grade. Today `classroomBundleGuard.spec` keeps it classroom-only. [demo script placeholder, e4]
 3. **d4**: name the team and who presents. Git shows one author; Andrew holds an admin pass. [e3, e1, e5]
 4. **d3**: classroom Path A (zero-install assignment link) or Path B (licence service + signed installer). [a1-a3, b1-b4, Chromebook support, SUPPORTED_PLATFORMS revisit]
-5. Then the proof and company chain: p1 30-target list, e1 entity + IP, e2 pilot terms (the LICENSE allows no pilot today), e4 90-second video (script ready in INVESTOR_DEMO_SCRIPT.md).
+5. Then the company chain: e1 entity + IP, e4 90-second video (script ready in INVESTOR_DEMO_SCRIPT.md).
 
 **Next agent-executable items** (no decision needed):
 - k6 + k7 + k8 as one docs-truth PR: qualify "high-fidelity" at PROJECT_STATUS.md:13 and docs/AGENCY_TRAINING_ASSURANCE.md:5; add an H6.5 row to docs/REMEDIATION_LOG.md marked fixed by #132 (it is fixed, not open); refresh PROJECT_STATUS's quoted SHAs. (BUILD_JOURNEY.html's stale "242 tests, 21 scenarios" subhead is fixed in the front-door PR.)
