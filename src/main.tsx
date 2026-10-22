@@ -1,3 +1,5 @@
+// First: every map surface must use the content-versioned MapLibre worker (see the module).
+import '@/components/maplibreWorker'
 import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import 'maplibre-gl/dist/maplibre-gl.css'
