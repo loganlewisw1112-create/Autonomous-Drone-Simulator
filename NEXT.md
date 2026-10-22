@@ -10,7 +10,7 @@ Everything from "Next action" down is yours and is never auto-edited. -->
 - A four-agent pass on 2026-10-10 verified all 60 checklist items against `main`. Board and per-item evidence: session scratchpad only (not kept). The summary is in PROJECT_STATUS.
 - Earlier the same day: demo-blocker pass (#127-#137), admin profiles and recovery (#138, #140, #142, #143), NEXT card refresh (#144).
 - Check the live SHA with `npm run deploy:status`: all three public targets promote from `main`.
-- Open PRs besides the follow-up: #117 (Dependabot majors, left open on purpose). #118 (README 31-scenario tagline) is merged.
+- Open PRs (2026-10-22): #148 (white map for returning visitors, CI green, awaiting owner merge), this docs-truth PR (k6-k8), and #117 (Dependabot majors, left open on purpose).
 
 ## Blocker
 
@@ -26,7 +26,8 @@ None for agent work. The next pitch items are owner decisions (below).
 5. Then the company chain: e1 entity + IP, e4 90-second video (script ready in INVESTOR_DEMO_SCRIPT.md).
 
 **Next agent-executable items** (no decision needed):
-- k6 + k7 + k8 as one docs-truth PR: qualify "high-fidelity" at PROJECT_STATUS.md:13 and docs/AGENCY_TRAINING_ASSURANCE.md:5; add an H6.5 row to docs/REMEDIATION_LOG.md marked fixed by #132 (it is fixed, not open); refresh PROJECT_STATUS's quoted SHAs. (BUILD_JOURNEY.html's stale "242 tests, 21 scenarios" subhead is fixed in the front-door PR.)
+- k6 + k7 + k8: done in the docs-truth PR (2026-10-22) — "high-fidelity" qualified in PROJECT_STATUS and AGENCY_TRAINING_ASSURANCE, H6.5 row added to REMEDIATION_LOG as fixed by #132, live SHAs rechecked.
+- r1: publish a current GitHub release once #148 is live (the only release is v1.0.0, 2 Jul).
 - r2: done in the front-door PR — the 10 unused scenarios, their fixtures, and `sprint5Scenario.spec.ts` (which only tested two of them) are removed; the 4 imported by `trainingScenarios.ts` stay.
 - x1 (keep students in class after a refresh) and x2 (end-of-class export, per-pilot record).
 - r4 partial: ERA5 CC BY credit in the app now; the LICENSE data carve-out waits on e1.

@@ -8,10 +8,12 @@ live answer; it reads `/build-info.json` from each public target and reports how
 that SHA relates to `origin/main`. At this status date the three targets served
 `24a274b` while `main` was at `0e380ea`, which is the healthy steady state:
 production tracks the last CI-verified SHA and follows one promote behind a
-fresh merge.
+fresh merge. Rechecked 2026-10-22: all three targets served `ba282a3`, which
+was also `main`.
 
-This is a local-first, high-fidelity agency drone-training platform with a
-shared, fail-closed training-assurance architecture for classroom and Windows
+This is a local-first agency drone-training platform (high-fidelity training
+simulation within the documented deterministic model and frozen-fixture
+envelope) with a shared, fail-closed training-assurance architecture for classroom and Windows
 pilot builds. Repository fixtures remain synthetic/recorded and do not
 command aircraft or connect to operational FAA, LAANC, USS/UTM, Remote ID,
 dispatch, camera, weather, or aircraft-telemetry services.
