@@ -129,6 +129,8 @@ const HEARTBEAT_PING_MS = Math.floor(HEARTBEAT_TIMEOUT_MS / 2)
 const TYPES = {
   '.html': 'text/html',
   '.js': 'text/javascript',
+  // MapLibre's tile worker is a module worker (.mjs); browsers refuse one served as octet-stream.
+  '.mjs': 'text/javascript',
   '.css': 'text/css',
   '.json': 'application/json',
   '.png': 'image/png',

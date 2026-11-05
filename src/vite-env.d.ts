@@ -11,6 +11,8 @@ interface ImportMetaEnv {
   readonly VITE_CLASSROOM_WS_URL?: string
   readonly VITE_DISTRIBUTION_CHANNEL?: 'development' | 'public_demo' | 'licensed_windows' | 'windows_evaluation' | 'classroom_pilot' | 'agency_training_pilot'
   readonly VITE_LICENSE_EXPIRES_AT?: string
+  /** Build-only: `maplibre-worker-<hash>/maplibre-gl-worker.mjs`, relative to the assets dir. */
+  readonly VITE_MAPLIBRE_WORKER_PATH?: string
 }
 
 interface ImportMeta {

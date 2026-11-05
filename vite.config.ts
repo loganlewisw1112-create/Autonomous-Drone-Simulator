@@ -1,7 +1,8 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'path'
 import type { Plugin } from 'vite'
@@ -61,15 +62,40 @@ function targetParityArtifactPlugin(buildInfo: {
   }
 }
 
-function maplibreWorkerAssetPlugin(): Plugin {
+// MapLibre's tile/style worker and the shared chunk it imports by relative path.
+const MAPLIBRE_WORKER_FILES = ['maplibre-gl-worker.mjs', 'maplibre-gl-shared.mjs'] as const
+const MAPLIBRE_DIST = resolve(__dirname, 'node_modules/maplibre-gl/dist')
+
+/**
+ * `maplibre-worker-<hash>`: the folder name the worker files ship under, hashed from their contents.
+ * Production serves assets `immutable` for a year, so these files must change URL whenever they change
+ * content — a fixed name let returning browsers pair a cached old worker with a new MapLibre chunk,
+ * which renders a blank (near-white) map. See src/components/maplibreWorker.ts.
+ */
+function maplibreWorkerDirName(srcDir = MAPLIBRE_DIST): string {
+  const hash = createHash('sha256')
+  for (const file of MAPLIBRE_WORKER_FILES) {
+    const src = resolve(srcDir, file)
+    if (!existsSync(src)) {
+      throw new Error(
+        `[maplibre-worker-asset] ${src} not found — maplibre-gl's dist layout changed. ` +
+        `Update this plugin so the tile/style worker is still copied into the build.`,
+      )
+    }
+    hash.update(file).update('\0').update(readFileSync(src))
+  }
+  return `maplibre-worker-${hash.digest('hex').slice(0, 12)}`
+}
+
+function maplibreWorkerAssetPlugin(workerDir: string): Plugin {
   // MapLibre v6 starts its tile/style worker at runtime via `new URL(`./${name}`, import.meta.url)`
   // with a *dynamically-chosen* filename. Rollup cannot statically analyse that expression, so it
-  // never emits the worker chunk; the bundled maplibre chunk then requests
-  // `<assetsDir>/maplibre-gl-worker.mjs` at runtime, gets a 404, and the map silently renders zero
-  // features (no tiles are ever parsed). `optimizeDeps.exclude` below fixes only the dev server —
-  // the production build needs the worker and its shared chunk copied to the exact path the bundle
-  // resolves. This plugin does that and fails the build if the layout it depends on ever drifts,
-  // so a blank map can never ship silently again.
+  // never emits the worker chunk, and without help the map silently renders zero features (no
+  // tiles are ever parsed). `optimizeDeps.exclude` below fixes only the dev server. For the build,
+  // this plugin copies the worker and its shared chunk into a content-hashed folder, and the app
+  // points MapLibre there with setWorkerUrl() (src/components/maplibreWorker.ts, which reads the
+  // VITE_MAPLIBRE_WORKER_PATH define). The build fails if either half goes missing, so a blank map
+  // can never ship silently again.
   let outDir = ''
   let assetsDir = 'assets'
   return {
@@ -80,37 +106,27 @@ function maplibreWorkerAssetPlugin(): Plugin {
       assetsDir = config.build.assetsDir
     },
     closeBundle() {
-      const srcDir = resolve(__dirname, 'node_modules/maplibre-gl/dist')
       const assetsOut = resolve(outDir, assetsDir)
-      for (const file of ['maplibre-gl-worker.mjs', 'maplibre-gl-shared.mjs']) {
-        const src = resolve(srcDir, file)
-        if (!existsSync(src)) {
-          throw new Error(
-            `[maplibre-worker-asset] ${src} not found — maplibre-gl's dist layout changed. ` +
-            `Update this plugin so the tile/style worker is still copied into the build.`,
-          )
-        }
-        copyFileSync(src, resolve(assetsOut, file))
-      }
-      // Guard against a future maplibre version requesting a worker filename we did not provide.
-      const chunk = readdirSync(assetsOut).find((name) => /^maplibre-.*\.js$/.test(name))
-      if (chunk) {
-        const code = readFileSync(resolve(assetsOut, chunk), 'utf8')
-        const prodWorker = [...code.matchAll(/maplibre-gl-worker(?:-dev)?\.mjs/g)]
-          .map((match) => match[0])
-          .find((name) => !name.includes('-dev'))
-        if (prodWorker && !existsSync(resolve(assetsOut, prodWorker))) {
-          throw new Error(
-            `[maplibre-worker-asset] the maplibre chunk requests ${prodWorker} at runtime but it ` +
-            `was not emitted. The map would render blank. Update this plugin's copy list.`,
-          )
-        }
+      const target = resolve(assetsOut, workerDir)
+      mkdirSync(target, { recursive: true })
+      for (const file of MAPLIBRE_WORKER_FILES) copyFileSync(resolve(MAPLIBRE_DIST, file), resolve(target, file))
+      // The app must actually point MapLibre at that folder: MapLibre's fallback path is never
+      // emitted, so a lost setWorkerUrl() call would mean a 404 worker and a blank map.
+      const workerPath = `${workerDir}/maplibre-gl-worker.mjs`
+      const wired = readdirSync(assetsOut)
+        .filter((name) => name.endsWith('.js'))
+        .some((name) => readFileSync(resolve(assetsOut, name), 'utf8').includes(workerPath))
+      if (!wired) {
+        throw new Error(
+          `[maplibre-worker-asset] no emitted chunk references ${workerPath}. ` +
+          `src/components/maplibreWorker.ts must stay imported by main.tsx, or the map renders blank.`,
+        )
       }
     },
   }
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const appTarget = process.env.VITE_APP_TARGET ?? env.VITE_APP_TARGET ?? 'universal'
   const target = mode === 'classroom' || env.VITE_CLASSROOM_ENABLED === 'true'
@@ -152,6 +168,11 @@ export default defineConfig(({ mode }) => {
   // Read from the process only (never .env files) and always defined, so every build that
   // harness/server.mjs did not start folds HARNESS_ENABLED to false and drops the harness chunk.
   defineEnv['import.meta.env.VITE_HARNESS'] = JSON.stringify(process.env.VITE_HARNESS === '1' ? '1' : '')
+  // Build only: the dev server serves maplibre-gl unbundled, where its own worker path is right.
+  const maplibreWorkerDir = command === 'build' ? maplibreWorkerDirName() : ''
+  defineEnv['import.meta.env.VITE_MAPLIBRE_WORKER_PATH'] = JSON.stringify(
+    maplibreWorkerDir ? `${maplibreWorkerDir}/maplibre-gl-worker.mjs` : '',
+  )
   return ({
   // Project Pages site — assets resolve under /<repo>/ on GitHub Pages.
   // Local dev/preview and the packaged offline build are unaffected because
@@ -159,7 +180,7 @@ export default defineConfig(({ mode }) => {
   base: process.env.GITHUB_PAGES ? '/Autonomous-Drone-Simulator/' : '/',
   plugins: [
     react(),
-    maplibreWorkerAssetPlugin(),
+    maplibreWorkerAssetPlugin(maplibreWorkerDir),
     targetParityArtifactPlugin(buildInfo),
     {
       name: 'release-build-info',
