@@ -2,7 +2,9 @@
 
 ## Product boundary
 
-This product is a high-fidelity **training simulator** for agency drone teams.
+This product is a **training simulator** for agency drone teams: high-fidelity
+training simulation within the documented deterministic model and frozen-fixture
+envelope.
 It does not connect to aircraft, ingest live aircraft feeds, control vehicles,
 submit aviation authorizations, or validate real missions. The classroom relay
 connects instructor and student simulator clients only.
